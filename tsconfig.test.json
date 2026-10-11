@@ -1,0 +1,13 @@
+{
+	"extends": "./tsconfig.json",
+	/* 测试跑在 Node 侧 (vitest), 与游戏运行时分开编译 (docs/api/01 §1.3):
+	   工具侧允许 node 类型与更高 lib, 不影响 src 的沙盒严格性 */
+	"compilerOptions": {
+		"types": ["screeps", "node"],
+		"lib": ["ES2022"],
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": ["tests/**/*.ts", "vitest.config.ts"]
+}

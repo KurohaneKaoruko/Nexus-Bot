@@ -1,0 +1,8 @@
+.*/
+.secret.json
+node_modules/
+dist/
+target/
+.dev/
+AGENTS.md
+tests/

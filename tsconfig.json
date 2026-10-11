@@ -1,0 +1,28 @@
+{
+	"compilerOptions": {
+		/* 严格策略: docs/api/01 §1.4 */
+		"strict": true,
+		"noImplicitOverride": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitReturns": true,
+		"forceConsistentCasingInFileNames": true,
+		/* Screeps 沙盒不是 Node/浏览器: 游戏侧类型仅 screeps */
+		"target": "ES2019",
+		"lib": ["ES2019"],
+		"types": ["screeps"],
+		/* 转译与打包由 rolldown 负责, tsc 只做类型检查门禁 */
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"isolatedModules": true,
+		"noEmit": true,
+		"skipLibCheck": false,
+		"verbatimModuleSyntax": true,
+		/* 路径约定: @/ 绑定 src/, 源码内避免相对路径 */
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": ["src/**/*.ts", "src/**/*.d.ts"]
+}

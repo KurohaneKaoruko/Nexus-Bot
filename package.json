@@ -1,0 +1,28 @@
+{
+	"name": "nexus-bot",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Nexus-Bot",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+		"clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+		"build": "npm run typecheck && npm run clean && rolldown -c",
+		"test": "vitest run",
+		"submit": "node ./scripts/submit.js"
+	},
+	"devDependencies": {
+		"@inquirer/prompts": "^8.7.3",
+		"@types/node": "^26.6.5",
+		"@types/screeps": "3.4.0",
+		"git-rev-sync": "^3.0.2",
+		"rolldown": "^1.2.13",
+		"screeps-api": "^1.16.1",
+		"shelljs": "^0.10.0",
+		"typescript": "^7.0.2",
+		"vitest": "^5.0.3"
+	}
+}
