@@ -1,0 +1,1410 @@
+// @ts-nocheck
+/*
+ * 布局计算与落盘核心:
+ * - 静态布局: 模板平移 + rampart 外环 + 采集基建 (source/mineral/controller 容器、link、道路) + link 建造排序;
+ * - 动态布局 (auto): autoPlanner 分块规划, spawn 锚定限幅降级阶梯, 全败退无锚兜底;
+ * - plannerCreateSite: 按布局 + RCL 结构上限逐级放工地 (自动建造的消费口);
+ * - 缓存: 50t TTL 三级缓存 (参数精确 key / 动态最近一次 / 动态输入签名)。
+ * 持久化经 memory.ts 适配层写 Memory.Nexus.layout; 结构快查用 room.find, 不依赖原型扩展。
+ */
+import { compress, compressBatch, decompress } from '@/utils/compress';
+import { autoPlanner } from './autoPlanner';
+import { autoPlanner63 } from './dynamic/63Planner';
+import LayoutVisual from './layoutVisual';
+import * as StaticPlanner from './static';
+import {
+	getLayoutRecord,
+	ensureLayoutRecord,
+	writeLayoutData,
+	plannerLog as log,
+	rampartMinRcl,
+	skipBuildTypes,
+	buildMinLevels,
+	dynamicBucketFloor,
+} from './memory';
+/**
+ * 房间内的坐标对。
+ * @public
+ */
+type XY = [number, number];
+
+/**
+ * 布局结构点位映射：structureType -> 坐标列表。
+ * @public
+ */
+type LayoutStructMap = {
+    [structureType: string]: XY[];
+};
+
+/**
+ * 布局写入 Memory 的压缩格式：structureType -> 压缩后的 number[]。
+ * @public
+ */
+type LayoutMemoryMap = {
+    [structureType: string]: number[];
+};
+
+/**
+ * 布局中心点（房间坐标）。
+ * @public
+ */
+type LayoutCenter = { x: number; y: number };
+
+/**
+ * 一次布局计算结果（用于缓存/可视化/落盘）。
+ * @public
+ */
+type CachedLayout = {
+    key: string;
+    roomName: string;
+    layoutType: string;
+    center: LayoutCenter;
+    createdAt: number;
+    expiresAt: number;
+    structMap: LayoutStructMap;
+    layoutMemory: LayoutMemoryMap;
+};
+
+/** 缓存有效期（tick） */
+const CACHE_TTL = 50;
+
+function cpuNow(): number {
+    return Game.cpu.getUsed();
+}
+
+function cpuDelta(start: number): number {
+    return Game.cpu.getUsed() - start;
+}
+
+function cpuFmt(v: number): string {
+    return v.toFixed(2);
+}
+
+/** 房间 RCL (controller 缺失视为 0) */
+function roomLevel(room: Room): number {
+    return room.controller ? room.controller.level : 0;
+}
+
+/** 布局中的核心枢纽期望位 (storage/terminal 首点) */
+function getCoreDepotPointFromLayout(layoutMemory: any, roomName: string, structureType: 'storage' | 'terminal'): { x: number; y: number } | null {
+    const points = layoutMemory?.[structureType];
+    if (!points || points.length === 0) return null;
+    const [x, y] = decompress(points[0]);
+    if (x < 0 || x > 49 || y < 0 || y > 49) return null;
+    return { x, y };
+}
+
+/**
+ * 动态规划器 computeManor 的可能返回结构。
+ * @internal
+ */
+type DynamicPlannerRawResult = {
+    roomName?: string
+    structMap?: LayoutStructMap
+    centerPos?: { x: number; y: number }
+    labPos?: { labX: number; labY: number }
+    storageStructPos?: { x: number; y: number }
+}
+
+/**
+ * 归一化动态规划器输出，提供统一的 center 与 structMap，避免调用方依赖具体 planner 版本。
+ * @param roomName 房间名
+ * @param layoutType 布局类型
+ * @param raw planner 原始返回
+ * @returns 归一化后的结果；失败时返回 null（并输出日志）
+ * @internal
+ */
+function normalizeDynamicPlannerResult(roomName: string, layoutType: string, raw: any): { center: LayoutCenter; structMap: LayoutStructMap } | null {
+    if (!raw) {
+        log(`动态布局失败: ${roomName} ${layoutType} planner 返回空`);
+        return null;
+    }
+    const data = raw as DynamicPlannerRawResult;
+    const centerPos = data.centerPos ? { x: data.centerPos.x, y: data.centerPos.y } : null;
+
+    if (!centerPos) {
+        log(`动态布局失败: ${roomName} ${layoutType} 缺少 centerPos`);
+        return null;
+    }
+    if (!data.structMap) {
+        log(`动态布局失败: ${roomName} ${layoutType} 缺少 structMap`);
+        return null;
+    }
+    return { center: centerPos, structMap: data.structMap };
+}
+
+/**
+ * 根据房间等级（RCL）过滤某些结构类型的点位列表。
+ * - road：低 RCL 限制道路数量（兼容部分静态布局的“分阶段修路”策略）
+ * - rampart：低 RCL 不建 rampart
+ * @param room 房间对象
+ * @param structureType 结构类型
+ * @param layoutArray 压缩点位数组（decompress 后为 XY）
+ * @returns 对应 RCL 允许建造的点位子集（仍为压缩格式 number[]）
+ * @internal
+ */
+function getLayoutPointsForRcl(room: Room, structureType: string, layoutArray: number[]): number[] {
+    const roomLevel_ = roomLevel(room);
+    if (structureType === STRUCTURE_ROAD) {
+        // 主干道 (spawn↔source↔controller) 是物流命脉, RCL2 起放——沼泽房无路网时
+        // 搬运 10t/格, 交付速率封死 (bugs/P1-14 sim 实证 50k 零道路)
+        if (roomLevel_ < 2) return [];
+        const layoutType = getLayoutRecord(room.name)?.type;
+        switch (layoutType) {
+            case 'tea':
+                if (roomLevel_ == 3) return layoutArray.slice(0, 11);
+                if (roomLevel_ == 4) return layoutArray.slice(0, 24);
+                if (roomLevel_ == 5) return layoutArray.slice(0, 37);
+                break;
+            case 'hoho':
+                if (roomLevel_ == 3) return layoutArray.slice(0, 7);
+                if (roomLevel_ == 4) return layoutArray.slice(0, 13);
+                if (roomLevel_ == 5) return layoutArray.slice(0, 21);
+                break;
+            default:
+                break;
+        }
+        return layoutArray;
+    }
+    if (structureType === STRUCTURE_RAMPART) {
+        // 冲级期工地与产能优先留给经济建筑, 城墙晚一档再铺
+        // (引擎 RCL2 即允许, 起建节奏由 rampartMinRcl 控制)
+        if (roomLevel_ < rampartMinRcl()) return [];
+    }
+    return layoutArray;
+}
+
+/**
+ * 判断某个位置是否应跳过创建工地（用于避免把工地压在不允许覆盖的结构上）。
+ * @param room 房间对象
+ * @param structureType 目标建造结构类型
+ * @param lookStruct 该位置已有结构列表
+ * @param pos 房间坐标
+ * @returns true 表示跳过；false 表示允许尝试创建工地
+ * @internal
+ */
+function shouldSkipBuildAtPos(
+    room: Room,
+    structureType: string,
+    lookStruct: Structure<StructureConstant>[],
+    pos: RoomPosition
+): boolean {
+    switch (structureType) {
+        case STRUCTURE_RAMPART:
+            if (!lookStruct.length) return false;
+            if (lookStruct.some(o => o.structureType == STRUCTURE_RAMPART || o.structureType == STRUCTURE_WALL)) return true;
+            break;
+        case STRUCTURE_ROAD:
+            if (!lookStruct.length) return false;
+            if (lookStruct.some(o => o.structureType != STRUCTURE_RAMPART && o.structureType != STRUCTURE_CONTAINER)) return true;
+            break;
+        case STRUCTURE_CONTAINER:
+            if (lookStruct.length && lookStruct.some(o => o.structureType != STRUCTURE_RAMPART && o.structureType != STRUCTURE_ROAD))
+                return true;
+            if (roomLevel(room) < 6) {
+                const mineral = room.find(FIND_MINERALS)[0];
+                if (mineral && pos.inRangeTo(mineral.pos, 1)) {
+                    const sources = room.find(FIND_SOURCES);
+                    const nearSource = sources.some((s) => s && pos.inRangeTo(s.pos, 1));
+                    const nearController = !!room.controller && pos.inRangeTo(room.controller.pos, 1);
+                    // 仅拦截“纯 mineral 容器位”；若同时贴 source/controller，则视作其容器位，不拦截
+                    if (!nearSource && !nearController) return true;
+                }
+            }
+            if (roomLevel(room) <= 7) return false;
+            if (room.controller && pos.inRangeTo(room.controller.pos, 2)) return true;
+            break;
+        default:
+            if (!lookStruct.length) return false;
+            if (lookStruct.some(o => o.structureType != STRUCTURE_RAMPART && o.structureType != STRUCTURE_ROAD)) return true;
+            break;
+    }
+    return false;
+}
+
+function isCoreDepotStructure(structureType: string): structureType is 'storage' | 'terminal' {
+    return structureType === STRUCTURE_STORAGE || structureType === STRUCTURE_TERMINAL;
+}
+
+// —— 占位 container 排空换位参数 ——
+/** 残余能量不超过该值即视为「已排空」，可拆除（残余随拆掉落，carrier 会优先捡起） */
+const CORE_DEPOT_SWAP_DRAIN_LIMIT = 200;
+/** 排空等待上限：超过该 tick 数强制拆除（饱和房可能长期无人取用，真建筑不能无限延期） */
+const CORE_DEPOT_SWAP_FORCE_TICKS = 3000;
+
+function handleCoreDepotSite(
+    room: Room,
+    layoutMemory: LayoutMemoryMap,
+    structureType: 'storage' | 'terminal'
+): number {
+    const point = getCoreDepotPointFromLayout(layoutMemory, room.name, structureType);
+    if (!point) return 0;
+
+    const buildMax = (CONTROLLER_STRUCTURES as any)?.[structureType]?.[roomLevel(room)] ?? 0;
+    const existingStructure = structureType === 'storage' ? room.storage : room.terminal;
+    const allSites = room.find(FIND_CONSTRUCTION_SITES);
+    const hasRealSite = allSites.some((site) => site && site.structureType === structureType);
+    const record = getLayoutRecord(room.name);
+    if (existingStructure || hasRealSite || !record) {
+        // 真建筑已建成/在建——占位必然已拆除，清掉排空计时残留
+        if (record?.coreDepotSwapSince) delete record.coreDepotSwapSince[structureType];
+        return 0;
+    }
+
+    const pos = new RoomPosition(point.x, point.y, room.name);
+    const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES) as ConstructionSite[];
+    const structures = pos.lookFor(LOOK_STRUCTURES) as Structure<StructureConstant>[];
+
+    if (buildMax > 0) {
+        const containerSite = sites.find((site) => site.structureType === STRUCTURE_CONTAINER);
+        if (containerSite) containerSite.remove();
+
+        const placeholder = structures.find((structure) => structure.structureType === STRUCTURE_CONTAINER) as StructureContainer | undefined;
+        if (placeholder) {
+            // 排空后再拆：存入侧已停，存量被 spawn/塔填充等自然取用耗尽；
+            // 残余 ≤ 阈值才拆，避免整箱能量砸地上腐烂、以及「先拆后建」期间枢纽缓冲断档
+            const energy = placeholder.store[RESOURCE_ENERGY] || 0;
+            record.coreDepotSwapSince ??= {};
+            if (typeof record.coreDepotSwapSince[structureType] !== 'number') {
+                record.coreDepotSwapSince[structureType] = Game.time;
+            }
+            const waited = Game.time - record.coreDepotSwapSince[structureType];
+            if (energy > CORE_DEPOT_SWAP_DRAIN_LIMIT && waited < CORE_DEPOT_SWAP_FORCE_TICKS) {
+                return 0;
+            }
+            placeholder.destroy();
+            delete record.coreDepotSwapSince[structureType];
+        } else {
+            delete record.coreDepotSwapSince?.[structureType];
+        }
+
+        const nextSites = pos.lookFor(LOOK_CONSTRUCTION_SITES) as ConstructionSite[];
+        const nextStructures = pos.lookFor(LOOK_STRUCTURES) as Structure<StructureConstant>[];
+        if (nextSites.length > 0) return 0;
+        if (shouldSkipBuildAtPos(room, structureType, nextStructures, pos)) return 0;
+
+        return room.createConstructionSite(point.x, point.y, structureType) === OK ? 1 : 0;
+    }
+
+    if (sites.some((site) => site.structureType === STRUCTURE_CONTAINER)) return 0;
+    if (structures.some((structure) => structure.structureType === STRUCTURE_CONTAINER)) return 0;
+    if (shouldSkipBuildAtPos(room, STRUCTURE_CONTAINER, structures, pos)) return 0;
+    // cc 圈冲突守卫：核心库点位贴着 controller 时，占位容器会和 cc 叠进同一个升级缓冲圈
+    // （历史实录：hub 点位 roll 到 controller 旁 2 格，占位×2 + cc 反复放量 = 控制器边一圈容器）。
+    // 此时不放占位——缓冲职责由 cc 承担（物流/升级取能本就认 controller 旁 3 格内的容器）
+    if (room.controller && pos.inRangeTo(room.controller.pos, 3)) return 0;
+
+    return room.createConstructionSite(point.x, point.y, STRUCTURE_CONTAINER) === OK ? 1 : 0;
+}
+
+/**
+ * 获取 LayoutPlanner 的进程内缓存容器（存放在 global 上）。
+ * @returns 缓存对象（byKey/lastKeyByRoomLayout/byDynamicSig）
+ * @internal
+ */
+function getCacheStore(): { byKey: { [key: string]: CachedLayout }; lastKeyByRoomLayout: { [key: string]: string }; byDynamicSig: { [key: string]: string } } {
+    const g = global as any;
+    if (!g.__layoutPlannerCache) {
+        g.__layoutPlannerCache = { byKey: {}, lastKeyByRoomLayout: {}, byDynamicSig: {} };
+    }
+    return g.__layoutPlannerCache;
+}
+
+/**
+ * 生成静态布局缓存 key。
+ * @param roomName 房间名
+ * @param layoutType 布局类型
+ * @param center 布局中心点
+ * @returns 缓存 key
+ * @internal
+ */
+function makeCacheKey(roomName: string, layoutType: string, center: LayoutCenter): string {
+    return `${roomName}:${layoutType}:${center.x}:${center.y}`;
+}
+
+/**
+ * 生成动态布局“输入签名”缓存 key。
+ * @param roomName 房间名
+ * @param layoutType 布局类型
+ * @param pointsSig controller/mineral/source 坐标签名
+ * @param fixedCenter 固定中心（来自旗帜/外部指定）
+ * @returns 输入签名 key
+ * @internal
+ */
+function makeDynamicSigKey(
+    roomName: string,
+    layoutType: string,
+    pointsSig: string,
+    fixedCenter: LayoutCenter | null
+): string {
+    const c = fixedCenter ? `${fixedCenter.x},${fixedCenter.y}` : '-';
+    return `${roomName}:${layoutType}:sig:${c}:${pointsSig}`;
+}
+
+/**
+ * 深拷贝 structMap，避免外部修改污染缓存。
+ * @param structMap 结构点位映射
+ * @returns 深拷贝后的映射
+ * @internal
+ */
+function cloneStructMap(structMap: LayoutStructMap): LayoutStructMap {
+    const next: LayoutStructMap = {};
+    for (const s in structMap) next[s] = structMap[s].map! ((p) => [p[0], p[1]]);
+    return next;
+}
+
+/**
+ * 深拷贝 layoutMemory，避免外部修改污染缓存。
+ * @param layoutMemory 压缩点位映射
+ * @returns 深拷贝后的映射
+ * @internal
+ */
+function cloneLayoutMemory(layoutMemory: LayoutMemoryMap): LayoutMemoryMap {
+    const next: LayoutMemoryMap = {};
+    for (const s in layoutMemory) next[s] = layoutMemory[s].slice! ();
+    return next;
+}
+
+/**
+ * 按参数精确命中缓存（用于静态布局）。
+ * @param roomName 房间名
+ * @param layoutType 静态模板名
+ * @param center 中心点
+ * @returns 命中则返回缓存条目，否则返回 null
+ * @internal
+ */
+function getCachedLayout(roomName: string, layoutType: string, center: LayoutCenter): CachedLayout | null {
+    const store = getCacheStore();
+    const key = makeCacheKey(roomName, layoutType, center);
+    const cached = store.byKey[key];
+    if (!cached) return null;
+    if (cached.expiresAt < Game.time) {
+        delete store.byKey[key];
+        return null;
+    }
+    return cached;
+}
+
+/**
+ * 写入缓存，并记录 room+layoutType 的最新 key；动态布局时可额外记录输入签名映射。
+ * @param entry 缓存条目
+ * @param options 可选：动态签名 key
+ * @internal
+ */
+function setCachedLayout(entry: Omit<CachedLayout, 'createdAt' | 'expiresAt'>, options?: { dynamicSigKey?: string }): void {
+    const store = getCacheStore();
+    const cached: CachedLayout = { ...entry, createdAt: Game.time, expiresAt: Game.time + CACHE_TTL };
+    store.byKey[entry.key] = cached;
+    store.lastKeyByRoomLayout[`${entry.roomName}:${entry.layoutType}`] = entry.key;
+    if (options?.dynamicSigKey) store.byDynamicSig[options.dynamicSigKey] = entry.key;
+}
+
+/**
+ * 动态布局复用“最近一次”缓存（典型场景：先 visual 再 build）。
+ * @param roomName 房间名
+ * @param layoutType 布局类型
+ * @returns 命中则返回缓存条目，否则返回 null
+ * @internal
+ */
+function getLastCachedByRoomLayout(roomName: string, layoutType: string): CachedLayout | null {
+    const store = getCacheStore();
+    const lastKey = store.lastKeyByRoomLayout[`${roomName}:${layoutType}`];
+    if (!lastKey) return null;
+    const cached = store.byKey[lastKey];
+    if (!cached) return null;
+    if (cached.expiresAt < Game.time) {
+        delete store.byKey[lastKey];
+        delete store.lastKeyByRoomLayout[`${roomName}:${layoutType}`];
+        return null;
+    }
+    return cached;
+}
+
+/**
+ * 动态布局按输入签名命中缓存（适合重复预览/批量 build）。
+ * @param sigKey 输入签名 key
+ * @returns 命中则返回缓存条目，否则返回 null
+ * @internal
+ */
+function getCachedDynamicBySig(sigKey: string): CachedLayout | null {
+    const store = getCacheStore();
+    const key = store.byDynamicSig[sigKey];
+    if (!key) return null;
+    const cached = store.byKey[key];
+    if (!cached) {
+        delete store.byDynamicSig[sigKey];
+        return null;
+    }
+    if (cached.expiresAt < Game.time) {
+        delete store.byKey[key];
+        delete store.byDynamicSig[sigKey];
+        return null;
+    }
+    return cached;
+}
+
+/**
+ * 解析布局中心点。
+ * - 优先使用 storagePos/centerPos 旗帜
+ * - 其次使用布局记录中的 center
+ * @param roomName 房间名
+ * @returns 中心点；缺失返回 null
+ * @internal
+ */
+function resolveCenter(roomName: string): LayoutCenter | null {
+    const PosFlag = Game.flags.storagePos || Game.flags.centerPos;
+    if (PosFlag && PosFlag.pos.roomName === roomName) {
+        return { x: PosFlag.pos.x, y: PosFlag.pos.y };
+    }
+    const center = getLayoutRecord(roomName)?.center;
+    return center ? { x: center.x, y: center.y } : null;
+}
+
+/**
+ * 从静态布局模板初始化 structMap 结构。
+ * @param layoutType 静态模板名（StaticPlanner 上的 key）
+ * @returns 模板数据与初始化后的 structMap；不存在返回 null
+ * @internal
+ */
+function initStructMapFromStaticTemplate(layoutType: string): { data: any; structMap: LayoutStructMap } | null {
+    const data = (StaticPlanner as any)[layoutType];
+    if (!data) return null;
+    const structMap: LayoutStructMap = {};
+    for (const s in data.buildings) structMap[s] = [];
+    if (!structMap.road) structMap.road = [];
+    if (!structMap.container) structMap.container = [];
+    if (!structMap.link) structMap.link = [];
+    if (!structMap.rampart) structMap.rampart = [];
+    return { data, structMap };
+}
+
+/**
+ * 将静态模板按 center 平移到房间坐标，并过滤墙体/越界。
+ * @param roomName 房间名
+ * @param layoutType 静态模板名
+ * @param center 布局中心点
+ * @returns 结构点位与边界盒；失败返回 null
+ * @internal
+ */
+function applyStaticBuildings(roomName: string, layoutType: string, center: LayoutCenter): { structMap: LayoutStructMap; minX: number; maxX: number; minY: number; maxY: number } | null {
+    const init = initStructMapFromStaticTemplate(layoutType);
+    if (!init) return null;
+    const { data, structMap } = init;
+    const terrain = new Room.Terrain(roomName);
+
+    let minX = 49;
+    let maxX = 0;
+    let minY = 49;
+    let maxY = 0;
+
+    for (const s in data.buildings) {
+        const poss = data.buildings[s];
+        if (!structMap[s]) structMap[s] = [];
+        for (const pos of poss) {
+            const x = center.x + pos.x;
+            const y = center.y + pos.y;
+            if (x < 0 || x > 49 || y < 0 || y > 49) continue;
+            if (terrain.get(x, y) == TERRAIN_MASK_WALL) continue;
+            structMap[s].push([x, y]);
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        }
+    }
+
+    return { structMap, minX, maxX, minY, maxY };
+}
+
+/**
+ * 静态布局的 rampart 外圈（用于预览/构建保持一致）。
+ * @param roomName 房间名
+ * @param structMap 结构点位映射（会被原地修改）
+ * @param bounds 静态模板边界盒
+ * @internal
+ */
+function addStaticRampartRing(roomName: string, structMap: LayoutStructMap, bounds: { minX: number; maxX: number; minY: number; maxY: number }): void {
+    const terrain = new Room.Terrain(roomName);
+    let minX = bounds.minX - 3;
+    let maxX = bounds.maxX + 3;
+    let minY = bounds.minY - 3;
+    let maxY = bounds.maxY + 3;
+
+    if (!structMap.rampart) structMap.rampart = [];
+    for (let i = minX; i <= maxX; i++) {
+        for (let j = minY; j <= maxY; j++) {
+            if ([0, 1, 48, 49].includes(i)) continue;
+            if ([0, 1, 48, 49].includes(j)) continue;
+            if (terrain.get(i, j) == TERRAIN_MASK_WALL) continue;
+            if (i == minX || i == maxX || j == minY || j == maxY) {
+                structMap.rampart.push([i, j]);
+            }
+        }
+    }
+}
+
+/**
+ * 将房间坐标编码成稳定 key。
+ * @param x x
+ * @param y y
+ * @returns 形如 \"x:y\" 的字符串 key
+ * @internal
+ */
+function xyKey(x: number, y: number): string {
+    return `${x}:${y}`;
+}
+
+/**
+ * 计算 Chebyshev 距离（max(|dx|,|dy|)）。
+ * @param a 坐标 a
+ * @param b 坐标 b
+ * @returns Chebyshev 距离
+ * @internal
+ */
+function chebyshev(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+type OrderedLinkEntry = {
+    kind: 'source' | 'center' | 'controller' | 'other';
+    pos: XY;
+    sourceDistance?: number;
+    originalIndex: number;
+};
+
+/**
+ * 对 link 进行排序，先按距离 source 最近排序，再按距离 center 最近排序，最后按其他顺序排序。
+ * @param room 房间
+ * @param center 布局中心点
+ * @param structMap 结构点位映射（会被原地修改）
+ * @returns 排序后的 link 点位
+ */
+function reorderLinkBuildOrder(room: Room, center: LayoutCenter, structMap: LayoutStructMap): void {
+    const links = structMap.link;
+    if (!links || links.length <= 1) return;
+
+    const sources = room.find(FIND_SOURCES);
+    const controller = room.controller;
+    const centerPos = new RoomPosition(center.x, center.y, room.name);
+
+    const sourceEntries: OrderedLinkEntry[] = [];
+    const otherEntries: OrderedLinkEntry[] = [];
+    let centerEntry: OrderedLinkEntry | null = null;
+    let controllerEntry: OrderedLinkEntry | null = null;
+
+    links.forEach((pos, originalIndex) => {
+        const linkPos = new RoomPosition(pos[0], pos[1], room.name);
+        const matchedSource = sources.find((source) => linkPos.inRangeTo(source.pos, 2));
+        if (matchedSource) {
+            sourceEntries.push({
+                kind: 'source',
+                pos,
+                sourceDistance: chebyshev(matchedSource.pos, center),
+                originalIndex,
+            });
+            return;
+        }
+
+        if (linkPos.inRangeTo(centerPos, 1)) {
+            centerEntry = { kind: 'center', pos, originalIndex };
+            return;
+        }
+
+        if (controller && linkPos.inRangeTo(controller.pos, 2)) {
+            controllerEntry = { kind: 'controller', pos, originalIndex };
+            return;
+        }
+
+        otherEntries.push({ kind: 'other', pos, originalIndex });
+    });
+
+    sourceEntries.sort((a, b) => {
+        const distDelta = (b.sourceDistance || 0) - (a.sourceDistance || 0);
+        if (distDelta !== 0) return distDelta;
+        return a.originalIndex - b.originalIndex;
+    });
+    otherEntries.sort((a, b) => a.originalIndex - b.originalIndex);
+
+    const ordered: XY[] = [];
+    if (sourceEntries.length > 0) ordered.push(sourceEntries.shift()!.pos);
+    if (centerEntry) ordered.push(centerEntry.pos);
+    if (controllerEntry) ordered.push(controllerEntry.pos);
+    for (const entry of sourceEntries) ordered.push(entry.pos);
+    for (const entry of otherEntries) ordered.push(entry.pos);
+
+    if (ordered.length !== links.length) return;
+    structMap.link = ordered;
+}
+
+/**
+ * 判断某个位置是否是墙体地形。
+ * @param terrain RoomTerrain
+ * @param x x
+ * @param y y
+ * @returns true=墙体
+ * @internal
+ */
+function isWall(terrain: RoomTerrain, x: number, y: number): boolean {
+    return terrain.get(x, y) === TERRAIN_MASK_WALL;
+}
+
+/**
+ * 遍历 8 邻域（不含自身）。
+ * @param x x
+ * @param y y
+ * @param fn 回调
+ * @internal
+ */
+function forNear8(x: number, y: number, fn: (nx: number, ny: number) => void): void {
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
+            fn(nx, ny);
+        }
+    }
+}
+
+/**
+ * 静态布局的采集基础设施规划
+ * - 资源点：在 source/mineral 临近放置 container（尽量选靠近中心、非墙、非占用格；允许与 road 重叠）\n
+ * - 资源点：在 source 的 container 临近放置 link（优先避开 road；无位可放时允许在 road 上）\n
+ * - 道路：中心点连接到 container / controller，允许与 container 重叠，但避免在 link 上铺 road\n
+ * 低开销策略：不做全房间 cost 填充，仅用 CostMatrix 标记障碍与已有 road=1；容器优先复用寻路末端格
+ * @param room 房间对象
+ * @param center 布局中心点
+ * @param structMap 结构点位映射（会被原地修改）
+ * @internal
+ */
+function planHarvestInfra(room: Room, center: LayoutCenter, structMap: LayoutStructMap): void {
+    if (!structMap.road) structMap.road = [];
+    if (!structMap.container) structMap.container = [];
+    if (!structMap.link) structMap.link = [];
+
+    const terrain = new Room.Terrain(room.name);
+
+    const roadXy = new Set<string>();
+    for (const p of structMap.road) roadXy.add(xyKey(p[0], p[1]));
+
+    const containerXy = new Set<string>();
+    for (const p of structMap.container) containerXy.add(xyKey(p[0], p[1]));
+
+    const linkXy = new Set<string>();
+    for (const p of structMap.link) linkXy.add(xyKey(p[0], p[1]));
+
+    const rampartXy = new Set<string>();
+    for (const p of structMap.rampart || []) rampartXy.add(xyKey(p[0], p[1]));
+
+    const blockedXy = new Set<string>();
+    for (const struct of OBSTACLE_OBJECT_TYPES) {
+        const points = structMap[struct] || [];
+        for (const p of points) blockedXy.add(xyKey(p[0], p[1]));
+    }
+
+    const costs = new PathFinder.CostMatrix();
+    for (const k of blockedXy) {
+        const [xs, ys] = k.split(':');
+        costs.set(Number(xs), Number(ys), 255);
+    }
+    for (const k of roadXy) {
+        const [xs, ys] = k.split(':');
+        costs.set(Number(xs), Number(ys), 1);
+    }
+    for (const k of linkXy) {
+        const [xs, ys] = k.split(':');
+        costs.set(Number(xs), Number(ys), 255);
+    }
+
+    const isBlocked = (x: number, y: number): boolean => {
+        const k = xyKey(x, y);
+        if (blockedXy.has(k)) return true;
+        if (linkXy.has(k)) return true;
+        return false;
+    };
+
+    const canPlaceContainer = (x: number, y: number): boolean => {
+        if (isWall(terrain, x, y)) return false;
+        if (isBlocked(x, y)) return false;
+        const k = xyKey(x, y);
+        if (containerXy.has(k)) return false;
+        if (linkXy.has(k)) return false;
+        return true;
+    };
+
+    const canPlaceLink = (x: number, y: number, allowOnRoad = false): boolean => {
+        if (isWall(terrain, x, y)) return false;
+        if (isBlocked(x, y)) return false;
+        const k = xyKey(x, y);
+        if (containerXy.has(k)) return false;
+        if (linkXy.has(k)) return false;
+        if (!allowOnRoad && roadXy.has(k)) return false;
+        return true;
+    };
+
+    const pickContainer = (target: RoomPosition, preferred?: RoomPosition): XY | null => {
+        if (preferred && chebyshev(preferred, target) === 1 && canPlaceContainer(preferred.x, preferred.y)) {
+            return [preferred.x, preferred.y];
+        }
+
+        let best: XY | null = null;
+        let bestScore = Infinity;
+
+        forNear8(target.x, target.y, (x, y) => {
+            if (chebyshev({ x, y }, target) !== 1) return;
+            if (!canPlaceContainer(x, y)) return;
+
+            const dist = chebyshev({ x, y }, center);
+            const swampPenalty = terrain.get(x, y) === TERRAIN_MASK_SWAMP ? 1 : 0;
+            const rampartBonus = rampartXy.has(xyKey(x, y)) ? -2 : 0;
+            const score = dist * 10 + swampPenalty + rampartBonus;
+
+            if (score < bestScore) {
+                bestScore = score;
+                best = [x, y];
+            }
+        });
+
+        return best;
+    };
+
+    const pickLinkNear = (container: XY): XY | null => {
+        const pick = (allowOnRoad: boolean): XY | null => {
+            let best: XY | null = null;
+            let bestScore = Infinity;
+
+            forNear8(container[0], container[1], (x, y) => {
+                if (!canPlaceLink(x, y, allowOnRoad)) return;
+
+                const k = xyKey(x, y);
+                const rampartBonus = rampartXy.has(k) ? -100 : 0;
+                const roadPenalty = roadXy.has(k) ? 1000 : 0;
+                const score = roadPenalty + rampartBonus;
+
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = [x, y];
+                }
+            });
+
+            return best;
+        };
+
+        return pick(false) || pick(true);
+    };
+
+    const addRoadPath = (path: RoomPosition[]): void => {
+        for (const p of path) {
+            if (costs.get(p.x, p.y) === 255) continue;
+            const k = xyKey(p.x, p.y);
+            if (linkXy.has(k)) continue;
+            if (roadXy.has(k)) continue;
+            roadXy.add(k);
+            structMap.road!.push! ([p.x, p.y]);
+            costs.set(p.x, p.y, 1);
+        }
+    };
+
+    const connect = (start: RoomPosition, target: RoomPosition, range: number): RoomPosition[] => {
+        return PathFinder.search(start, { pos: target, range }, {
+            plainCost: 2,
+            swampCost: 4,
+            maxRooms: 1,
+            roomCallback: () => costs
+        }).path;
+    };
+
+    const start = new RoomPosition(center.x, center.y, room.name);
+    const sources = room.find(FIND_SOURCES);
+    const mineral = room.find(FIND_MINERALS)[0];
+    const controller = room.controller;
+    if (!controller) return;
+
+    const targets: Array<{ pos: RoomPosition; kind: 'source' | 'mineral' | 'controller' }> = [
+        ...sources.map((s) => ({ pos: s.pos, kind: 'source' as const })),
+        ...(mineral ? [{ pos: mineral.pos, kind: 'mineral' as const }] : []),
+        { pos: controller.pos, kind: 'controller' as const }
+    ];
+
+    targets.sort((a, b) => chebyshev(a.pos, center) - chebyshev(b.pos, center));
+
+    for (const t of targets) {
+        if (t.kind === 'controller') {
+            addRoadPath(connect(start, t.pos, 1));
+            continue;
+        }
+
+        const toNearTarget = connect(start, t.pos, 1);
+        const preferred = toNearTarget.length > 0 ? toNearTarget[toNearTarget.length - 1] : undefined;
+        const container = pickContainer(t.pos, preferred);
+        if (!container) {
+            addRoadPath(toNearTarget);
+            continue;
+        }
+
+        const containerKey = xyKey(container[0], container[1]);
+        if (!containerXy.has(containerKey)) {
+            structMap.container.push([container[0], container[1]]);
+            containerXy.add(containerKey);
+        }
+
+        if (t.kind === 'source') {
+            const link = pickLinkNear(container);
+            if (link) {
+                const linkKey = xyKey(link[0], link[1]);
+                if (!linkXy.has(linkKey)) {
+                    structMap.link.push([link[0], link[1]]);
+                    linkXy.add(linkKey);
+                    costs.set(link[0], link[1], 255);
+                }
+            }
+        }
+
+        if (preferred && preferred.x === container[0] && preferred.y === container[1]) {
+            addRoadPath(toNearTarget);
+        } else {
+            addRoadPath(connect(start, new RoomPosition(container[0], container[1], room.name), 0));
+        }
+    }
+}
+
+/**
+ * 将 structMap 压缩成布局子系统的持久化格式。
+ * @param structMap 结构点位映射（XY 列表）
+ * @returns 压缩后的映射（number[] 列表）
+ * @internal
+ */
+function toLayoutMemory(structMap: LayoutStructMap): LayoutMemoryMap {
+    const memory: LayoutMemoryMap = {};
+    for (const s in structMap) {
+        const pts = structMap[s];
+        memory[s] = compressBatch(pts);
+    }
+    return memory;
+}
+
+/**
+ * 计算静态布局（含缓存）。
+ * @param roomName 房间名
+ * @param layoutType 静态模板名
+ * @param center 布局中心点
+ * @returns 计算结果；失败返回 null（并输出日志）
+ * @internal
+ */
+function computeStatic(roomName: string, layoutType: string, center: LayoutCenter): CachedLayout | null {
+    const room = Game.rooms[roomName];
+    if (!room) {
+        log(`静态布局失败: ${roomName} 房间不可见`);
+        return null;
+    }
+
+    const cached = getCachedLayout(roomName, layoutType, center);
+    if (cached) {
+        log(`命中缓存: static ${roomName} ${layoutType} center(${center.x},${center.y})`);
+        return {
+            ...cached,
+            structMap: cloneStructMap(cached.structMap),
+            layoutMemory: cloneLayoutMemory(cached.layoutMemory)
+        };
+    }
+
+    const base = applyStaticBuildings(roomName, layoutType, center);
+    if (!base) {
+        log(`静态布局失败: ${roomName} layout=${layoutType} 模板不存在或无有效建筑点`);
+        return null;
+    }
+    const { structMap, minX, maxX, minY, maxY } = base;
+    addStaticRampartRing(roomName, structMap, { minX, maxX, minY, maxY });
+    planHarvestInfra(room, center, structMap);
+    reorderLinkBuildOrder(room, center, structMap);
+    const layoutMemory = toLayoutMemory(structMap);
+
+    const key = makeCacheKey(roomName, layoutType, center);
+    setCachedLayout({ key, roomName, layoutType, center, structMap: cloneStructMap(structMap), layoutMemory: cloneLayoutMemory(layoutMemory) });
+
+    return { key, roomName, layoutType, center, createdAt: Game.time, expiresAt: Game.time + CACHE_TTL, structMap, layoutMemory };
+}
+
+/**
+ * 计算动态布局（含缓存）。
+ * - 优先命中“最近一次缓存”（用于预览后立即 build）\n
+ * - 其次命中“输入签名缓存”（用于批量/重复调用）\n
+ * @param roomName 房间名
+ * @param layoutType 布局类型
+ * @returns 计算结果；失败返回 null（并输出日志）
+ * @internal
+ */
+function computeDynamic(roomName: string, layoutType: string): CachedLayout | null {
+    const room = Game.rooms[roomName];
+    if (!room) {
+        log(`动态布局失败: ${roomName} 房间不可见 layout=${layoutType}`);
+        return null;
+    }
+
+    // Detect flag center
+    const PosFlag = Game.flags.storagePos || Game.flags.centerPos;
+    let flagCenter: LayoutCenter | null = null;
+    if (PosFlag && PosFlag.pos.roomName === roomName) {
+        flagCenter = { x: PosFlag.pos.x, y: PosFlag.pos.y };
+    }
+    // 落地手置 spawn：提取坐标供布局限幅与收编（computeManor 内以 spawn 为中心限幅并收编 spawn 位）。
+    // 中心不定死：不给 fixedCenter，枢纽点由规划器自然选址（可建筑质心 + storage 取最近 k>2 格），
+    // 仅通过限幅半径保证布局够得着 spawn 附近
+    let existSpawnPos: { x: number; y: number } | undefined;
+    // 63 布局无 spawn 锚定语义, 不参与限幅阶梯
+    if (layoutType !== '63auto') {
+        const landingSpawn = room.find(FIND_MY_SPAWNS)[0];
+        if (landingSpawn) existSpawnPos = { x: landingSpawn.pos.x, y: landingSpawn.pos.y };
+    }
+
+    const cached = getLastCachedByRoomLayout(roomName, layoutType);
+    if (cached) {
+        let valid = true;
+        if (flagCenter && (cached.center.x !== flagCenter.x || cached.center.y !== flagCenter.y)) {
+            valid = false;
+        }
+
+        if (valid) {
+            log(`命中缓存: dynamic ${roomName} ${layoutType} center(${cached.center.x},${cached.center.y})`);
+            return {
+                ...cached,
+                structMap: cloneStructMap(cached.structMap),
+                layoutMemory: cloneLayoutMemory(cached.layoutMemory)
+            };
+        } else {
+             log(`缓存失效: dynamic ${roomName} ${layoutType} center mismatch (flag: ${flagCenter?.x},${flagCenter?.y} vs cache: ${cached.center.x},${cached.center.y})`);
+        }
+    }
+
+    if (Game.cpu.bucket < dynamicBucketFloor()) {
+        log(`动态布局跳过: CPU bucket 不足 bucket=${Game.cpu.bucket} room=${roomName} layout=${layoutType}`);
+        return null;
+    }
+
+    const sources = room.find(FIND_SOURCES);
+    const pa = sources[0]?.pos;
+    const pb = sources[1]?.pos || pa;
+    const pm = room.find(FIND_MINERALS)[0]?.pos;
+    const pc = room.controller?.pos;
+    if (!pa || !pb || !pc || !pm) {
+        log(`动态布局失败: 缺少关键对象 room=${roomName} layout=${layoutType} (controller/mineral/source)`);
+        return null;
+    }
+
+    const pointsSig = `${pc.x},${pc.y}|${pm.x},${pm.y}|${pa.x},${pa.y}|${pb.x},${pb.y}`;
+    let sigKey = makeDynamicSigKey(roomName, layoutType, pointsSig, flagCenter);
+    const sigCached = getCachedDynamicBySig(sigKey);
+    if (sigCached) {
+        log(`命中缓存: dynamic(sig) ${roomName} ${layoutType} center(${sigCached.center.x},${sigCached.center.y})`);
+        return {
+            ...sigCached,
+            structMap: cloneStructMap(sigCached.structMap),
+            layoutMemory: cloneLayoutMemory(sigCached.layoutMemory)
+        };
+    }
+
+    const storagePos = Game.flags.storagePos;
+    if (storagePos && storagePos.pos.roomName !== roomName) storagePos.remove();
+
+    const planner = layoutType === '63auto' ? autoPlanner63 : autoPlanner;
+    const computeManor = planner.ManagerPlanner.computeManor;
+    // 锚定降级阶梯：紧凑 10 → 放宽 14 → 不限幅，逐级放宽仍保持 spawn 锚定；
+    // 全部失败才退回无锚流程（布局远离 spawn 的最后兜底），杜绝「稍偏即崩」的二值脆弱性
+    let roomStructsData = null;
+    if (flagCenter) {
+        // 旗模式：手动指定中心，精确钉死（不参与降级阶梯，失败按用户指定报错）
+        roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], flagCenter);
+        if (!roomStructsData) log(`[锚定诊断] 旗指定中心无解 room=${roomName} center=${flagCenter.x},${flagCenter.y}`);
+    } else {
+        // spawn 锚定限幅降级阶梯：紧凑 10 → 放宽 14 → 不限幅，门槛 160 → 120 → 100 → 80 → 40 逐级放低
+        // 每级保持 spawn 收编；全阶梯无解才退回无锚流程（最后兜底），杜绝「稍偏即崩」的二值脆弱性
+        for (const [radius, gate] of [[10, 160], [10, 120], [14, 120], [0, 120], [0, 100], [0, 80], [0, 40]] as [number, number][]) {
+            roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], undefined, undefined, existSpawnPos, radius, gate);
+            if (roomStructsData) {
+                log(`[锚定诊断] 成功 room=${roomName} radius=${radius === 0 ? '无限' : radius} gate=${gate}`);
+                break;
+            }
+            log(`[锚定诊断] 半径 ${radius === 0 ? '无限' : radius} 门槛 ${gate} 无解，降级重试 room=${roomName}`);
+        }
+        if (!roomStructsData) {
+            // 全阶梯无解：无锚无限幅兜底（门槛同步降级，直至必有产出）
+            log(`[锚定诊断] 锚定失败，退回无锚流程 room=${roomName}`);
+            sigKey = makeDynamicSigKey(roomName, layoutType, pointsSig, null);
+            const fallbackCached = getCachedDynamicBySig(sigKey);
+            if (fallbackCached) {
+                return {
+                    ...fallbackCached,
+                    structMap: cloneStructMap(fallbackCached.structMap),
+                    layoutMemory: cloneLayoutMemory(fallbackCached.layoutMemory)
+                };
+            }
+            for (const gate of [160, 120, 80, 40] as number[]) {
+                roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], undefined, undefined, undefined, undefined, gate);
+                if (roomStructsData) break;
+            }
+        }
+    }
+    const normalized = normalizeDynamicPlannerResult(roomName, layoutType, roomStructsData);
+    if (!normalized) return null;
+
+    const center = normalized.center;
+    const structMap = normalized.structMap;
+    reorderLinkBuildOrder(room, center, structMap);
+    const layoutMemory = toLayoutMemory(structMap);
+
+    const key = makeCacheKey(roomName, layoutType, center);
+    setCachedLayout(
+        { key, roomName, layoutType, center, structMap: cloneStructMap(structMap), layoutMemory: cloneLayoutMemory(layoutMemory) },
+        { dynamicSigKey: sigKey }
+    );
+
+    return { key, roomName, layoutType, center, createdAt: Game.time, expiresAt: Game.time + CACHE_TTL, structMap, layoutMemory };
+}
+
+/**
+ * LayoutPlanner：静态/动态布局的统一入口。
+ * - build*：计算布局并写入 Memory.Nexus.layout，供自动建造流程消费
+ * - plannerCreateSite：按布局 + RCL 结构上限逐级放工地
+ * @public
+ */
+export const LayoutPlanner = {
+    /**
+     * 根据 layoutMemory 在房间内创建工地。
+     * @param room 目标房间
+     * @param layoutMemory 压缩布局数据 (structType → 压缩坐标数组)
+     * @param options 可选：只创建某一种结构、限制最大工地数量
+     * @returns 本次创建的工地数量（不是 Screeps 错误码）
+     */
+    plannerCreateSite(
+        room: Room,
+        layoutMemory: LayoutMemoryMap,
+        options?: { structType?: string; maxSites?: number }
+    ): number {
+        const only = options?.structType;
+        const allSite = room.find(FIND_CONSTRUCTION_SITES);
+        const level = roomLevel(room);
+
+        // 建造放置优先级：功能建筑靠前，road 垫底——
+        // 开局产能优先转化为 ext/容器（容量与物流先起来），道路网随后补
+        const PLACEMENT_ORDER: Record<string, number> = {
+            spawn: 0, tower: 1, storage: 2, terminal: 3, extension: 4,
+            container: 5, link: 6, road: 8, rampart: 9, extractor: 10,
+            lab: 11, wall: 12, observer: 13, factory: 14, powerSpawn: 15, nuker: 16,
+        };
+
+        const maxSites = options?.maxSites;
+        const cap = typeof maxSites === 'number' ? maxSites : (typeof MAX_CONSTRUCTION_SITES === 'number' ? MAX_CONSTRUCTION_SITES : 100);
+        // 能力闸：配置跳过的结构类型不放置（布局不受影响，已放工地自然消化）
+        const skipBuild = skipBuildTypes();
+        if (skipBuild.includes('all')) return 0;
+        const skipSet = skipBuild.length ? new Set(skipBuild) : null;
+        const keys = only ? [only] : Object.keys(layoutMemory);
+        const coreDepotKeys = keys.filter((structureType) => isCoreDepotStructure(structureType));
+        const regularKeys = keys.filter((structureType) => !isCoreDepotStructure(structureType) && !skipSet?.has(structureType));
+        regularKeys.sort((a, b) => (PLACEMENT_ORDER[a] ?? 7) - (PLACEMENT_ORDER[b] ?? 7));
+        let budget = Math.max(0, cap - allSite.length);
+
+        let created = 0;
+        for (const s of coreDepotKeys) {
+            created += handleCoreDepotSite(room, layoutMemory, s);
+        }
+
+        let regularCreated = 0;
+        for (const s of regularKeys) {
+            if (regularCreated >= budget) break;
+            const layoutArray = layoutMemory[s];
+            if (!layoutArray || !layoutArray.length) continue;
+
+            const buildMax = (CONTROLLER_STRUCTURES as any)?.[s]?.[level] ?? 0;
+            if (!buildMax) continue;
+
+            // 能力闸：配置了最低建造等级的类型，未达等级不放（布局照常，仅推迟放量）
+            const minLevel = buildMinLevels()[s];
+            if (minLevel !== undefined && level < minLevel) continue;
+
+            let structures = room.find(FIND_STRUCTURES, { filter: (o) => o.structureType == s });
+            if (!Array.isArray(structures)) structures = [structures];
+            let count = structures.length;
+            if (count >= buildMax) continue;
+
+            const sites = allSite.filter(o => o.structureType == s);
+            count += sites.length;
+            if (count >= buildMax) continue;
+
+            // RCL<6 容器每源限一个（源容器存量计数，见下方放置过滤）
+            const placedContainerPerSource = new Map<string, number>();
+            if (s === STRUCTURE_CONTAINER) {
+                const roomSources = room.find(FIND_SOURCES);
+                const roomContainers = room.find(FIND_STRUCTURES, { filter: (o) => o.structureType == STRUCTURE_CONTAINER });
+                for (const src of roomSources) {
+                    const near = roomContainers.filter((c) => c.pos.inRangeTo(src.pos, 2)).length;
+                    if (near > 0) placedContainerPerSource.set(src.id, near);
+                }
+            }
+
+            const points = getLayoutPointsForRcl(room, s, layoutArray);
+            if (!points || points.length == 0) continue;
+            for (const p of points) {
+                if (regularCreated >= budget) break;
+                if (count >= buildMax) break;
+                const [x, y] = decompress(p);
+                if (x < 0 || x > 49 || y < 0 || y > 49) continue;
+                const Pos = new RoomPosition(x, y, room.name);
+                // 容器选址（容器集合 = 源容器×N + cc×1）：
+                // - 源容器：每源限一，任意等级
+                // - 控制器旁 cc 圈：选址权归控制器缓冲决策 (避免布局放量与它各管一点,
+                //   形成建→删→再建循环)
+                // - 其余点位（矿物旁等）：RCL6+ 采集器时代才放
+                if (s === STRUCTURE_CONTAINER) {
+                    const nearSource = room.find(FIND_SOURCES).find((src: Source) => src.pos.inRangeTo(Pos, 2));
+                    if (nearSource) {
+                        if ((placedContainerPerSource.get(nearSource.id) || 0) >= 1) continue;
+                        placedContainerPerSource.set(nearSource.id, 1);
+                    } else if (room.controller && Pos.inRangeTo(room.controller.pos, 3)) {
+                        continue;
+                    } else if (level < 6) {
+                        continue;
+                    }
+                }
+                if (Pos.lookFor(LOOK_CONSTRUCTION_SITES).length) continue;
+                const S = Pos.lookFor(LOOK_STRUCTURES);
+                if (shouldSkipBuildAtPos(room, s, S, Pos)) continue;
+                const result = room.createConstructionSite(x, y, s as any);
+                if (result === OK) {
+                    created++;
+                    regularCreated++;
+                    count++;
+                }
+                if (result == ERR_FULL) return created;
+            }
+        }
+        return created;
+    },
+    /**
+     * 静态布局构建：写入布局记录并清理旧布局残留工地。
+     * @param roomName 房间名
+     * @param layoutType 静态模板名
+     * @returns Screeps 错误码：OK/ERR_INVALID_ARGS/ERR_NOT_FOUND
+     */
+    buildStatic(roomName: string, layoutType: string, opts?: { quiet?: boolean }): number {
+        const center = resolveCenter(roomName);
+        if (!center) {
+            log(`静态布局构建失败: ${roomName} 缺少中心点(布局 center 或 storagePos/centerPos 旗帜)`);
+            return ERR_INVALID_ARGS;
+        }
+        const totalStart = cpuNow();
+        const computeStart = cpuNow();
+        const computed = computeStatic(roomName, layoutType, center);
+        const computeCpu = cpuDelta(computeStart);
+        if (!computed) return ERR_NOT_FOUND;
+        const writeStart = cpuNow();
+        const record = ensureLayoutRecord(roomName);
+        const previousData = record.data;
+        writeLayoutData(record, layoutType as any, computed.center, computed.layoutMemory);
+        removeStaleSites(roomName, computed, previousData);
+        const writeCpu = cpuDelta(writeStart);
+        const totalCpu = cpuDelta(totalStart);
+        if (!opts?.quiet) {
+            log(`静态布局构建成功: ${roomName} layout=${layoutType} center(${center.x},${center.y}) computeCpu=${cpuFmt(computeCpu)} writeCpu=${cpuFmt(writeCpu)} totalCpu=${cpuFmt(totalCpu)}`);
+        }
+        return OK;
+    },
+    /**
+     * 动态布局(auto)构建：写入布局记录并清理旧布局残留工地。
+     * @param roomName 房间名
+     * @returns Screeps 错误码：OK/ERR_NOT_FOUND
+     */
+    buildDynamic(roomName: string, opts?: { quiet?: boolean }): number {
+        const totalStart = cpuNow();
+        const computeStart = cpuNow();
+        const computed = computeDynamic(roomName, 'auto');
+        const computeCpu = cpuDelta(computeStart);
+        if (!computed) return ERR_NOT_FOUND;
+        const writeStart = cpuNow();
+        const record = ensureLayoutRecord(roomName);
+        const previousData = record.data;
+        writeLayoutData(record, 'auto', computed.center, computed.layoutMemory);
+        removeStaleSites(roomName, computed, previousData);
+        const writeCpu = cpuDelta(writeStart);
+        const totalCpu = cpuDelta(totalStart);
+        if (!opts?.quiet) {
+            log(`动态布局构建成功: ${roomName} layout=auto center(${computed.center.x},${computed.center.y}) computeCpu=${cpuFmt(computeCpu)} writeCpu=${cpuFmt(writeCpu)} totalCpu=${cpuFmt(totalCpu)}`);
+        }
+        return OK;
+    },
+    /**
+     * 动态布局(63auto)构建：写入布局记录并清理旧布局残留工地。
+     * @param roomName 房间名
+     * @returns Screeps 错误码：OK/ERR_NOT_FOUND
+     */
+    buildDynamic63(roomName: string, opts?: { quiet?: boolean }): number {
+        const totalStart = cpuNow();
+        const computeStart = cpuNow();
+        const computed = computeDynamic(roomName, '63auto');
+        const computeCpu = cpuDelta(computeStart);
+        if (!computed) return ERR_NOT_FOUND;
+        const writeStart = cpuNow();
+        const record = ensureLayoutRecord(roomName);
+        const previousData = record.data;
+        writeLayoutData(record, '63auto' as any, computed.center, computed.layoutMemory);
+        removeStaleSites(roomName, computed, previousData);
+        const writeCpu = cpuDelta(writeStart);
+        const totalCpu = cpuDelta(totalStart);
+        if (!opts?.quiet) {
+            log(`动态布局构建成功: ${roomName} layout=63auto center(${computed.center.x},${computed.center.y}) computeCpu=${cpuFmt(computeCpu)} writeCpu=${cpuFmt(writeCpu)} totalCpu=${cpuFmt(totalCpu)}`);
+        }
+        return OK;
+    },
+    /**
+     * 静态布局可视化（不落盘）。
+     */
+    visualStatic(roomName: string, layoutType: string): number {
+        const center = resolveCenter(roomName);
+        if (!center) {
+            log(`静态布局可视化失败: ${roomName} 缺少中心点(布局 center 或 storagePos/centerPos 旗帜)`);
+            return ERR_INVALID_ARGS;
+        }
+        const computed = computeStatic(roomName, layoutType, center);
+        if (!computed) return ERR_NOT_FOUND;
+        LayoutVisual.showRoomStructures(roomName, computed.structMap as any);
+        log(`静态布局可视化成功: ${roomName} layout=${layoutType} center(${center.x},${center.y})`);
+        return OK;
+    },
+    /**
+     * 动态布局(auto/63auto)可视化（不落盘）。
+     */
+    visualDynamic(roomName: string): number {
+        const computed = computeDynamic(roomName, 'auto');
+        if (!computed) return ERR_NOT_FOUND;
+        LayoutVisual.showRoomStructures(roomName, computed.structMap as any);
+        log(`动态布局可视化成功: ${roomName} layout=auto center(${computed.center.x},${computed.center.y})`);
+        return OK;
+    },
+    visualDynamic63(roomName: string): number {
+        const computed = computeDynamic(roomName, '63auto');
+        if (!computed) return ERR_NOT_FOUND;
+        LayoutVisual.showRoomStructures(roomName, computed.structMap as any);
+        log(`动态布局可视化成功: ${roomName} layout=63auto center(${computed.center.x},${computed.center.y})`);
+        return OK;
+    },
+    /**
+     * 动态布局可视化（pa/pb/pc/pm 旗帜输入, 不落盘不缓存）。
+     */
+    visualDynamicByFlags(): number {
+        return visualByFlags('auto');
+    },
+    visualDynamic63ByFlags(): number {
+        return visualByFlags('63auto');
+    },
+    /**
+     * 迷你房布局构建（mini 模式）: spawn 锚点最小据点, 塔优先贴控制器一侧, RCL6+ 补 terminal。
+     */
+    buildMini(roomName: string, opts?: { quiet?: boolean }): number {
+        const room = Game.rooms[roomName];
+        if (!room) return ERR_NOT_FOUND;
+        const spawn = room.find(FIND_MY_SPAWNS)[0];
+        if (!spawn) return ERR_NOT_FOUND;
+
+        const candidates: Array<{ x: number; y: number; d: number }> = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const x = spawn.pos.x + dx, y = spawn.pos.y + dy;
+                if (x <= 0 || x >= 49 || y <= 0 || y >= 49) continue;
+                if (room.getTerrain().get(x, y) === TERRAIN_MASK_WALL) continue;
+                if (room.lookForAt(LOOK_STRUCTURES, x, y).some(s => s.structureType !== STRUCTURE_ROAD)) continue;
+                if (room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y).length > 0) continue;
+                const pos = new RoomPosition(x, y, room.name);
+                const d = room.controller ? pos.getRangeTo(room.controller.pos) : 99;
+                candidates.push({ x, y, d });
+            }
+        }
+        candidates.sort((a, b) => a.d - b.d);
+
+        const level = roomLevel(room);
+        const towerQuota = (CONTROLLER_STRUCTURES as any)?.[STRUCTURE_TOWER]?.[level] ?? 0;
+        const towers: XY[] = candidates.slice(0, Math.max(0, towerQuota)).map(c => [c.x, c.y] as XY);
+        const used = new Set(towers.map(t => `${t[0]}:${t[1]}`));
+        const terminal: XY[] = [];
+        if (level >= 6) {
+            const spot = candidates.find(c => !used.has(`${c.x}:${c.y}`));
+            if (spot) terminal.push([spot.x, spot.y] as XY);
+        }
+
+        const layoutMemory: Record<string, number[]> = {};
+        if (towers.length) layoutMemory[STRUCTURE_TOWER] = towers.map(([x, y]) => compress(x, y));
+        if (terminal.length) layoutMemory[STRUCTURE_TERMINAL] = terminal.map(([x, y]) => compress(x, y));
+        const record = ensureLayoutRecord(roomName);
+        writeLayoutData(record, 'mini' as any, { x: spawn.pos.x, y: spawn.pos.y }, layoutMemory as any);
+        if (!opts?.quiet) {
+            log(`迷你房布局构建成功: ${roomName} towers=${towers.length}/${towerQuota} terminal=${terminal.length}（ext 由特殊冲级优先落位负责）`);
+        }
+        return OK;
+    },
+};
+
+/**
+ * 旗帜输入的动态布局可视化骨架 (pa/pb/pc/pm 四旗指定枢纽点, 不落盘不缓存)。
+ */
+function visualByFlags(layoutType: 'auto' | '63auto'): number {
+    if (Game.cpu.bucket < 100) {
+        log(`动态布局可视化失败: CPU bucket 不足 bucket=${Game.cpu.bucket}`);
+        return ERR_TIRED;
+    }
+    const pa = Game.flags.pa?.pos;
+    const pb = Game.flags.pb?.pos;
+    const pc = Game.flags.pc?.pos;
+    const pm = Game.flags.pm?.pos;
+    if (!pa || !pb || !pc || !pm) {
+        log(`动态布局可视化失败: 缺少 pa/pb/pc/pm 旗帜`);
+        return ERR_INVALID_ARGS;
+    }
+    if (pa.roomName != pb.roomName || pa.roomName != pc.roomName || pa.roomName != pm.roomName) {
+        log(`动态布局可视化失败: pa/pb/pc/pm 不在同一房间`);
+        return ERR_INVALID_ARGS;
+    }
+    const roomName = pa.roomName;
+
+    const storagePos = Game.flags.storagePos || Game.flags.centerPos;
+    if (storagePos && storagePos.pos.roomName !== roomName) storagePos.remove();
+
+    const planner = layoutType === '63auto' ? autoPlanner63 : autoPlanner;
+    const computeManor = planner.ManagerPlanner.computeManor;
+    const roomStructsData = computeManor(roomName, [pc, pm, pa, pb]);
+    if (!roomStructsData) {
+        log(`动态布局可视化失败: planner 返回空 room=${roomName} layout=${layoutType}(flags)`);
+        return ERR_NOT_FOUND;
+    }
+    LayoutVisual.showRoomStructures(roomName, roomStructsData.structMap);
+    log(`动态布局可视化成功: ${roomName} layout=${layoutType}(flags)`);
+    return OK;
+}
+
+/**
+ * 布局重算后清理不属于新布局的残留工地:
+ * 只清「旧布局内有、新布局没有」的工地, 不碰功能性外部工地 (外矿容器/道路等不在布局内)。
+ * @param previousData 重算前的旧布局数据 (已被替换, 由调用方先行快照)
+ */
+function removeStaleSites(roomName: string, computed: CachedLayout, previousData: Record<string, number[]>): void {
+    const staleKeys = new Set<string>();
+    for (const [type, pts] of Object.entries(previousData)) {
+        if (!Array.isArray(pts)) continue;
+        for (const p of pts as number[]) {
+            const [x, y] = decompress(p);
+            staleKeys.add(`${type}:${x},${y}`);
+        }
+    }
+    const room = Game.rooms[roomName];
+    if (!room) return;
+    const layoutKeys = new Set<string>();
+    for (const [type, pts] of Object.entries(computed.structMap)) {
+        for (const [x, y] of pts as [number, number][]) layoutKeys.add(`${type}:${x},${y}`);
+    }
+    for (const site of room.find(FIND_MY_CONSTRUCTION_SITES)) {
+        const staleKey = `${site.structureType}:${site.pos.x},${site.pos.y}`;
+        if (staleKeys.has(staleKey) && !layoutKeys.has(staleKey)) site.remove();
+    }
+}
+
+export default LayoutPlanner;
