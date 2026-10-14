@@ -1,0 +1,136 @@
+
+import { getWhitelistIds, isPixelGenEnabled, isWarMode, setModeName, setPixelGenEnabled, setWarMode, setWhitelistIds } from '@/core/store/accessor';
+import { BASE_CONFIG } from '@/constant/BaseConstant';
+import { log } from '@/utils/log';
+import { getMissionPools, sanitizeMissionPoolMemory, getStructData } from "@/core/store/accessor";
+
+const MISSION_POOL_NAME_SET = new Set<MissionPoolName>(['transport', 'build', 'repair', 'terminal', 'spawn', 'mine', 'boost']);
+
+// 基础与杂项
+const Base = {
+    // 顶层快捷入口：start(...) 等价 room.start(...)，少打一个词
+    // 两个参数都可省略：start() 自动推断房间并使用自动布局
+    start(roomName?: string, layout?: string) {
+        if (!(globalThis as any).room?.start) return Error('room 指令未就绪，请稍后重试。');
+        return (globalThis as any).room.start(roomName, layout);
+    },
+    bot: {
+        mode(mode: string) {
+            if (mode !== 'default' && mode !== 'auto') return Error('请输入正确的模式(default/auto)');
+            setModeName(mode);
+            log('', `Bot运行模式已切换到 ${
+                mode === 'default' ? '默认' : '全自动'
+            } 模式`);
+            return OK;
+        },
+        // 开关全局战争模式
+        warmode() {
+            const next = !isWarMode();
+            setWarMode(next);
+            log('', `战争模式已${next ? '开启' : '关闭'}`);
+            return OK;
+        },
+
+        pixel() {
+            const next = !isPixelGenEnabled();
+            setPixelGenEnabled(next);
+            log('', `搓Pixel功能已${next ? '开启' : '关闭'}`);
+            return OK;
+        },
+
+        stats() {
+            const flagName = 'ALL/stats';
+            const flag = Game.flags[flagName];
+            if (flag) {
+                flag.remove();
+                log('', `信息统计功能已关闭 (Removed ${flagName})`);
+            } else {
+                const room = Object.values(Game.rooms).find(r => r.controller && r.controller.my);
+                if (room) {
+                    room.createFlag(room.controller!.pos.x, room.controller!.pos.y + 1, flagName);
+                    log('', `信息统计功能已开启 (Created ${flagName} in ${room.name})`);
+                } else {
+                    return Error('未找到己方房间，无法创建统计旗帜');
+                }
+            }
+            return OK;
+        },
+    },
+    whitelist: {
+        add(id: string): OK | Error {
+            const ids = getWhitelistIds();
+            if(ids.includes(id)) return Error("白名单中已存在, 无法添加");
+            ids.push(id);
+            setWhitelistIds(ids);
+            return OK;
+        },
+        remove(id: string): OK | Error {
+            const ids = getWhitelistIds();
+            if(!ids.includes(id)) return Error("白名单中不存在, 无法移除");
+            ids.splice(ids.indexOf(id), 1);
+            setWhitelistIds(ids);
+            return OK;
+        },
+        show(): string[] {
+            return getWhitelistIds();
+        }
+    },
+    clear: {
+        site(roomName: string) {
+            const room = Game.rooms[roomName];
+            if(!room) {
+                return Error(`无房间视野`);
+            }
+            const site = room.find(FIND_MY_CONSTRUCTION_SITES);
+            if(site.length === 0) {
+                return Error(`无建筑工地`);
+            } else {
+                for(const s of site) {
+                    s.remove();
+                }
+                return OK;
+            }
+        },
+        flag(roomName: string) {
+            const room = Game.rooms[roomName];
+            if(!room) {
+                return Error(`无房间视野`);
+            }
+            const flag = room.find(FIND_FLAGS);
+            if(flag.length === 0) {
+                return Error(`无旗子`);
+            } else {
+                for(const f of flag) {
+                    f.remove();
+                }
+                return OK;
+            }
+        },
+        mission(roomName: string, type: string) {
+            const pools = getMissionPools();
+            if (!pools[roomName]) return Error(`房间 ${roomName} 任务池不存在`);
+            sanitizeMissionPoolMemory(pools[roomName]);
+            if (!MISSION_POOL_NAME_SET.has(type as MissionPoolName)) return Error(`任务池 ${type} 不存在`);
+            pools[roomName][type as MissionPoolName] = [];
+            log('', `已清空房间 ${roomName} 的 ${type} 任务`);
+            return OK;
+        },
+        boostTask(roomName: string) {
+            const boostmem = getStructData(roomName);
+            if (boostmem?.boostLabs) {
+                for (const labId of Object.keys(boostmem.boostLabs)) {
+                    if (boostmem.boostLabs[labId]?.mode === 'task') delete boostmem.boostLabs[labId];
+                }
+            }
+            log('', `已清空房间 ${roomName} 的 boost 任务`);
+            return OK;
+        }
+    },
+    log(text: string, ...args: any[]): OK | Error {
+        log(`${BASE_CONFIG.BOT_NAME}`, `${text}`, ...args);
+        return OK;
+    },
+}
+
+
+export default Base;
