@@ -1,0 +1,174 @@
+// @ts-nocheck
+
+import { getRoomTickCacheValue } from '@/utils/roomTickCache';
+export default class DoubleAction extends Creep {
+    // 双人小队移动
+    override doubleMove(Direction: DirectionConstant): number {
+        const bindId = this.memory.bind;
+        if (!bindId) return ERR_INVALID_ARGS;
+        const bindCreep = Game.getObjectById(bindId);
+        if(!bindCreep) return ERR_INVALID_ARGS;
+
+        if (this.pos.isNear(bindCreep.pos)) {
+            // 疲劳时不移动
+            if(this.fatigue > 0) return ERR_TIRED;
+            // 同时移动
+            const result = this.move(Direction);
+            if(result === OK) {
+                // 如果移动成功，那么绑定creep跟随
+                this.pull(bindCreep);
+                bindCreep.move(this as never);
+            }
+            return result;
+        } else {    // 如果距离拉远了，那么等他过来
+            // 位于房间边缘时不等
+            if(this.pos.isRoomEdge()) this.move(Direction);
+            bindCreep.moveTo(this);
+            return OK;
+        }
+    }
+
+    // 双人小队移动到目标
+    override doubleMoveTo(target: RoomPosition, color='#ffffff', ops={}): number | boolean {
+        const bindId = this.memory.bind;
+        if (!bindId) return ERR_INVALID_ARGS;
+        const bindCreep = Game.getObjectById(bindId);
+        if(!bindCreep) return ERR_INVALID_ARGS;
+
+        (ops as any) ['visualizePathStyle'] = { stroke: color };
+        if (!(ops as any) ['ignoreCreeps']) (ops as any) ['ignoreCreeps'] = false;
+
+        if (this.pos.isNear(bindCreep.pos)) {
+            // 疲劳时不移动
+            if(this.fatigue > 0) return ERR_TIRED;
+            // 同时移动
+            const result = this.moveTo(target, ops);
+            if(result === OK) {
+                // 如果移动成功，那么绑定creep跟随
+                this.pull(bindCreep);
+                bindCreep.move(this as never);
+            }
+            return result;
+        }
+        // 如果距离拉远了，那么等他过来
+        else {
+            // 位于房间边缘时不等
+            if(this.pos.isRoomEdge()) this.moveTo(target, ops);
+            bindCreep.moveTo(this);
+            return OK;
+        }
+    }
+    
+    // 双人小队移动到目标房间
+    override doubleMoveToRoom(roomName: string, color: string): boolean {
+        const bindId = this.memory.bind;
+        if (!bindId) return false;
+        const bindcreep = Game.getObjectById(bindId);
+        if(!bindcreep) return false;
+        // 移动到目标房间
+        if(this.room.name !== roomName) {
+            this.doubleMoveTo(new RoomPosition(25, 25, roomName), color);
+            return true;
+        }
+        // 躲边界
+        this.doubleFleeEdge();
+        return false;
+    }
+
+    // 躲边界
+    override doubleFleeEdge(): void {
+        const bindId = this.memory.bind;
+        if (!bindId) return;
+        const bindcreep = Game.getObjectById(bindId);
+        if(!bindcreep) return;
+
+        if (this.pos.isRoomEdge()) {
+            this.moveToRoom(this.room.name);
+            bindcreep.moveTo(this);
+            return true;
+        }
+
+        if (this.room.name == bindcreep.room.name && bindcreep.pos.isRoomEdge()) {
+            const terrain = this.room.getTerrain();
+            const p = this.pos;
+            const Pos = [
+                [p.x - 1, p.y - 1], [p.x - 1, p.y], [p.x - 1, p.y + 1],
+                [p.x, p.y - 1], [p.x, p.y + 1],
+                [p.x + 1, p.y - 1], [p.x + 1, p.y], [p.x + 1, p.y + 1]
+            ].find(pos => {
+                if (pos[0]! <= 0 || pos[0]! >= 49 || pos[1]! <= 0 || pos[1]! >= 49) return false;
+                if (!bindcreep.pos.isNearTo(pos[0]!, pos[1]!)) return false;
+                if (bindcreep.pos.isEqualTo(pos[0]!, pos[1]!)) return false;
+                if (terrain.get(pos[0]!, pos[1]!) === TERRAIN_MASK_WALL) return false;
+                return true;
+            })
+            if (!Pos) return false;
+            const toPos = new RoomPosition(Pos[0], Pos[1], this.room.name)
+            bindcreep.move(bindcreep.pos.getDirection(toPos));
+        }
+        return false;
+    }
+
+    // 规避敌人
+    override doubleFlee() {
+        const bindId = this.memory.bind;
+        const bindcreep = bindId ? Game.getObjectById(bindId) : null;
+        const dangerousHostiles = getRoomTickCacheValue(this.room, 'double_action_dangerous_hostiles', () =>
+            this.room.find(FIND_HOSTILE_CREEPS, {
+                filter: (c) =>
+                    !c.isWhiteList() &&
+                    (c.getActiveBodyparts(ATTACK) > 0 || c.getActiveBodyparts(RANGED_ATTACK) > 0)
+            }) as Creep[]
+        );
+        const goals = dangerousHostiles
+            .filter((c) => this.pos.inRangeTo(c, 10))
+            .map((c) => ({
+                pos: c.pos,
+                range: c.getActiveBodyparts(RANGED_ATTACK) ? 6 : 4
+            }));
+        if (goals.length <= 0) return 1;
+
+        const creep = bindcreep ? bindcreep : this;
+        const path = PathFinder.search(
+            creep.pos,
+            goals,
+            {
+                flee: true,
+                plainCost: 1,
+                swampCost: 5,
+                maxRooms: 2,
+            }).path;
+        if (path.length <= 0) return 1;
+        return creep.doubleMove(creep.pos.getDirection(path[0]));
+    }
+    override doubleToAttack(target: Creep | Structure): number | boolean {
+        const bindId = this.memory.bind;
+        if (!bindId) return;
+        const bindcreep = Game.getObjectById(bindId);
+        if (!bindcreep) return;
+        if (!this.pos.isNearTo(bindcreep)) {
+            bindcreep.moveTo(this);
+        }
+        if (this.pos.isNearTo(target)) {
+            return this.attack(target);
+        } else {
+            return this.doubleMoveTo(target.pos, '#ff0000');
+        }
+    }
+
+    override doubleToDismantle(target: Structure): number | boolean {
+        const bindId = this.memory.bind;
+        if (!bindId) return;
+        const bindcreep = Game.getObjectById(bindId);
+        if (!bindcreep) return;
+        if (!this.pos.isNearTo(bindcreep)) {
+            bindcreep.moveTo(this);
+            return true;
+        }
+        if (this.pos.isNearTo(target)) {
+            return this.dismantle(target);
+        } else {
+            return this.doubleMoveTo(target.pos, '#ffff00');
+        }
+    }
+}
