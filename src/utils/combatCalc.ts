@@ -1,0 +1,177 @@
+/**
+ * 战斗数学: 纯算法, 零依赖 (引擎部件常量为环境触点)。
+ * boost 倍率采用本地表而非全局 BOOSTS——保证决策可复现、可离线推演。
+ * 典型用途: 交火换伤评估、威胁评分、小队战力对比。
+ */
+
+export interface BodyPartLike {
+	type: BodyPartConstant;
+	hits?: number;
+	boost?: ResourceConstant | undefined;
+}
+
+export interface CombatProfile {
+	id?: string | undefined;
+	hits: number;
+	hitsMax: number;
+	parts: Partial<Record<BodyPartConstant, number>>;
+	boosted: boolean;
+	boosts: Partial<Record<BodyPartConstant, Partial<Record<string, number>>>>;
+}
+
+/** 攻击/治疗类 boost 倍率 (t1/t2/t3) */
+const BOOST_MULT: Record<string, number> = {
+	UH: 2,
+	UH2O: 3,
+	XUH2O: 4,
+	KO: 2,
+	KHO2: 3,
+	XKHO2: 4,
+	LO: 2,
+	LHO2: 3,
+	XLHO2: 4,
+	ZH: 2,
+	ZH2O: 3,
+	XZH2O: 4,
+};
+
+/** TOUGH 减伤系数 (t2/t3) */
+const TOUGH_DAMAGE_FACTOR: Record<string, number> = {
+	GO: 0.7,
+	GHO2: 0.5,
+	XGHO2: 0.3,
+};
+
+/** 部件在给定 boost 下的倍率 (TOUGH 走减伤系数, 无 boost 为 1) */
+export function getBoostMultiplier(partType: BodyPartConstant, boost?: string): number {
+	if (!boost) return 1;
+	if (partType === TOUGH) return TOUGH_DAMAGE_FACTOR[boost] ?? 1;
+	return BOOST_MULT[boost] ?? 1;
+}
+
+/** 存活部件计数 (hits<=0 视为失效) */
+export function getActivePartCounts(
+	body: BodyPartLike[] | undefined,
+): Partial<Record<BodyPartConstant, number>> {
+	const out: Partial<Record<BodyPartConstant, number>> = {};
+	if (!body || body.length === 0) return out;
+	for (const p of body) {
+		if (!p || !p.type) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		out[p.type] = (out[p.type] ?? 0) + 1;
+	}
+	return out;
+}
+
+/** 由 creep 摘要构建战斗档案 (部件计数 + boost 分布) */
+export function buildCombatProfile(creep: {
+	id?: string;
+	hits: number;
+	hitsMax: number;
+	body?: BodyPartLike[];
+}): CombatProfile {
+	const parts = getActivePartCounts(creep.body);
+	let boosted = false;
+	const boosts: CombatProfile["boosts"] = {};
+	for (const p of creep.body ?? []) {
+		if (!p || !p.boost) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		boosted = true;
+		const slot = (boosts[p.type] ??= {});
+		const key = String(p.boost);
+		slot[key] = (slot[key] ?? 0) + 1;
+	}
+	return { id: creep.id, hits: creep.hits, hitsMax: creep.hitsMax, parts, boosted, boosts };
+}
+
+/** 治疗功率: 距离 1 内 12/部件, 3 内 4, 更远 0 (含 boost 倍率) */
+export function estimateHealPower(healer: { body?: BodyPartLike[] }, rangeToTarget: number): number {
+	const base = rangeToTarget <= 1 ? 12 : rangeToTarget <= 3 ? 4 : 0;
+	if (base <= 0) return 0;
+	let total = 0;
+	for (const p of healer.body ?? []) {
+		if (!p || p.type !== HEAL) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		total += base * getBoostMultiplier(HEAL, p.boost ? String(p.boost) : undefined);
+	}
+	return total;
+}
+
+/** 近战伤害: 30/ATTACK 部件 (含 boost 倍率) */
+export function estimateMeleeDamage(attacker: { body?: BodyPartLike[] }): number {
+	let total = 0;
+	for (const p of attacker.body ?? []) {
+		if (!p || p.type !== ATTACK) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		total += 30 * getBoostMultiplier(ATTACK, p.boost ? String(p.boost) : undefined);
+	}
+	return total;
+}
+
+/** 远程伤害: 距离 1=30 / 2=20 / 3=10 每部件 (含 boost 倍率) */
+export function estimateRangedDamage(
+	attacker: { body?: BodyPartLike[] },
+	rangeToTarget: number,
+): number {
+	let base = 0;
+	if (rangeToTarget <= 1) base = 30;
+	else if (rangeToTarget === 2) base = 20;
+	else if (rangeToTarget === 3) base = 10;
+	if (base <= 0) return 0;
+	let total = 0;
+	for (const p of attacker.body ?? []) {
+		if (!p || p.type !== RANGED_ATTACK) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		total += base * getBoostMultiplier(RANGED_ATTACK, p.boost ? String(p.boost) : undefined);
+	}
+	return total;
+}
+
+/** 拆除功率: 50/WORK 部件 (含 boost 倍率) */
+export function estimateDismantlePower(worker: { body?: BodyPartLike[] }): number {
+	let total = 0;
+	for (const p of worker.body ?? []) {
+		if (!p || p.type !== WORK) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		total += 50 * getBoostMultiplier(WORK, p.boost ? String(p.boost) : undefined);
+	}
+	return total;
+}
+
+// ── 塔数值模型 (距离衰减统一口径, 供塔控/防御预测共用) ──
+
+/** 塔攻击/治疗的距离衰减: ≤5 满额 600, 5~20 线性衰减到 150, >20 恒 150 */
+export function getTowerEffectByDistance(distance: number): number {
+	if (distance <= 5) return 600;
+	if (distance <= 20) return 600 - (distance - 5) * 30;
+	return 150;
+}
+
+/** 塔攻击距离衰减伤害 */
+export const getTowerDamageByDistance = getTowerEffectByDistance;
+
+/** 塔治疗距离衰减治疗量 (与攻击同一条衰减曲线) */
+export const getTowerHealByDistance = getTowerEffectByDistance;
+
+/** 远程 mass attack 单部件伤害: 距离 1 = 10 / 2~3 = 4 / 更远 = 1 (无 boost 时) */
+export function getRangedMassDamageByDistance(rangeToTarget: number): number {
+	if (rangeToTarget <= 1) return 10;
+	if (rangeToTarget <= 3) return 4;
+	return 1;
+}
+
+/** rangedMassAttack 总伤害 (含 boost 倍率) */
+export function estimateRangedMassDamage(
+	attacker: { body?: BodyPartLike[] },
+	rangeToTarget: number,
+): number {
+	const base = getRangedMassDamageByDistance(rangeToTarget);
+	if (base <= 0) return 0;
+	let total = 0;
+	for (const p of attacker.body ?? []) {
+		if (!p || p.type !== RANGED_ATTACK) continue;
+		if (typeof p.hits === "number" && p.hits <= 0) continue;
+		total += base * getBoostMultiplier(RANGED_ATTACK, p.boost ? String(p.boost) : undefined);
+	}
+	return total;
+}

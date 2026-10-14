@@ -1,0 +1,51 @@
+{
+	"name": "nexus-bot",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Nexus-Bot",
+	"license": "MIT",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+		"build": "npm run typecheck && npm run clean && rolldown -c",
+		"build:race": "VARIANT=race rolldown -c",
+		"build:season": "VARIANT=season rolldown -c",
+		"build:stronghold": "VARIANT=stronghold rolldown -c",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
+		"fmt": "oxfmt",
+		"fmt:check": "oxfmt --check",
+		"submit": "node ./scripts/submit.js",
+		"console": "node ./scripts/console.js",
+		"version": "node ./scripts/updateVersion.js",
+		"sim": "SOURCE_MAP=0 NO_UPLOAD=1 rolldown -c && screeps-sim test --no-bundle-check"
+	},
+	"screeps-sim": {
+		"bundle": "dist/main.js",
+		"include": [
+			"sim"
+		]
+	},
+	"dependencies": {
+		"@inquirer/prompts": "^8.7.3",
+		"shelljs": "^0.10.0",
+		"ws": "^8.22.0"
+	},
+	"devDependencies": {
+		"@types/lodash": "^3.10.9",
+		"@types/node": "^26.6.5",
+		"@types/screeps": "3.4.0",
+		"git-rev-sync": "^3.0.2",
+		"oxfmt": "^0.72.0",
+		"oxlint": "^1.87.0",
+		"rolldown": "^1.2.13",
+		"screeps-api": "^1.16.1",
+		"screeps-sim": "file:../Screeps-Simulation",
+		"terser": "^5.51.2",
+		"typescript": "^5.9.3"
+	}
+}

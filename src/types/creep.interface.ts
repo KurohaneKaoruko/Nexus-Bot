@@ -1,0 +1,1006 @@
+
+
+/**
+ * 供取能流程直接消费的能量来源。
+ *
+ * @remarks
+ * 这里只覆盖“当前实现会直接处理”的目标类型：
+ * 有库存的建筑，以及掉落在地上的能量资源。
+ */
+type CreepEnergySourceTarget = AnyStoreStructure | Resource<RESOURCE_ENERGY>;
+
+/**
+ * 通用提取流程允许返回的 withdraw 目标集合。
+ *
+ * @remarks
+ * carrier 等角色会复用这个返回值做兜底提取，
+ * 因此除了建筑外还允许资源堆与废墟。
+ */
+type CreepWithdrawTarget = AnyStoreStructure | Resource | Ruin;
+
+/**
+ * 统一目标缓存里使用的目标类型标签。
+ */
+type CreepCacheTargetType = 'source' | 'store' | 'site' | 'structure' | 'dropped' | 'ruin';
+
+/**
+ * 查找取能目标时的过滤条件。
+ */
+interface CreepFindEnergySourceOptions {
+    /**
+     * 是否把地上的能量也纳入候选。
+     * @defaultValue true
+     */
+    includeDropped?: boolean;
+
+    /**
+     * 是否把 storage / terminal 纳入候选。
+     * @defaultValue true
+     */
+    includeStorage?: boolean;
+
+    /**
+     * 候选目标至少要具备的能量数量。
+     * @defaultValue 100
+     */
+    minAmount?: number;
+}
+
+/**
+ * 主房通用取能动作的配置。
+ *
+ * @remarks
+ * 与 {@link CreepFindEnergySourceOptions} 的区别在于：
+ * 这是“动作入口”的配置，调用方只关心是否允许拾取或读取仓储，
+ * 实际目标筛选仍由 `findEnergySource` 负责。
+ */
+interface CreepAcquireEnergyOptions extends CreepFindEnergySourceOptions {
+    /**
+     * 是否优先拾取地面掉落能量。
+     * @defaultValue `true`
+     */
+    pickup?: boolean;
+}
+
+/**
+ * 建造目标选择配置。
+ */
+interface CreepFindBuildTargetOptions {
+    /**
+     * 建筑类型优先级；按数组顺序依次尝试。
+     */
+    priority?: StructureConstant[];
+
+    /**
+     * 仅在 creep 附近指定范围内查找。
+     * 不传则扫描全房间。
+     */
+    range?: number;
+}
+
+/**
+ * 维修目标选择配置。
+ */
+interface CreepFindRepairTargetOptions {
+    /**
+     * 命中值上限；高于该值的建筑不会被选中。
+     */
+    maxHits?: number;
+
+    /**
+     * 命中值比例上限；高于 `hitsMax * maxHitsRatio` 的建筑不会被选中。
+     */
+    maxHitsRatio?: number;
+
+    /**
+     * 需要跳过的建筑类型。
+     */
+    excludeTypes?: StructureConstant[];
+
+    /**
+     * 仅在 creep 附近指定范围内查找。
+     * 不传则扫描全房间。
+     */
+    range?: number;
+}
+
+/**
+ * 收回到原型扩展后的统一轻量缓存结构。
+ *
+ * @remarks
+ * 这里约定的是“这组辅助方法会读写的字段”，
+ * 并不限制 `memory.cache` 根对象上存在其他角色专用字段。
+ */
+interface CreepFlatCache {
+    /**
+     * 当前缓存目标的 id。
+     */
+    targetId?: Id<any>;
+
+    /**
+     * 当前缓存目标的语义类型。
+     */
+    targetType?: CreepCacheTargetType;
+
+    /**
+     * 与当前缓存目标相关联的资源类型。
+     */
+    resourceType?: ResourceConstant;
+
+    /**
+     * 允许角色在同一层级追加自己的扁平字段。
+     */
+    [key: string]: any;
+}
+
+/**
+ * Creep接口扩展
+ * @description 扩展Screeps原生Creep类，添加自定义方法
+ */
+interface Creep {
+    // ==================== 核心方法 ====================
+    /** 
+     * 初始化
+     * @description 初始化creep的状态和缓存
+     */
+    init(): void;
+    
+    /** 
+     * 运行
+     * @description 执行creep的主循环逻辑
+     */
+    exec(): void;
+    
+    /** 
+     * 爬唱歌
+     * @description 随机显示一条消息
+     */
+    randomSing(): void;
+
+    // ==================== 移动功能 (MoveFunction) ====================
+    /** 
+     * 移动到指定房间
+     * @param roomName - 目标房间名
+     * @param options - 可选的移动选项
+     * @returns 移动结果状态码
+     */
+    moveToRoom(roomName: string, options?: MoveToOpts & { bypassRange?: number }): ScreepsReturnCode;
+    
+    /** 
+     * 移动到所属房间 (home)
+     * @returns true表示已到达，false表示正在移动
+     * @description 移动到creep.memory.home指定的房间
+     */
+    moveHomeRoom(): boolean;
+    
+    /** 
+     * 移动到目标房间
+     * @param options - 可选的移动选项
+     * @returns true表示已到达，false表示正在移动
+     * @description 移动到creep.memory.targetRoom指定的房间
+     */
+    moveToTargetRoom(options?: MoveToOpts): boolean;
+    
+    /** 
+     * 移动到资源房间
+     * @param options - 可选的移动选项
+     * @returns true表示已到达，false表示正在移动
+     * @description 移动到creep.memory.sourceRoom指定的房间
+     */
+    moveToSourceRoom(options?: MoveToOpts): boolean;
+    
+    /** 
+     * 检查是否在房间边缘并处理
+     * @returns true表示在边缘并已处理，false表示不在边缘
+     * @description 防止creep卡在房间边界
+     */
+    handleRoomEdge(): boolean;
+
+    /**
+     * 远离危险目标。
+     * @param targets - 需要规避的目标或带 range 的目标描述
+     * @param options - 可选的寻路参数
+     * @returns 寻路结果状态码
+     */
+    flee(targets: Array<RoomPosition | { pos: RoomPosition; range?: number }>, options?: MoveToOpts): ScreepsReturnCode;
+
+
+    // ==================== 双人小队功能 (DoubleAction) ====================
+    /** 
+     * 双人小队移动
+     * @param Direction - 移动方向常量
+     * @returns 移动结果
+     * @description 两个绑定的creep同时移动
+     */
+    doubleMove(Direction: DirectionConstant): number;
+    
+    /** 
+     * 双人小队移动到目标
+     * @param target - 目标位置
+     * @param color - 可选，路径可视化颜色
+     * @param ops - 可选，移动选项
+     * @returns 移动结果
+     */
+    doubleMoveTo(target: RoomPosition, color?: string, ops?: MoveToOpts): number | boolean;
+    
+    /** 
+     * 双人小队移动到目标房间
+     * @param roomName - 目标房间名
+     * @param color - 可选，路径可视化颜色
+     * @returns true表示已到达，false表示正在移动
+     */
+    doubleMoveToRoom(roomName: string, color?: string): boolean;
+    
+    /** 
+     * 躲边界
+     * @returns true表示需要躲避，false表示不需要
+     * @description 防止双人小队卡在房间边界
+     */
+    doubleFleeEdge(): boolean;
+    
+    /** 
+     * 规避敌人
+     * @returns 规避结果
+     * @description 双人小队躲避敌方单位
+     */
+    doubleFlee(): number;
+    
+    /** 
+     * 双人小队攻击
+     * @param target - 攻击目标
+     * @returns 攻击结果
+     */
+    doubleToAttack(target: Creep | Structure): number | boolean;
+    
+    /** 
+     * 双人小队拆除
+     * @param target - 拆除目标
+     * @returns 拆除结果
+     */
+    doubleToDismantle(target: Structure): number | boolean;
+
+    // ==================== 基础功能 (BaseFunction) ====================
+    /** 
+     * 获取能量
+     * @param pickup - 可选，是否拾取掉落资源，默认true
+     * @description 智能获取能量：优先从建筑提取，其次拾取掉落，最后采集source
+     * @example creep.TakeEnergy(); // 自动获取能量
+     * @example creep.TakeEnergy(false); // 不拾取掉落资源
+     * @returns true 表示本 tick 成功取能后会装满，false 表示仍需继续取能或仅执行了移动
+     */
+    TakeEnergy(pickup?: boolean): boolean;
+
+    /**
+     * 仅在首次调用时关闭被攻击通知。
+     * @description 将 notifyWhenAttacked(false) 与 memory.notified 的样板逻辑下沉到通用层。
+     */
+    disableAttackNotificationsOnce(): void;
+
+    yieldSourcePosition(source: Source): boolean;
+
+    resolveSourceByPriority(source?: Source | null): Source | null;
+
+    /** 
+     * 根据给定配置boost
+     * @param boostmap - 部件到boost资源的映射；支持单资源或候选列表（按顺序降级）
+     * @param options - 可选的强化选项
+     * @returns 0表示完成，1表示下一tick继续，-1表示资源不足，-2表示找不到lab
+     * @description 移动到lab并进行boost强化
+     * @example 
+     * const result = creep.goBoost({ [WORK]: ['XUH2O', 'UH2O', 'UH'], [TOUGH]: 'XGHO2' });
+     * if (result === 0) { // boost完成，执行后续逻辑 }
+     */
+    goBoost(boostmap: { [part: string]: MineralBoostConstant | MineralBoostConstant[] }, options?: { must?: boolean }): number;
+
+    /**
+     * 确保 creep 完成 boost 的唯一入口（Tier 1 boost 管理统一）。
+     * 解析优先级：显式传入 > memory.boostmap > ROLE_BOOST_CONFIGS[role]。
+     * @returns true 表示 boost 已完成或已按策略退化，creep 可以开始正常工作
+     */
+    ensureBoosted(
+        boostMap?: { [part: string]: MineralBoostConstant | MineralBoostConstant[] | string[] } | null,
+        opts?: { must?: boolean }
+    ): boolean;
+    
+    /**
+     * 旧版 goBoost（资源列表模式）已废弃
+     * @deprecated
+     */
+    // goBoost(boostTypes: string[], must?: boolean ): boolean;
+    
+    /** 
+     * 解除boost
+     * @returns true表示完成，false表示正在进行
+     * @description 移动到lab旁的container并解除boost
+     */
+    unBoost(): boolean;
+    
+    /** 
+     * 是否处于白名单中
+     * @returns true表示在白名单中，false表示不在
+     * @description 检查creep所有者是否在Memory['whitelist']中
+     */
+    isWhiteList(): boolean;
+    
+    /** 
+     * 检查 boost 是否就绪
+     * @returns true表示boost就绪或不需要boost，false表示未完成
+     * @description 检查creep是否已完成所有需要的boost
+     */
+    isBoostReady(): boolean;
+    
+    /** 
+     * 切换任务状态
+     * @param resourceType - 可选，检查的资源类型，不传则检查所有资源
+     * @returns 'source'表示需要获取资源，'target'表示需要执行任务，null表示不需要切换
+     * @description 根据creep存储状态判断应该切换到哪个状态
+     * @example
+     * const state = creep.switchTaskState(RESOURCE_ENERGY);
+     * if (state === 'source') { // 去获取能量 }
+     * else if (state === 'target') { // 去执行任务 }
+     */
+    switchTaskState(resourceType?: ResourceConstant): 'source' | 'target' | null;
+
+    // ==================== 缓存功能 (CacheFunction) ====================
+    /**
+     * 获取当前 creep 的统一缓存根对象。
+     *
+     * @remarks
+     * 该方法会在首次访问时自动初始化 `memory.cache`，
+     * 并兼容迁移旧的 `cacheSource/cacheTarget` 别名字段。
+     */
+    getCache(): CreepFlatCache;
+
+    /**
+     * 获取角色私有状态命名空间（`cache.role`）。
+     *
+     * @remarks
+     * 角色私有字段统一读写这里；命名空间由 ensureMemoryCache 保证存在。
+     */
+    getRoleCache(): Record<string, any>;
+
+    /**
+     * 清除由统一目标缓存辅助方法维护的目标字段。
+     *
+     * @remarks
+     * 只会移除 `targetId`、`targetType` 与 `resourceType`，
+     * 不会触碰同层的其他角色自定义缓存键。
+     */
+    clearTarget(): void;
+
+    /**
+     * 写入当前工作目标到统一缓存。
+     *
+     * @param target 要缓存的游戏对象；只会持久化其 `id`。
+     * @param type 目标的语义类型，供上层状态机识别。
+     * @param resourceType 与目标绑定的资源类型；未传时会清除旧值。
+     */
+    setTarget(
+        target: { id?: Id<any> } | null | undefined,
+        type: CreepCacheTargetType,
+        resourceType?: ResourceConstant
+    ): void;
+
+    /**
+     * 读取当前缓存的目标对象。
+     *
+     * @remarks
+     * 如果缓存 id 对应的对象已经失效，会自动清掉陈旧缓存并返回 `null`。
+     */
+    getTarget<T extends RoomObject = RoomObject>(): T | null;
+
+    /**
+     * 判断统一缓存里当前是否记录了目标。
+     */
+    hasTarget(): boolean;
+
+    /**
+     * 校验某个缓存对象是否保持“深度不超过 1”的扁平结构。
+     *
+     * @remarks
+     * 主要用于单元测试和迁移校验；
+     * 若不传参数，则默认检查当前 creep 的缓存根对象。
+     */
+    validateCacheDepth(cache?: CreepFlatCache): boolean;
+
+
+    // ==================== 控制器功能 (ControllerFunction) ====================
+    /**
+     * 获取控制器旁的 Link
+     * @param range 搜索范围，默认 2
+     */
+    getControllerLink(range?: number): StructureLink | null;
+
+    /**
+     * 获取控制器旁的 Container
+     * @param range 搜索范围，默认 3
+     */
+    getControllerContainer(range?: number): StructureContainer | null;
+
+    /**
+     * 按需签署控制器
+     * @param text 目标签名文本
+     * @param options.overwrite 是否允许覆盖已有签名
+     */
+    signControllerIfNeeded(text?: string, options?: {
+        overwrite?: boolean;
+        moveOptions?: MoveToOpts;
+    }): boolean;
+
+    /**
+     * 维护房间默认控制器签名
+     */
+    maintainRoomSign(): boolean;
+
+    /**
+     * 从控制器周边缓冲建筑取能
+     * @returns true 表示本 tick 取能后将装满，false 表示仍需继续或仅执行了移动
+     */
+    withdrawControllerEnergy(options?: {
+        linkRange?: number;
+        containerRange?: number;
+        storageRange?: number;
+        terminalRange?: number;
+        minEnergy?: number;
+        fallbackToTakeEnergy?: boolean;
+    }): boolean;
+
+    /**
+     * 执行控制器工作位移动、升级与签名维护
+     */
+    runControllerUpgrade(options?: {
+        linkRange?: number;
+        sign?: boolean;
+        pickupDropped?: boolean;
+        advanceFront?: boolean;
+    }): boolean;
+
+    // ==================== 工作功能 (WorkFunction) ====================
+    /**
+     * 统一执行“找来源 -> 取能 -> 无来源时采集 source”这一套主房取能流程。
+     *
+     * @param options 取能筛选条件。
+     * @returns `true` 表示本 tick 取能后已经装满或等价完成；`false` 表示仍需继续取能或仅执行了移动。
+     *
+     * @remarks
+     * 该方法会优先尝试建筑 / 掉落资源，
+     * 只有房间内没有可用候选时才退回到 source harvest。
+     */
+    acquireEnergy(options?: CreepAcquireEnergyOptions): boolean;
+
+    /**
+     * 选择最近且满足阈值要求的能量来源。
+     *
+     * @param options 来源过滤条件。
+     * @returns 最佳候选来源；找不到时返回 `null`。
+     */
+    findEnergySource(options?: CreepFindEnergySourceOptions): CreepEnergySourceTarget | null;
+
+    /**
+     * 选择当前最合适的资源存放目标。
+     *
+     * @param resourceType 计划投递的资源类型。
+     * @param excludeId 需要排除的目标 id，常用于避免“取了又放回去”。
+     * @returns 可投递的建筑；找不到时返回 `null`。
+     */
+    findStoreTarget(resourceType: ResourceConstant, excludeId?: Id<AnyStoreStructure>): AnyStoreStructure | null;
+
+    /**
+     * 选择当前应优先维修的建筑。
+     *
+     * @param options 维修筛选条件。
+     * @returns 命中值最低、且满足约束的结构；找不到时返回 `null`。
+     */
+    findRepairTarget(options?: CreepFindRepairTargetOptions): Structure | null;
+
+    /**
+     * 选择当前应优先建造的建筑工地。
+     *
+     * @param options 建造目标筛选条件。
+     * @returns 最佳工地；找不到时返回 `null`。
+     */
+    findBuildTarget(options?: CreepFindBuildTargetOptions): ConstructionSite | null;
+
+    /**
+     * 为搬运 / 清仓类逻辑选择通用提取目标。
+     *
+     * @param resourceType 计划提取的资源类型，默认 `RESOURCE_ENERGY`。
+     * @returns 可提取目标；找不到时返回 `null`。
+     */
+    findWithdrawTarget(resourceType?: ResourceConstant): CreepWithdrawTarget | null;
+
+    /**
+     * 采集资源
+     * @param target - 采集目标（Source或Mineral）
+     * @returns true表示正在采集，false表示正在移动，null表示目标无效
+     * @description 如果不在范围内会自动移动
+     */
+    goHaverst(target: Source | Mineral): boolean;
+    
+    /** 
+     * 从指定结构中提取资源
+     * @param target - 提取目标（Structure、Tombstone或Ruin）
+     * @param resourceType - 可选，资源类型，不传则提取第一种资源
+     * @param amount - 可选，提取数量
+     * @returns true表示正在提取，false表示正在移动，null表示目标无效
+     * @description 如果不在范围内会自动移动
+     * @example creep.goWithdraw(storage, RESOURCE_ENERGY, 1000);
+     */
+    goWithdraw(target: Structure | Tombstone | Ruin, resourceType?: ResourceConstant, amount?: number): boolean;
+    
+    /** 
+     * 向指定结构转移资源
+     * @param target - 转移目标（Creep、PowerCreep或Structure）
+     * @param resourceType - 可选，资源类型，不传则转移第一种资源
+     * @param amount - 可选，转移数量
+     * @returns true表示正在转移，false表示正在移动，null表示目标无效
+     * @description 如果不在范围内会自动移动
+     */
+    goTransfer(target: AnyCreep | Structure, resourceType?: ResourceConstant, amount?: number): boolean;
+    
+    /** 
+     * 拾取掉落资源
+     * @param target - 掉落的资源对象
+     * @returns true表示正在拾取，false表示正在移动，null表示目标无效
+     * @description 如果不在范围内会自动移动
+     */
+    goPickup(target: Resource): boolean;
+    
+    /** 
+     * 建造
+     * @param target - 建筑工地
+     * @returns true表示正在建造，false表示正在移动，null表示目标无效
+     * @description 如果不在范围内（3格）会自动移动
+     */
+    goBuild(target: ConstructionSite): boolean;
+    
+    /** 
+     * 维修
+     * @param target - 需要维修的建筑
+     * @returns true表示正在维修或已满血，false表示正在移动，null表示目标无效
+     * @description 如果不在范围内（3格）会自动移动，满血时返回true
+     */
+    goRepair(target: Structure): boolean;
+
+    /** 
+     * 升级控制器
+     * @param
+     * @returns true 表示正在升级或已在范围内，false 表示正在移动中，null 表示目标不存在
+     */
+    goUpgrade(): boolean;
+
+
+
+    // ==================== 能量源功能 (SourceFunction) ====================
+    /**
+     * 计算采集产能
+     * @returns 每 tick 预计获得的能量值（考虑 WORK 部件与 boost）
+     */
+    calculateHarvestIncomePerTick(): number;
+    
+    /**
+     * 获取绑定的能量源
+     * @returns Source 对象或 null
+     */
+    getBoundSource(): Source | null;
+    
+    /**
+     * 绑定能量源 ID
+     * @param id - Source 的 ID
+     */
+    setBoundSourceId(id: Id<Source>): void;
+    
+    /**
+     * 获取绑定能量源附近的容器
+     * @param range - 搜索范围，默认 2
+     * @returns 附近的 StructureContainer 或 null
+     */
+    getNearbySourceContainer(range?: number): StructureContainer | null;
+    
+    /**
+     * 获取绑定能量源附近的 Link
+     * @param range - 搜索范围，默认 2
+     * @returns 附近的 StructureLink 或 null（RCL < 5 时也返回 null）
+     */
+    getNearbySourceLink(range?: number): StructureLink | null;
+    moveToSourceWorkTile(source?: Source | null): boolean;
+    
+    /**
+     * 移动并重合到能量源附近的容器上
+     * @returns true 表示已到达或无需移动，false 表示正在移动中
+     */
+    sitOnSourceContainer(): boolean;
+
+    /**
+     * 维护 Source 旁的 Container (建造/修理)
+     * @returns `acted` 表示本 tick 已处理；`blocked` 表示想建但当前建不出来；`idle` 表示当前无需处理
+     */
+    maintainSourceContainer(): 'acted' | 'blocked' | 'idle';
+
+    /**
+     * 将能量转移到 Source 旁的 Link 或 Container
+     * @returns 是否成功转移
+     */
+    transferToSourceStructure(): boolean;
+
+
+    // ==================== 建造功能 (BuildFunction) ====================
+    /** 
+     * 查找并建造建筑工地
+     * @param options - 可选配置
+     * @param options.priority - 建筑类型优先级数组
+     * @param options.range - 搜索范围
+     * @returns true表示找到并正在建造，false表示未找到
+     */
+    findAndBuild(options?: {
+        priority?: StructureConstant[];
+        range?: number;
+    }): boolean;
+    
+    /** 
+     * 查找并维修建筑
+     * @param options - 可选配置
+     * @param options.maxHits - 命中值上限，高于该值则跳过
+     * @param options.maxHitsRatio - 最大血量比例，低于此比例才维修
+     * @param options.excludeTypes - 排除的建筑类型
+     * @param options.range - 搜索范围
+     * @returns true表示找到并正在维修，false表示未找到
+     */
+    findAndRepair(options?: {
+        maxHits?: number;
+        maxHitsRatio?: number;
+        excludeTypes?: StructureConstant[];
+        range?: number;
+    }): boolean;
+    
+    /** 
+     * 建造道路
+     * @returns true表示正在建造，false表示未找到道路工地
+     */
+    buildRoad(): boolean;
+    
+    /** 
+     * 维修道路
+     * @param minHitsRatio - 可选，最小血量比例，低于此比例才维修
+     * @returns true表示正在维修，false表示未找到需要维修的道路
+     */
+    repairRoad(minHitsRatio?: number): boolean;
+
+    // ==================== 资源收集功能 (CollectFunction) ====================
+    /** 
+     * 收集掉落的资源
+     * @param resourceType - 可选，资源类型，不传则收集任意资源
+     * @param minAmount - 可选，最小数量
+     * @param range - 可选，搜索范围
+     * @returns true表示找到并正在收集，false表示未找到
+     */
+    collectDroppedResource(resourceType?: ResourceConstant, minAmount?: number, range?: number): boolean;
+    
+    /** 
+     * 从墓碑收集资源
+     * @param resourceType - 可选，资源类型，不传则收集任意资源
+     * @param minAmount - 可选，最小数量
+     * @returns true表示找到并正在收集，false表示未找到
+     */
+    collectFromTombstone(resourceType?: ResourceConstant, minAmount?: number): boolean;
+    
+    /** 
+     * 从废墟收集资源
+     * @param resourceType - 可选，资源类型
+     * @returns true表示找到并正在收集，false表示未找到
+     */
+    collectFromRuin(resourceType?: ResourceConstant): boolean;
+    
+    /** 
+     * 从容器收集资源
+     * @param minAmount - 可选，最小数量阈值，默认500
+     * @param resourceType - 可选，资源类型，默认RESOURCE_ENERGY
+     * @param excludeControllerContainer - 可选，是否排除控制器旁的容器，默认false
+     * @returns true表示找到并正在收集，false表示未找到
+     * @description 从房间内的container中收集资源
+     */
+    collectFromContainer(minAmount?: number, resourceType?: ResourceConstant, excludeControllerContainer?: boolean): boolean;
+    
+    /** 
+     * 从存储或终端收集资源
+     * @param resourceType - 可选，资源类型，默认RESOURCE_ENERGY
+     * @param minAmount - 可选，最小数量阈值，默认5000
+     * @returns true表示找到并正在收集，false表示未找到
+     * @description 从storage或terminal中收集资源
+     */
+    collectFromStorage(resourceType?: ResourceConstant, minAmount?: number): boolean;
+    
+    /** 
+     * 智能收集资源
+     * @param resourceType - 可选，资源类型，默认RESOURCE_ENERGY
+     * @param options - 可选配置
+     * @param options.includeDropped - 是否包含掉落资源，默认true
+     * @param options.includeTombstone - 是否包含墓碑，默认true
+     * @param options.includeRuin - 是否包含废墟，默认true
+     * @param options.includeContainer - 是否包含容器，默认true
+     * @param options.includeStorage - 是否包含存储，默认true
+     * @param options.minDroppedAmount - 掉落资源最小数量，默认50
+     * @param options.minContainerAmount - 容器最小数量，默认500
+     * @returns true表示找到并正在收集，false表示未找到
+     * @description 按优先级尝试各种来源: 掉落资源 > 墓碑 > 废墟 > 容器 > 存储
+     * @example
+     * creep.smartCollect(RESOURCE_ENERGY, { includeStorage: false });
+     */
+    smartCollect(resourceType?: ResourceConstant, options?: {
+        includeDropped?: boolean;
+        includeTombstone?: boolean;
+        includeRuin?: boolean;
+        includeContainer?: boolean;
+        includeStorage?: boolean;
+        minDroppedAmount?: number;
+        minContainerAmount?: number;
+    }): boolean;
+    
+    /**
+     * 判断指定结构是否适合作为某种资源的存放目标
+     * @param target 目标建筑
+     * @param resource 资源类型
+     * @returns 是否允许将该资源存入目标
+     */
+    canAutoStore(target: AnyStoreStructure, resource: ResourceConstant): boolean;
+    
+    /**
+     * 判断容器是否为采集容器（靠近 Source 的 container）
+     * @param target 要检查的结构
+     * @returns 是否为采集容器
+     */
+    isSourceContainer(target: AnyStoreStructure): boolean;
+    
+    /**
+     * 为指定资源选择当前房间中“最合适”的存放建筑
+     * 会综合考虑结构类型优先级、剩余容量与距离等因素
+     * @param resource 资源类型
+     * @param excludeId 可选，排除指定目标 id，避免把资源送回刚取出的来源
+     * @returns 选中的存放目标，找不到则为 null
+     */
+    findBestStoreTarget(resource: ResourceConstant, excludeId?: Id<AnyStoreStructure>): AnyStoreStructure | null;
+
+    // ==================== 战斗功能 (CombatFunction) ====================
+    /** 
+     * 查找敌对creep
+     * @param range - 可选，搜索范围，不传则搜索整个房间
+     * @param options - 可选过滤选项
+     * @param options.excludeWhitelist - 是否排除白名单玩家，默认true
+     * @param options.hasAttack - 是否只查找有近战攻击部件的，默认false
+     * @param options.hasRangedAttack - 是否只查找有远程攻击部件的，默认false
+     * @param options.hasHeal - 是否只查找有治疗部件的，默认false
+     * @returns 敌对creep数组
+     * @description 根据条件查找敌对creep，支持范围和部件过滤
+     * @example
+     * const enemies = creep.findHostileCreeps(10, { hasAttack: true });
+     */
+    findHostileCreeps(range?: number, options?: {
+        excludeWhitelist?: boolean;
+        hasAttack?: boolean;
+        hasRangedAttack?: boolean;
+        hasHeal?: boolean;
+    }): Creep[];
+    
+    /** 
+     * 攻击最近的敌人
+     * @returns ScreepsReturnCode - OK表示成功，ERR_NO_BODYPART表示没有攻击部件，ERR_NOT_FOUND表示没有敌人
+     * @description 使用近战攻击最近的敌人，如果不在范围内会自动移动
+     */
+    attackNearestHostile(): ScreepsReturnCode;
+    
+    /** 
+     * 远程攻击最近的敌人
+     * @returns ScreepsReturnCode - OK表示成功，ERR_NO_BODYPART表示没有远程攻击部件，ERR_NOT_FOUND表示没有敌人
+     * @description 使用远程攻击最近的敌人，如果不在范围内会自动移动
+     */
+    rangedAttackNearestHostile(): ScreepsReturnCode;
+    
+    /** 
+     * 自动攻击
+     * @param target - 可选，攻击目标，不传则自动寻找最近的敌人
+     * @returns ScreepsReturnCode - OK表示成功，ERR_NO_BODYPART表示没有攻击部件，ERR_NOT_FOUND表示没有敌人，ERR_NOT_IN_RANGE表示正在移动
+     * @description 根据身体部件和距离自动选择攻击方式（近战或远程）
+     * @example
+     * creep.autoAttack(); // 自动寻找并攻击最近的敌人
+     * creep.autoAttack(target); // 攻击指定目标
+     */
+    autoAttack(target?: Creep | Structure): ScreepsReturnCode;
+    
+    /** 
+     * 逃离敌人
+     * @param range - 可选，危险范围，默认5
+     * @returns true表示正在逃跑，false表示安全
+     * @description 使用PathFinder计算逃跑路径，躲避有攻击能力的敌人
+     */
+    fleeFromHostiles(range?: number): boolean;
+    
+    /** 
+     * 检查boost是否就绪
+     * @param boostTypes - 可选，boost类型数组
+     * @param must - 可选，是否必须boost，默认false
+     * @returns true表示已就绪或不需要boost，false表示未完成
+     * @description 检查指定的boost类型是否都已完成
+     */
+    checkBoostReady(boostTypes?: string[], must?: boolean): boolean;
+}
+
+/**
+ * Creep内存接口
+ * @description 定义creep.memory的结构，所有属性都是可选的以支持部分初始化
+ * @example
+ * // 完整初始化
+ * const memory: CreepMemory = { role: 'harvester', home: 'W1N1' };
+ * // 部分初始化（用于孵化任务）
+ * const memory = { sourceRoom: 'W1N1', targetRoom: 'W2N2' } as CreepMemory;
+ */
+interface CreepMemory {
+    /** 
+     * creep角色
+     * @description 决定creep的行为逻辑，孵化后由SpawnMission自动设置
+     */
+    role?: string;
+    
+    /** 
+     * 固定工作房间名（简写）
+     * @description 仅用于出生房=工作房的主力 creep；约定上不与 homeRoom/sourceRoom 共存。
+     */
+    home?: string;
+
+    /**
+     * 孵化房和归属房
+     * @description 用于 aid/战争/占领等外派 creep 的孵化房与归属房；约定上不与 home 共存，可与 sourceRoom 并存。
+     */
+    homeRoom?: string;
+    
+    /** 
+     * 目标房间名
+     * @description creep需要前往的目标房间
+     */
+    targetRoom?: string;
+    
+    /**
+     * 跨房任务的源头房
+     * @description 外矿/过道等需要反复来回的 creep 用它表示出发房、回收房或补给源头房；约定上不与 home 共存，可与 homeRoom 并存。
+     */
+    sourceRoom?: string;
+    
+    /** 
+     * 是否正在工作
+     * @description 简单的工作状态标记
+     */
+    working?: boolean;
+
+    /**
+     * boost等级
+     * @description 指定creep的boost强化等级，0-2
+     * @example 0: 无boost, 1: T2 boost, 2: T3 boost
+     */
+    boostLevel?: number;
+    
+    /** 
+     * boost配置映射
+     * @description 部件类型到boost资源的映射；支持单资源或候选列表（按顺序降级）
+     * @example { work: ['XGH2O', 'GH2O', 'GH'], tough: 'XGHO2' }
+     */
+    boostmap?: { [part: string]: MineralBoostConstant | MineralBoostConstant[] };
+
+    /**
+     * Boost 目标 Lab 缓存
+     * @description Boost 过程中缓存目标 Lab 的 id，用于跨 tick 复用
+     */
+    boostTargetId?: Id<StructureLab>;
+
+    /**
+     * Boost 目标资源缓存
+     * @description 避免预定空 Lab（mineralType 为 null）导致无法推断目标资源
+     */
+    boostTargetMineral?: MineralBoostConstant;
+
+    /**
+     * Boost 目标部件缓存
+     * @description 记录本轮 Boost 针对的部件类型，便于正确计算用量与完成状态
+     */
+    boostTargetPart?: BodyPartConstant;
+    
+    /** 
+     * 绑定的 creep ID
+     * @description 用于双人小队，绑定另一个 creep
+     */
+    bind?: Id<Creep>;
+
+    /**
+     * 绑定的 link ID
+     * @description 用于 up-repair 等角色复用固定取能 link
+     */
+    linkId?: Id<StructureLink>;
+    
+    /** 
+     * 当前任务
+     * @description 存储当前执行的任务信息
+     */
+    task?: Task;
+    
+    /** 
+     * 任务ID
+     * @description 当前绑定的任务池任务ID
+     */
+    taskId?: string;
+    
+    /** 
+     * 缓存数据
+     * @description 存储临时数据，如目标ID、路径等
+     */
+    cache?: {
+        /** 能量获取目标 */
+        takeTarget?: { id: string; type: string } | null;
+        /** 目标Source的ID */
+        targetSourceId?: Id<Source> | null;
+        /** 兼容旧缓存后的 source 分区 */
+        source?: { [key: string]: any };
+        /** 兼容旧缓存后的 target 分区 */
+        target?: { [key: string]: any };
+        /** 角色私有状态命名空间：角色私有字段统一写这里，禁止新增无命名空间的顶层临时字段 */
+        role?: { [key: string]: any };
+        /** boost 框架私有状态命名空间：boosted 标志与 lab/重试缓存，由 boostFunction 惰性创建 */
+        boost?: { [key: string]: any };
+        /** 缓存的路径 */
+        path?: RoomPosition[];
+        /** 其他缓存数据 */
+        [key: string]: any;
+    };
+
+    /**
+     * 分层状态机缓存
+     * @description 保存各层状态机的当前状态，格式: { [layerId: string]: StateId }
+     */
+    fsm?: Record<string, string>;
+
+    /** 
+     * 禁止被对穿
+     * @description 标记creep是否禁止被其他creep对穿
+     * @see src/wheel/betterMove.ts
+     */
+    dontPullMe?: boolean;
+
+    /**
+     * 上次位置记录
+     * @description 记录creep上次位置和停留时间，用于检测卡住
+     * @see src/wheel/betterMove.ts
+     */
+    lastPos?: {
+        /** X坐标 */
+        x: number;
+        /** Y坐标 */
+        y: number;
+        /** 停留时间（tick数） */
+        time: number;
+    };
+    
+    /** 
+     * 是否为领导者
+     * @description 双人小队中的领导者标记
+     */
+    isLeader?: boolean;
+    
+    /** 
+     * 旗帜名称
+     * @description 关联的旗帜名称，用于定位目标
+     */
+    flagName?: string;
+    
+    /** 
+     * 其他自定义数据
+     * @description 允许存储任意额外属性
+     */
+    [key: string]: any;
+}
+
+interface PowerCreepMemory {
+    /**
+     * 禁止被对穿/推挤
+     * @description moveopt 在交通调度阶段会读写该标记，保持与 CreepMemory 对齐。
+     */
+    dontPullMe?: boolean;
+
+    [key: string]: any;
+}
