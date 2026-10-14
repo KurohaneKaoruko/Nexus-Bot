@@ -1,0 +1,47 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"ignorePatterns": [
+		"sim/",
+		"dist/",
+		"scripts/",
+		"plugins/",
+		"src/modules/runtime/",
+		"src/modules/external/",
+		"src/modules/teams/",
+		"src/modules/industry/",
+		"src/modules/intershard/",
+		"src/modules/economy/roles/",
+		"src/modules/spawning/legacy/",
+		"src/modules/spawning/mission/",
+		"src/modules/defense/legacy/",
+		"src/modules/planner/legacy/",
+		"src/modules/movement/index.ts",
+		"src/modules/movement/moveMatch.ts",
+		"src/modules/visuals/RoomVisualExtension.ts"
+	],
+	"globals": {
+		"__dirname": "readonly"
+	},
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn"
+	},
+	"rules": {
+		"unicorn/no-array-sort": "off",
+		"unicorn/consistent-function-scoping": "off"
+	},
+	"overrides": [
+		{
+			"files": ["rolldown.config.js"],
+			"rules": {
+				"eslint/no-underscore-dangle": "off"
+			}
+		},
+		{
+			"files": ["src/branch/compat.ts"],
+			"rules": {
+				"typescript/no-extraneous-class": "off"
+			}
+		}
+	]
+}
