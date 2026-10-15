@@ -121,8 +121,8 @@ export function buildCourierBody(budget: number): BodyPartConstant[] | null {
 }
 
 /**
- * 预算现算体型: rush 生成器口径 (harvester 5W 封顶驻点矿工化 / upgrader 4W 拖 1M / worker 三件套整组);
- * 慢地形 harvester speed=1 (1:1 move/work, 到位前的沼泽路段不积疲劳)。
+ * 预算现算体型: rush 生成器口径 (harvester 5W 封顶驻点矿工化 / upgrader WORK 密度优先
+ * 递减试装 / worker 三件套整组); 慢地形 harvester speed=1 (1:1 move/work, 到位前的沼泽路段不积疲劳)。
  */
 export function buildBody(
 	unit: SpawnUnit,

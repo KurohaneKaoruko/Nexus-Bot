@@ -1,13 +1,28 @@
 import { UPGRADER_BODY_CONFIG } from "@/config/economy";
 
 /**
+ * 引擎常量兜底表 (桩环境可能缺全局, 走静态值)。
+ * 本文件被 rush 生成器复用, 故不得假定全局常量一定存在。
+ */
+const PART_COST: Readonly<Record<string, number>> = {
+	work: 100,
+	carry: 50,
+	move: 50,
+	tough: 10,
+};
+const partCost = (part: string): number => PART_COST[part] ?? 100;
+const carryCapacity = (): number => (typeof CARRY_CAPACITY === "number" ? CARRY_CAPACITY : 50);
+const maxCreepSize = (): number => (typeof MAX_CREEP_SIZE === "number" ? MAX_CREEP_SIZE : 50);
+
+/**
  * rush 体型生成器: 按能量预算现算体型 (零依赖纯算法, 引擎常量为唯一触点)。
  * 契约: 任意预算下成本 ≤ 预算; 预算低于角色下限返回 null (调用方跳过, 不留死锁体型);
  * 排布统一 WORK 组在前、收尾 1 个 WORK (重载时疲劳吸收最稳的落位)。
  *
  * 口径:
  * - harvester: [W×n, C×c, M×m] 定点矿工化, WORK 封顶单矿再生上限 (5W = 10 能量/tick);
- * - upgrader: [W×n, C×c, M×m], WORK 优先, move 增长门 work/move ≥ 4 (4 WORK 拖 1 MOVE);
+ * - upgrader: [W×n, C×c, M×m], WORK 密度优先, 自 maxWork 递减试装取容量装得下的最大 WORK,
+ *   配比 CARRY=ceil(work×carryEnergyPerWork/容量)、MOVE=ceil(work/workPerMove) (见 UPGRADER_BODY_CONFIG);
  * - worker: [W,C,M] 三件套整组扩展, 整组付不起时回退 [W+M] / [M+C] 半组。
  */
 
@@ -133,22 +148,23 @@ export function buildRushUpgraderBody(
 	}
 
 	// 预算隐含的 WORK 上界 (先按最少配比粗估, 再由试装收敛)
-	const upperWork = maxWork ?? Math.min(MAX_CREEP_SIZE, Math.floor(budget / BODYPART_COST[WORK]));
+	const capacity = carryCapacity();
+	const partsCap = maxCreepSize();
+	const upperWork = maxWork ?? Math.min(partsCap, Math.floor(budget / partCost("work")));
 	for (let work = upperWork; work >= 1; work -= 1) {
 		// carryRatio ≥ 1 时维持至少 1 CARRY; carryEnergyPerWork 决定超过 1 时的增长
 		const carry = Math.max(
 			1,
 			Math.max(
-				Math.ceil((carryRatio * work) / CARRY_CAPACITY),
-				Math.ceil((UPGRADER_BODY_CONFIG.carryEnergyPerWork * work) / CARRY_CAPACITY),
+				Math.ceil((carryRatio * work) / capacity),
+				Math.ceil((UPGRADER_BODY_CONFIG.carryEnergyPerWork * work) / capacity),
 			),
 		);
 		const move = Math.max(UPGRADER_BODY_CONFIG.minMove, Math.ceil(work / UPGRADER_BODY_CONFIG.workPerMove));
-		if (work + carry + move > MAX_CREEP_SIZE) {
+		if (work + carry + move > partsCap) {
 			continue;
 		}
-		const cost =
-			work * BODYPART_COST[WORK] + carry * BODYPART_COST[CARRY] + move * BODYPART_COST[MOVE];
+		const cost = work * partCost("work") + carry * partCost("carry") + move * partCost("move");
 		if (cost > budget) {
 			continue;
 		}

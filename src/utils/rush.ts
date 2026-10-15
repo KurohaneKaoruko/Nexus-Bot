@@ -1,5 +1,6 @@
 import { UNITS } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
+import { buildRushUpgraderBody as buildUpgraderBodyFlat } from '@/utils/rushBodies';
 
 /**
  * rush 体型生成器：按能量预算现算体型，替代固定分级表。
@@ -141,14 +142,9 @@ export const buildRushCarrierBody = (budget: number): RushBody | null => {
 };
 
 /**
- * upgrader 体型：
- * 1W1C1M（200）起步 →
- * CARRY 增长门为**容量比** `(CARRY_CAPACITY×carry)/work < carryRatio`
- * （carryRatio 默认 1：升级期基本维持 1 个 CARRY 缓冲）→
- * MOVE 增长门 `work/move ≥ 4`（最多 4 WORK 拖 1 MOVE）→
- * 其余预算全部转 WORK → WORK 达 maxWork（升级缺口）即停。
- *
- * 排布：WORK 组在前、收尾 1 个 WORK。
+ * upgrader 体型：转发到 `rushBodies` 的平铺生成器（WORK 密度优先），
+ * 再按「WORK 组在前、收尾 1 个 WORK」折叠成分组体，保持本文件的 RushBody 契约。
+ * 口径唯一来源为 rushBodies.buildRushUpgraderBody。
  */
 export const RUSH_UPGRADER_MIN_BUDGET = partCost('work') + partCost('carry') + partCost('move');
 
@@ -156,43 +152,16 @@ export const buildRushUpgraderBody = (
     budget: number,
     options: { maxWork?: number; carryRatio?: number } = {},
 ): RushBody | null => {
-    const { maxWork, carryRatio = 1 } = options;
-    if (budget < RUSH_UPGRADER_MIN_BUDGET) return null;
-
-    const maxParts = MAX_CREEP_SIZE_V();
-    let cost = partCost('work') + partCost('carry') + partCost('move');
-    let work = 1;
-    let move = 1;
-    let carry = 1;
-
-    while (budget > cost) {
-        if ((CARRY_CAPACITY_V() * carry) / work < carryRatio && budget >= cost + partCost('carry')) {
-            if (work + move + carry + 1 > maxParts) break;
-            carry += 1;
-            cost += partCost('carry');
-            continue;
-        }
-
-        if ((move === 0 || work / move >= 4) && budget >= cost + partCost('move')) {
-            if (work + move + carry + 1 > maxParts) break;
-            move += 1;
-            cost += partCost('move');
-            continue;
-        }
-
-        if (maxWork && work >= maxWork) break;
-
-        if (budget >= cost + partCost('work')) {
-            if (work + move + carry + 1 > maxParts) break;
-            work += 1;
-            cost += partCost('work');
-            continue;
-        }
-
-        break;
-    }
-
-    return assembleRushBody([WORK, work - 1], [CARRY, carry], [MOVE, move], [WORK, 1]);
+    const flat = buildUpgraderBodyFlat(budget, options);
+    if (!flat) return null;
+    const countOf = (part: BodyPartConstant): number => flat.filter((p) => p === part).length;
+    const work = countOf(WORK);
+    return assembleRushBody(
+        [WORK, work - 1],
+        [CARRY, countOf(CARRY)],
+        [MOVE, countOf(MOVE)],
+        [WORK, 1],
+    );
 };
 
 /** worker（建造/维修兼升级）最低孵化预算：[W1,C1,M1] = 200 */
