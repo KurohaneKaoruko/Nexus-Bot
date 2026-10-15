@@ -6,9 +6,12 @@
 import type { CreepSummary } from "@/core/world";
 import type { NexusTask } from "@/core/store/taskSchema";
 import { leaseTicksFor } from "@/core/store/taskSchema";
+import { UNIT_CODES } from "@/constant/UnitConstant";
 
 export interface CapabilityProfile {
 	creepName: string;
+	/** 角色代号 (感知侧从名称解析): 亲和评分用 */
+	unitCode: string;
 	roomName: string;
 	x: number;
 	y: number;
@@ -43,6 +46,13 @@ export const SCORE_WEIGHTS = {
 	criticality: 100,
 	urgency: 30,
 	utility: 20,
+	/**
+	 * 亲和加分 (bugs/P1-14 派发段): 阈值算式 W > 90 —— 最坏情形 fill_spawn(95,
+	 * 无亲和得分 137+滞回 15) vs upgrade(30, 亲和得分 62+W), W=95 时专职升级体
+	 * 能从 fill_spawn 逃回同族任务且反向不可夺; 生存类 (defend/retreat ≥ 抢占线)
+	 * 豁免滞回, 不受本权重压制。
+	 */
+	affinity: 95,
 	capabilityFit: 15,
 	travel: 2,
 	risk: 10,
@@ -59,6 +69,7 @@ const MIN_TTL = 150;
 export function profileOf(summary: CreepSummary): CapabilityProfile {
 	return {
 		creepName: summary.name,
+		unitCode: summary.unitCode,
 		roomName: summary.roomName,
 		x: summary.x,
 		y: summary.y,
@@ -136,6 +147,26 @@ const KIND_UTILITY: Record<string, number> = {
 	upgrade: 0.4,
 };
 
+/**
+ * 角色 ↔ 任务类型亲和表 (bugs/P1-14 派发段): 专职编制的体对同族任务加分,
+ * 防高优任务 (fill_spawn 95 vs upgrade 85) 把专职升级体吸走——否则升级任务
+ * 成「烫手山芋」循环易主 (30k tick 前程进度零增长的根因)。
+ * 代号键从 UNIT_CODES 单源派生 (禁止手抄代号字符串);
+ * 无亲和角色 (universal 等) 全表可接, 兜底行为不受影响。
+ */
+const UNIT_TASK_AFFINITY: Record<string, readonly string[]> = {
+	[UNIT_CODES.upgrader]: ["upgrade"],
+	[UNIT_CODES.worker]: ["build", "repair"],
+	[UNIT_CODES.harvester]: ["harvest"],
+	[UNIT_CODES.carrier]: ["fill_spawn", "haul"],
+	[UNIT_CODES.defender]: ["defend"],
+};
+
+/** 角色对任务是否亲和 (无表项角色恒不加分) */
+function isAffine(unitCode: string, kind: string): boolean {
+	return (UNIT_TASK_AFFINITY[unitCode] ?? []).includes(kind);
+}
+
 export function scoreCandidate(
 	profile: CapabilityProfile,
 	task: NexusTask,
@@ -159,11 +190,13 @@ export function scoreCandidate(
 		return false;
 	}).length;
 	const capabilityFit = matched / required;
+	const affinity = isAffine(profile.unitCode, task.kind) ? 1 : 0;
 	const w = SCORE_WEIGHTS;
 	return (
 		w.criticality * criticality +
 		w.urgency * urgency +
 		w.utility * utility +
+		w.affinity * affinity +
 		w.capabilityFit * capabilityFit -
 		w.travel * travelCost -
 		w.switch * switchCost

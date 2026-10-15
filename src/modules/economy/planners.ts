@@ -28,6 +28,60 @@ import { UNIT_CODES } from "@/constant/UnitConstant";
 
 const PLANNED_KINDS: TaskKind[] = ["harvest", "haul", "fill_spawn", "upgrade", "build"];
 
+/**
+ * 无 cc 期升级工位枚举 (bugs/P1-14 派发段): 控制器射程 (3) 内、距控制器 ≥2 的
+ * 环带可站位格 (非墙/无结构阻挡, 感知层 structureBlocked 口径的近似——用 sites+stores 判占)。
+ * 与 cc slots 同构: 固定顺序枚举取前 wanted 格, 工位任务 i ↔ 枚举序 i。
+ * 地形墙不可站——planner 运行在 commit 阶段, 可直接读 Game.rooms 原生地形。
+ */
+function controllerWorkSlots(
+	room: RoomObservation,
+	wanted: number,
+): Array<{ x: number; y: number }> {
+	const controller = room.controller;
+	if (!controller) {
+		return [];
+	}
+	const roomObj = Game.rooms[room.roomName];
+	const terrain = roomObj?.getTerrain();
+	const blocked = new Set<string>();
+	for (const site of room.sites) {
+		blocked.add(`${site.x},${site.y}`);
+	}
+	for (const store of room.stores) {
+		blocked.add(`${store.x},${store.y}`);
+	}
+	for (const structure of room.energyStructures) {
+		blocked.add(`${structure.x},${structure.y}`);
+	}
+	const slots: Array<{ x: number; y: number }> = [];
+	for (let dy = -3; dy <= 3; dy += 1) {
+		for (let dx = -3; dx <= 3; dx += 1) {
+			const cheb = Math.max(Math.abs(dx), Math.abs(dy));
+			// 内环 (cheb ≤ 1) 保留给控制器本体与 cc 落位; 外环射程边沿留给交通
+			if (cheb < 2 || cheb > 3) {
+				continue;
+			}
+			const x = controller.x + dx;
+			const y = controller.y + dy;
+			if (x < 0 || x > 49 || y < 0 || y > 49) {
+				continue;
+			}
+			if (blocked.has(`${x},${y}`)) {
+				continue;
+			}
+			if (terrain !== undefined && (terrain.get(x, y) & TERRAIN_MASK_WALL) !== 0) {
+				continue;
+			}
+			slots.push({ x, y });
+			if (slots.length >= wanted) {
+				return slots;
+			}
+		}
+	}
+	return slots;
+}
+
 /** 节流期保持既有任务存活: 不新建, 仅以压制优先级合并更新 (防「暂停即取消」抖动) */
 function sustainSuppressed(
 	board: TaskBoard,
@@ -125,7 +179,19 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				emitUpgrade(`upgrade:${room.roomName}:cc:${slot.x},${slot.y}`, slot);
 			}
 		} else {
-			emitUpgrade(`upgrade:${room.roomName}`, { x: room.controller.x, y: room.controller.y });
+			// 无 cc 多工位 (bugs/P1-14 派发段): cc 缺席时升级容量不再是全房 1 条任务——
+			// 按定编只数在控制器射程内环带取可站位格发射工位任务 (与 cc slots 同构,
+			// 租约即分配); 工位数取满额 (与经济态解耦), 否则 CRITICAL 收缩时任务
+			// 随 wanted 波动 subject-gone 取消重建, 持有者反复易主; cc 建成后自动
+			// 切换 cc slots 版本
+			const wanted = SPAWN_CONFIG.maxUpgradersPerRoom;
+			if (wanted > 1) {
+				for (const slot of controllerWorkSlots(room, wanted)) {
+					emitUpgrade(`upgrade:${room.roomName}:slot:${slot.x},${slot.y}`, slot);
+				}
+			} else {
+				emitUpgrade(`upgrade:${room.roomName}`, { x: room.controller.x, y: room.controller.y });
+			}
 		}
 	}
 
@@ -151,7 +217,9 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				(BUILD_PRIORITY_BONUS[site.structureType] ?? 0),
 			requiredCapabilities: ["work", "carry", "move"],
 		};
-		if (directive.suppressUpgradeBuild) {
+		// cc 工地豁免节流 (bugs/P1-14 派发段): 升级直供链路的地基, survive 压制会让
+		// cc 建造 (75−20=55) 恒排 ext (70) 之后无限期搁置——地基不成, 供能链永缺前提物
+		if (directive.suppressUpgradeBuild && !nearController) {
 			input.priority -= STRATEGY_CONFIG.suppressPenalty;
 			sustainSuppressed(board, room.roomName, "build", dedupeKey, input, expected, ctx.tick);
 		} else {
