@@ -90,8 +90,14 @@ export const SPAWN_CONFIG = {
 	/** 攒能定档实验位 (2026-10-13 校准记录): harvester/carrier 攒能定档在
 	 *  强耦合经济里两轮全负 (6588/3919 vs 基线口径 6019)——采集面归零后等待
 	 *  断粮死锁, 自举通道补丁又把升级挤垮。维持空表 = 全部按优先级立即定档,
-	 *  WORK 密度问题留待与定编/专线同拍的成套校准 (禁止单旋钮, 见 design 校准史) */
-	capacityWaitRoles: [] as readonly string[],
+	 *  WORK 密度问题留待与定编/专线同拍的成套校准 (禁止单旋钮, 见 design 校准史)
+	 *
+	 *  2026-10-16 (十五) 重开实验: urgent 通道按 available 立即定档是小体 churn
+	 *  永动机的根因 (speedrun 247 只/31k 全 2-3 部件, 40k 零个 5+ 部件)——
+	 *  priority ≥ 70 是排队语义, 绑死「跳过攒能」使 spawn 永不攒大钱。
+	 *  断粮死锁已由 harvester staffed==0 自举通道兜底 (本函数 urgent 条件内),
+	 *  生产角色回攒能表: desired 按 capacity 定档, 不足等 120t (短窗), 超时降档。 */
+	capacityWaitRoles: ["harvester", "upgrader", "carrier", "worker", "rush-courier", "transporter"] as readonly string[],
 	/** 攒能角色的短等待窗: 匹配 replacement 提前量, 换代断采 <8% 工作期 (50k 实测) */
 	capacityWaitTicksShort: 120,
 	/** 替补用途请求的等待上限: 换代提前量 (生产+路程+余量) 量级 ~80t, 原 400t 等待
