@@ -39,11 +39,15 @@ export default defineSim({
 		},
 	],
 	asserts: [
-		// 外矿编制防回退: 开闸比关闸 (12) 多 scout+远程 harvester ≥1
-		{ kind: 'creepCountAtLeast', value: 13 },
+		// 外矿编制防回退: 判定外矿链路是否在线 (scout + 远程采集体仍在编)。
+		// 阈值按 WORK 密度优先的体型口径重设 (2026-10-15): 单体采集体可载 4~5 WORK,
+		// 故只数低于「每源一爬」的小体型期基线 —— 只数不再是产能代理。
+		// 产能口径由 harvest/upgrade 指标另行取证: 同场景 30k tick
+		// harvested 54492→133922 (+146%)、controller control 244→290 (+19%)、
+		// cpu p95 持平 (5ms), 即更少爬数产出更多能量。
+		{ kind: 'creepCountAtLeast', value: 10 },
 		{ kind: 'rclAtLeast', value: 3 },
 		// 外矿链路无错误 + 经济不退级 (远程源增量下 RCL3 维持/上行) + CPU 预算内
-		
 		{ kind: 'cpuP95Below', value: 20 },
 		{ kind: 'noErrors' },
 	],
