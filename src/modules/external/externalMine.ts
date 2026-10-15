@@ -1,5 +1,5 @@
-
-import { deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
+import { deleteMissionFromPool } from "@/modules/spawning/mission/pool/MissionPools";
+import { CARRY_STAFFING_CONFIG } from "@/config/economy";
 import { qos } from '@/core/qos';
 import { getWhitelistIds, isWarMode } from '@/core/store/accessor';
 import { EXTERNAL_ROAD_CONFIG } from '@/constant/BaseConstant';
@@ -98,10 +98,11 @@ export class ExternalMineState {
     private static readonly CENTER_ROOM_REGEX = /^[EW]\d*[456][NS]\d*[456]$/;
     private static readonly EXACT_CENTER_ROOM_REGEX = /^[EW]\d*[5][NS]\d*[5]$/;
     private static readonly DEFAULT_LOCAL_SOURCE_COUNT = 2;
+    /** 每 spawn 在册爬容量 = 寿命 / 单只孵化耗时; 单只孵化耗时 = CREEP_SPAWN_TIME × 部件数 */
     private static readonly SPAWN_USAGE_PER_SPAWN =
         (typeof CREEP_LIFE_TIME === 'number' && typeof CREEP_SPAWN_TIME === 'number')
-            ? CREEP_LIFE_TIME / CREEP_SPAWN_TIME
-            : 500;
+            ? CREEP_LIFE_TIME / (CREEP_SPAWN_TIME * CARRY_STAFFING_CONFIG.nominalCreepParts)
+            : 1500 / (3 * 6);
     private static readonly LOCAL_SOURCE_BASE_WEIGHT = 42;
     private static readonly LOCAL_PORTER_WEIGHT_PER_SPAWN = 23;
     private static readonly LOCAL_CONTROLLER_WEIGHT = 18;
@@ -1960,7 +1961,9 @@ export class ExternalMineSpawner {
     /** 剩余外矿孵化容量（已扣本地计划编成与在编外务；负数 = 本地缺口，外矿全停） */
     static getRemoteSpawnLeftover(sourceRoom: Room): number {
         const LIFE = typeof CREEP_LIFE_TIME === 'number' ? CREEP_LIFE_TIME : 1500;
-        const SPAWN_TIME = typeof CREEP_SPAWN_TIME === 'number' ? CREEP_SPAWN_TIME : 3;
+        // 引擎按 `CREEP_SPAWN_TIME × 部件数` 计孵化耗时, 须乘标称部件数, 否则容量高估数倍
+        const SPAWN_TIME = (typeof CREEP_SPAWN_TIME === 'number' ? CREEP_SPAWN_TIME : 3)
+            * CARRY_STAFFING_CONFIG.nominalCreepParts;
         const capacity = Math.max(1, (sourceRoom.spawn || []).length) * Math.floor(LIFE / SPAWN_TIME);
         let localDemand = 0;
         let remoteUsed = 0;
