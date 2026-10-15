@@ -1,6 +1,6 @@
 /**
- * Memory.Nexus schema v10 (新增 rooms[].sourceTiming/upgradersStarved/spawnBalanceEma,
- * specs/workforce-staffing 吞吐定编的持久输入)。
+ * Memory.Nexus schema v11 (新增 rooms[].harvestSplit 源饱和实测分解,
+ * SquadRecord.slots 标量→异构槽位定义数组)。
  * 规则: 只持久化 JSON 兼容数据 (ID + 元数据), 不保存游戏 API 对象引用;
  *       所有持久化结构携带 schemaVersion, 由 migrations 逐版本升级;
  *       新增子系统全部有界: 预留过期清理 / 热点条目上限 / 样本窗口固定。
@@ -9,7 +9,7 @@ import { STRATEGY_CONFIG } from "@/config/strategy";
 import type { RoomModeName } from "@/config/roomMode";
 import type { NexusTask, TaskKind } from "./taskSchema";
 
-export const CURRENT_SCHEMA_VERSION = 10;
+export const CURRENT_SCHEMA_VERSION = 11;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
 
@@ -44,6 +44,20 @@ export interface RoomThreatRecord {
 	reason: string;
 }
 
+/**
+ * 源饱和口径实测分解 (specs/harvest-supply-convergence「源饱和口径实测分解」):
+ * 采集体在该源上的时间去向 EMA 比例 (specs/workforce 采集收入按在岗 WORK 单一事实的
+ *  证据侧记录)。三项占比之和为 1; 定长定数, 不随 tick 增长。
+ */
+export interface HarvestSplitRecord {
+	/** 在源采集 (含正常产出) 占比 */
+	atSource: number;
+	/** 往返 (前往源/回交付) 占比 */
+	transit: number;
+	/** 在位等待 (源枯竭或工位未就绪) 占比 */
+	waiting: number;
+}
+
 export interface RoomIntelRecord {
 	/** 最近一次观测 tick */
 	lastSeen: number;
@@ -60,6 +74,9 @@ export interface RoomIntelRecord {
 	mode?: RoomModeName;
 	/** 源单程路程实测 (specs/workforce-staffing): sourceId → pathTime, 首次到岗采样并钳制 */
 	sourceTiming?: Record<string, number>;
+	/** 源饱和口径实测分解 (specs/harvest-supply-convergence): sourceId → 采集工时间去向
+	 *  EMA 比例 (在源/往返/等待)。定长记录 (每源三项), 不随 tick 增长。 */
+	harvestSplit?: Record<string, HarvestSplitRecord>;
 	/** 升级饥饿记账 (specs/workforce-staffing): 取能落空且缓冲全空时累积, 按流逝 tick 惰性衰减 */
 	upgradersStarved?: { amount: number; tick: number };
 	/** rush 供需 EMA (specs/workforce-staffing): 升级火力乘数浮动状态 [-1,1] */
@@ -200,9 +217,32 @@ export interface NexusGlobalMemory {
 	transitionCount: number;
 }
 
+/**
+ * 编队收益对比 (specs/squad-coordination-metrics「编队收益指标入遥测」):
+ * 编队建立时的基线快照 (同房等长窗口) 与当前协同窗口的累计, 供「协同是否带来收益」
+ * 取证。定长定数 (每房一条), 不随 tick 或编队次数增长。
+ */
+export interface SquadBenefitRecord {
+	/** 滚动窗口长度 (tick): 累计超过该长度即按窗口衰减回退 */
+	window: number;
+	/** 当前协同窗口累计 */
+	kills: number;
+	losses: number;
+	/** 成员在编累计 tick (存活时长口径) */
+	memberTicks: number;
+	/** 编队建立时的基线快照 (等长窗口对照) */
+	baseKills: number;
+	baseLosses: number;
+	baseMemberTicks: number;
+	/** 最近一次结算 tick */
+	evaluatedAt: number;
+}
+
 export interface NexusMetricsMemory {
 	/** 累计迁移次数 (排障用) */
 	migrationCount: number;
+	/** 房名 → 编队收益对比 (specs/squad-coordination-metrics); 有界: 每房一条 */
+	squadBenefit?: Record<string, SquadBenefitRecord>;
 }
 
 /** SafeMode 簿记 (docs/nexus-design/09 §9.3: 重要限时防御资源, 重试有冷却) */
@@ -243,24 +283,39 @@ export interface DefenseMemory {
 }
 
 /** 编队类型 (docs/nexus-design/19 §19.4 集群): 防御编队为当前唯一消费方, 后续可扩 remote/industry */
-export type SquadKind = "defense";
+export type SquadKind = "defense" | "remote";
+
+/**
+ * 异构槽位定义 (specs/squad-heterogeneous-slots): 一个槽位条目可携带独立的
+ * 任务种类与所需能力, 使同一编队内可混编采集位/搬运位/护卫位 (矿工+搬运+护卫)。
+ * `count` 表示同质槽位的数量 (便于迁移与裁剪)。
+ */
+export interface SquadSlotDef {
+	/** 槽位成员任务种类 (与成员任务 kind 一致) */
+	taskKind: TaskKind;
+	/** 该槽位所需能力 (写入成员任务 requiredCapabilities) */
+	capabilities: string[];
+	/** 同质槽位数量 */
+	count: number;
+}
 
 /**
  * 编队记录 (docs/nexus-design/19 §19.4 / docs/nexus-design/20): 多 Creep 协作编队的持久化形态。
  * 编队只持有「槽位」——每个槽位对应一条成员任务 (dedupeKey = squad:<id>:slot:<n>),
  * 成员由任务的 assignedTo 反填; 编队不直接指挥单位, 成员行动仍经 AgentSystem → ActionBroker。
+ * 槽位以定义数组表达 (异构); `taskKind`/`capabilities` 为编队级默认槽位定义, 供迁移与回退。
  * 有界: 编队数上限 + 槽位上限 + TTL (请求方不续期即解散并回收槽位任务)。
  */
 export interface SquadRecord {
 	id: string;
 	kind: SquadKind;
 	roomName: string;
-	/** 槽位任务的种类 (与成员任务 kind 一致) */
+	/** 编队级默认槽位任务种类 (与成员任务 kind 一致); 异构槽位以其自身 taskKind 为准 */
 	taskKind: TaskKind;
-	/** 每槽位所需能力 (写入成员任务 requiredCapabilities) */
+	/** 编队级默认每槽位所需能力; 异构槽位以其自身 capabilities 为准 */
 	capabilities: string[];
-	/** 槽位总数 = 期望成员数 */
-	slots: number;
+	/** 异构槽位定义数组; 总槽位数 = Σ count */
+	slots: SquadSlotDef[];
 	/** 当前成员 creep 名 (由槽位任务 assignedTo 反填, 对账维护) */
 	members: string[];
 	priority: number;

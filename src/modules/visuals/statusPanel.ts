@@ -10,7 +10,7 @@ import { unitCode } from "@/constant/UnitConstant";
 import type { Posture } from "@/core/store/memorySchema";
 import { economyIndicators, type EconomyIndicators } from "@/modules/economy";
 import { strategySnapshot, roomModeFor, type StrategySnapshot } from "@/modules/strategy";
-import { clusterSnapshot, type ClusterSnapshot } from "@/modules/cluster";
+import { clusterSnapshot, squadBenefitSnapshot, type ClusterSnapshot } from "@/modules/cluster";
 import { defenseSnapshot, type DefenseSnapshot } from "@/modules/defense";
 import { HUD_BODY_FONT, HUD_THEME, type HudLine } from "@/modules/visuals/roomVisuals";
 
@@ -18,6 +18,7 @@ import { HUD_BODY_FONT, HUD_THEME, type HudLine } from "@/modules/visuals/roomVi
 let lastEconomy: EconomyIndicators | null = null;
 let lastStrategy: StrategySnapshot | null = null;
 let lastCluster: ClusterSnapshot | null = null;
+let lastSquadBenefit: ReturnType<typeof squadBenefitSnapshot> = [];
 let lastDefense: DefenseSnapshot | null = null;
 let lastModes: Record<string, string> = {};
 
@@ -170,6 +171,8 @@ function registerQueries(): void {
 	query.strategy = () => lastStrategy;
 	query.defense = () => lastDefense;
 	query.cluster = () => lastCluster;
+	// 编队收益对比 (specs/squad-coordination-metrics): 协同是否值得开启的可取证口径
+	query.squadBenefit = () => lastSquadBenefit;
 	query.modes = () => lastModes;
 	(globalThis as unknown as Record<string, unknown>).Nexus = query;
 }
@@ -182,6 +185,7 @@ export function drawStatusPanel(ctx: TickContext): void {
 	lastStrategy = strategySnapshot(ctx);
 	lastDefense = defenseSnapshot(ctx);
 	lastCluster = clusterSnapshot(ctx);
+	lastSquadBenefit = squadBenefitSnapshot(ctx);
 	const modes: Record<string, string> = {};
 	for (const room of Object.values(Game.rooms)) {
 		if (room.controller?.my) {

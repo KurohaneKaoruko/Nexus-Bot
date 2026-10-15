@@ -4,7 +4,7 @@ import { log } from '@/utils/log';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { isUnitId, UNITS, UnitData, type UnitId } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
-import { GenUnitName, generateCreepName } from '@/utils/naming';
+import { generateCreepName } from '@/utils/naming';
 import { decompressBodyConfig } from '@/utils/compress';
 import { getRoomData } from '@/core/store/accessor';
 import { getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
@@ -125,7 +125,7 @@ export default class SpawnControl extends Room {
         const spawnBootstrap = (unit: UnitId, body: BodyPartConstant[]) => {
             const result = spawn.spawnCreep(
                 body,
-                generateCreepName(unit, { random: Math.random }),
+                generateCreepName(unit, { random: Math.random, exists: (n) => n in Game.creeps }),
                 { memory: { unit, home: this.name, cache: {} } as CreepMemory }
             );
             if (result !== OK) return false;
@@ -180,7 +180,7 @@ export default class SpawnControl extends Room {
 
         const result2 = spawn.spawnCreep(
             universalBody,
-            generateCreepName(UNITS.universal, { random: Math.random }),
+            generateCreepName(UNITS.universal, { random: Math.random, exists: (n) => n in Game.creeps }),
             { memory: { unit: UNITS.universal, home: this.name, cache: {} } as CreepMemory }
         );
         if (result2 !== OK) return false;
@@ -231,7 +231,12 @@ export default class SpawnControl extends Room {
 
         updateDowngradedFlag(this, unit, data, cost, resolved.usedBudget, state);
 
-        const name = data.name ? GenUnitName(data.name) : generateCreepName(unit, { random: Math.random });
+        // 命名统一走 generateCreepName(unit): 派单时的 data.name 存的是角色代号,
+        // 直接拼装会得到无中文体名的 `H-XXXX`, 且撞名时靠递归重取 (无界)。
+        const name = generateCreepName(unit, {
+            random: Math.random,
+            exists: (candidate) => candidate in Game.creeps,
+        });
 
         return {
             bodypart,
@@ -325,7 +330,7 @@ export default class SpawnControl extends Room {
                 if (DOWNGRADED_LOGISTICS_ROLE_SET.has(unit)) {
                     data.memory.downgraded = true;
                 }
-                const emergencyResult = spawn.spawnCreep(bodypart, generateCreepName(unit, { random: Math.random }), { memory: data.memory });
+                const emergencyResult = spawn.spawnCreep(bodypart, generateCreepName(unit, { random: Math.random, exists: (n) => n in Game.creeps }), { memory: data.memory });
                 if (emergencyResult === OK) {
                     finishSpawnTask(this, unit, data.taskId);
                     log(`房间 ${this.name} 不足以孵化目标体型 ${unit}，已按当前能量孵化缩小体型。`);

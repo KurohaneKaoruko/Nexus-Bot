@@ -251,6 +251,92 @@ export const migrateV9ToV10: MigrationFn = (memory) => {
 	return {};
 };
 
+/** 迁移期单编队槽位数上限: 防坏数据放大, 与 CLUSTER_CONFIG.maxSlotsPerSquad 同量级 */
+const MAX_SLOT_COUNT_PER_SQUAD = 64;
+
+/**
+ * v10 → v11: 新增 rooms[].harvestSplit 源饱和实测分解 (可选, 缺省不回填);
+ * `SquadRecord.slots` 由数量标量升级为异构槽位定义数组——旧标量 N 展开为与原编队
+ * taskKind/capabilities 一致的同质槽位 (specs/squad-heterogeneous-slots
+ * 「槽位结构变更向后兼容」)。`expiresAt`/`members` 不动, 保持续期语义与在编成员;
+ * 坏条目回退安全空槽位数组而非抛错, 保证迁移不中断。迁移幂等。
+ */
+export const migrateV10ToV11: MigrationFn = (memory) => {
+	const rooms = memory["rooms"];
+	if (isPlainObject(rooms)) {
+		for (const key of Object.keys(rooms)) {
+			const entry = rooms[key];
+			if (!isPlainObject(entry)) {
+				continue;
+			}
+			const split = entry["harvestSplit"];
+			if (split === undefined) {
+				continue;
+			}
+			if (!isPlainObject(split)) {
+				delete entry["harvestSplit"];
+				continue;
+			}
+			for (const sourceId of Object.keys(split)) {
+				const rec = split[sourceId];
+				if (
+					!isPlainObject(rec) ||
+					typeof rec["atSource"] !== "number" ||
+					typeof rec["transit"] !== "number" ||
+					typeof rec["waiting"] !== "number"
+				) {
+					delete split[sourceId];
+				}
+			}
+		}
+	}
+
+	const squads = memory["squads"];
+	if (isPlainObject(squads)) {
+		for (const id of Object.keys(squads)) {
+			const squad = squads[id];
+			if (!isPlainObject(squad)) {
+				continue;
+			}
+			const taskKind = typeof squad["taskKind"] === "string" ? squad["taskKind"] : "defend";
+			const caps = Array.isArray(squad["capabilities"])
+				? squad["capabilities"].filter((c: unknown) => typeof c === "string")
+				: [];
+			const slots = squad["slots"];
+			if (Array.isArray(slots)) {
+				// 已是数组: 仅防御性清洗非法项, 保持幂等
+				squad["slots"] = slots
+					.filter(
+						(s: unknown) =>
+							isPlainObject(s) &&
+							typeof s["taskKind"] === "string" &&
+							Array.isArray(s["capabilities"]) &&
+							typeof s["count"] === "number" &&
+							(s["count"] as number) > 0,
+					)
+					.map((s: Record<string, unknown>) => ({
+						taskKind: s["taskKind"] as string,
+						capabilities: (s["capabilities"] as unknown[]).filter(
+							(c: unknown) => typeof c === "string",
+						) as string[],
+						count: Math.min(
+							MAX_SLOT_COUNT_PER_SQUAD,
+							Math.floor(s["count"] as number),
+						),
+					}));
+				continue;
+			}
+			// 旧标量: N 展开为单个同质槽位定义 (count=N)
+			const count =
+				typeof slots === "number" && Number.isFinite(slots) && slots > 0
+					? Math.min(MAX_SLOT_COUNT_PER_SQUAD, Math.floor(slots))
+					: 0;
+			squad["slots"] = count > 0 ? [{ taskKind, capabilities: caps, count }] : [];
+		}
+	}
+	return {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -262,4 +348,5 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV7ToV8,
 	migrateV8ToV9,
 	migrateV9ToV10,
+	migrateV10ToV11,
 ];
