@@ -79,6 +79,12 @@ export interface RoomIntelRecord {
 	harvestSplit?: Record<string, HarvestSplitRecord>;
 	/** 升级饥饿记账 (specs/workforce-staffing): 取能落空且缓冲全空时累积, 按流逝 tick 惰性衰减 */
 	upgradersStarved?: { amount: number; tick: number };
+	/**
+	 * RCL 达成时间线 (speedrun 取证, bugs (十六)): level → 首次观测到该等级的 tick。
+	 * 4wt 重置后 Memory 保留——跨周期留证 + 榜单口径 (score = 累计门槛 + progress)
+	 * 的取证入口。定长 (≤8 项), 随等级增长。
+	 */
+	rclTimeline?: Record<number, number>;
 	/** rush 供需 EMA (specs/workforce-staffing): 升级火力乘数浮动状态 [-1,1] */
 	spawnBalanceEma?: number;
 	/** 冲级分段判废快照 (specs 冲级判废): 仅最新一条, 覆盖写入 */

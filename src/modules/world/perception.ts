@@ -275,6 +275,13 @@ export const Perception: TickModule = {
 				sourceIds: [],
 			};
 			intel.lastSeen = ctx.tick;
+			// RCL 时间线 (speedrun 取证): 首次观测到新等级即记账 (等值跳过, 零写放大)
+			if (observation.rcl !== undefined) {
+				if (!intel.rclTimeline) intel.rclTimeline = {};
+				if (intel.rclTimeline[observation.rcl] === undefined) {
+					intel.rclTimeline[observation.rcl] = ctx.tick;
+				}
+			}
 			intel.confidence = 1;
 			intel.sourceIds = sources.map((source) => source.id);
 			if (intel.lostAt !== undefined) {

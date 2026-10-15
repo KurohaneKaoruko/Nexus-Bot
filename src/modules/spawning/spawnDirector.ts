@@ -464,9 +464,24 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					(r.unit === "harvester" && staffed("harvester") === 0)) &&
 				buildBody(r.unit, r.budget ?? available, hints) !== null,
 		);
+		// 自举硬保障 (实服 4wt 重置路径, bugs (十七)): harvester 全灭时其请求恒过
+		// urgent 门不受 priority 波动影响——任务被租走时 standing 55 < 70 进不了
+		// urgent, 死锁窗口里 spawn 能量被 carrier 抽水长期 < 起步体型成本,
+		// 采集面永不复活 (实服亡者构成 harvester 2 vs carrier 6 实锤)。
+		const bootstrapHarvest =
+			urgent === undefined &&
+			staffed("harvester") === 0 &&
+			gated.find(
+				(r) =>
+					r.unit === "harvester" &&
+					buildBody(r.unit, r.budget ?? Math.max(available, SPAWN_CONFIG.harvesterStarterBudget), hints) !== null,
+			);
 		let body: BodyPartConstant[] | null = null;
 		let request: SpawnRequest | undefined;
-		if (urgent) {
+		if (bootstrapHarvest) {
+			request = bootstrapHarvest;
+			body = buildBody(request.unit, request.budget ?? available, hints);
+		} else if (urgent) {
 			request = urgent;
 			body = buildBody(urgent.unit, urgent.budget ?? available, hints);
 		} else {
@@ -478,16 +493,14 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测);
 					// 替补用途的等待另受换代窗口钳制 (提前量量级), 老单位死前必出新人。
 					// 无收入期等的是 WORK 底线而非大体型, 长窗只会拖长断采 → 同样走短窗。
-					const awaitingWorkFloor =
-						request.unit === "harvester" &&
-						SPAWN_CONFIG.harvestTierEnabled &&
-						harvestNoIncome;
+					// harvester 例外: 永不降档——超时降档锁死小体档, 56% 能量烧在换血;
+					// 持单等能量直到攒够饱和体型。
 					const waitLimit = request.purpose.startsWith("replacement:")
 						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.replacementWaitTicks)
-						: awaitingWorkFloor || SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
+						: SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
 							? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
 							: SPAWN_CONFIG.capacityWaitTicks;
-					if (ctx.tick - idleSince < waitLimit) {
+					if (ctx.tick - idleSince < waitLimit || request.unit === "harvester") {
 						spawnIdleSince[spawn.id] = idleSince;
 						ctx.cpu.recordSkip("spawn-director", "budget");
 						continue;

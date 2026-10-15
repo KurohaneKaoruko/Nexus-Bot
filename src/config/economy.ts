@@ -97,6 +97,13 @@ export const SPAWN_CONFIG = {
 	 *  priority ≥ 70 是排队语义, 绑死「跳过攒能」使 spawn 永不攒大钱。
 	 *  断粮死锁已由 harvester staffed==0 自举通道兜底 (本函数 urgent 条件内),
 	 *  生产角色回攒能表: desired 按 capacity 定档, 不足等 120t (短窗), 超时降档。 */
+	/**
+	 * 攒能角色表。harvester 的等待语义特殊: 采集面饱和的唯一杠杆是 WORK 供给——
+	 * RCL2 (550) 起 5W1M 即达单源饱和线 (ceil(3000/300/2)=5)。攒能等待不设
+	 * 超时降档 (孵化持单等能量, 攒够饱和体型才生产)——超时降档会把体型锁在
+	 * 小体档, sim 实证 56% 能量烧在换血 (405 产 376 亡)。无收入自举仍走
+	 * staffed==0 通道立即小体。
+	 */
 	capacityWaitRoles: ["harvester", "upgrader", "carrier", "worker", "rush-courier", "transporter"] as readonly string[],
 	/** 攒能角色的短等待窗: 匹配 replacement 提前量, 换代断采 <8% 工作期 (50k 实测) */
 	capacityWaitTicksShort: 120,
