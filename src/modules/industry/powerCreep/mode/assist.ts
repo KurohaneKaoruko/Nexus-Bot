@@ -176,7 +176,7 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
                             boostOwnerId,
                             mustBoost: true,
                             boosted: false
-                        }, boostBody as unknown as BodyPartConstant[], `PCH-${pc.name}`);
+                        }, boostBody as unknown as BodyPartConstant[], `智械护工·${pc.name}`);
                         if (ret === OK) {
                             room.AssignBoostTaskByBody(boostBody, boostmap, boostOwnerId);
                             mem.healerBoostOwnerId = boostOwnerId;

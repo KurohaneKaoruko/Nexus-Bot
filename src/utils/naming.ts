@@ -1,6 +1,8 @@
 /**
- * Creep 命名约定: `中文体名 代号-短十六进制串`, 如 采集体 H-3F2A / 全能体 UNIV-00FF。
+ * Creep 命名约定: `中文体名 代号-短十六进制串`, 如 采集体 H-3F2A。
  * 体名与代号来自 UnitConstant; 纯函数, 随机源与占用查询可注入, 便于测试与确定性复现。
+ * 唯一命名入口: 所有孵化路径 (spawnDirector / legacy 孵化池 / directSpawn) 共用本生成器,
+ * 保证 `代号-HEX` 的第二段恒为代号——感知侧 `unitCodeFromName` 依赖该形态解析角色。
  */
 import { unitBodyName, unitCode } from "@/constant/UnitConstant";
 
@@ -9,12 +11,14 @@ export interface CreepNameSource {
 	random: () => number;
 	/** 名称占用查询, 游戏内传 (name) => name in Game.creeps */
 	exists?: (name: string) => boolean;
+	/** 体名覆盖 (首段), 如标注归属对象; 缺省取 UnitConstant 体名词表 */
+	bodyName?: string;
 }
 
 const NAME_RETRY_LIMIT = 8;
 
 export function generateCreepName(unit: string, source: CreepNameSource): string {
-	const bodyName = unitBodyName(unit);
+	const bodyName = source.bodyName ?? unitBodyName(unit);
 	const code = unitCode(unit);
 	let name = "";
 	for (let attempt = 0; attempt < NAME_RETRY_LIMIT; attempt += 1) {
@@ -29,22 +33,4 @@ export function generateCreepName(unit: string, source: CreepNameSource): string
 		}
 	}
 	return name;
-}
-
-/** 单位代号 + 全局序号短名 (生成后全局唯一, 撞名递归重取) */
-export function GenShortNumber(len = 4) {
-    return (Game.time*1296 + Math.floor(Math.random()*1296))
-            .toString(36)
-            .slice(-len)
-            .toUpperCase();
-}
-
-export function GenUnitName(code: string) {
-    const number = GenShortNumber();
-    const name = `${code}-${number}`;
-    if (Game.creeps[name]) {
-        return GenUnitName(code);
-    } else {
-        return name;
-    }
 }
