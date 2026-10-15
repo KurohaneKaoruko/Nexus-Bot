@@ -27,7 +27,7 @@ const clearTransportMission = (creep: Creep, mission: Task | null | undefined) =
     if (mission) {
         creep.room.deleteMissionFromPool(MISSION_POOLS.transport, mission.id);
     }
-    delete creep.getRoleCache().mission;
+    delete creep.getUnitCache().mission;
 };
 
 const runFallback = (creep: Creep) => {
@@ -64,7 +64,7 @@ const flushForeignResources = (creep: Creep, keepResource: ResourceConstant): bo
 };
 
 const getTransportMissionContext = (creep: Creep) => {
-    const mission = creep.getRoleCache().mission;
+    const mission = creep.getUnitCache().mission;
     if (!mission) return null;
 
     const data = mission.data as TransportTask;
@@ -87,10 +87,10 @@ const onSource = (creep: Creep): WorkEvent => {
         return WORK_EVENTS.STAY;
     }
 
-    if (!creep.getRoleCache().mission) {
-        creep.getRoleCache().mission = creep.room.getTransportMission(creep);
-        if (!creep.getRoleCache().mission) {
-            delete creep.getRoleCache().mission;
+    if (!creep.getUnitCache().mission) {
+        creep.getUnitCache().mission = creep.room.getTransportMission(creep);
+        if (!creep.getUnitCache().mission) {
+            delete creep.getUnitCache().mission;
             return WORK_EVENTS.STAY;
         }
     }
@@ -133,7 +133,7 @@ const onSource = (creep: Creep): WorkEvent => {
 };
 
 const onTarget = (creep: Creep): WorkEvent => {
-    if (!creep.getRoleCache().mission) {
+    if (!creep.getUnitCache().mission) {
         if (creep.store.getUsedCapacity() === 0) return WORK_EVENTS.TO_SOURCE;
         runFallback(creep);
         return WORK_EVENTS.STAY;
@@ -157,7 +157,7 @@ const onTarget = (creep: Creep): WorkEvent => {
     }
 
     if (creep.store.getUsedCapacity() === 0) {
-        delete creep.getRoleCache().mission;
+        delete creep.getUnitCache().mission;
         return WORK_EVENTS.TO_SOURCE;
     }
 
@@ -183,13 +183,13 @@ const onTarget = (creep: Creep): WorkEvent => {
         creep.room.submitTransportMission(mission.id, transferAmount);
 
         if (creep.store.getUsedCapacity() === 0) {
-            delete creep.getRoleCache().mission;
+            delete creep.getUnitCache().mission;
             return WORK_EVENTS.TO_SOURCE;
         }
 
-        creep.getRoleCache().mission = creep.room.getTransportMission(creep);
-        if (!creep.getRoleCache().mission) {
-            delete creep.getRoleCache().mission;
+        creep.getUnitCache().mission = creep.room.getTransportMission(creep);
+        if (!creep.getUnitCache().mission) {
+            delete creep.getUnitCache().mission;
         }
         return WORK_EVENTS.STAY;
     }

@@ -20,7 +20,7 @@ export default {
             if (!creep) return `未找到 creep: ${creepName}`;
 
             const report: Record<string, any> = {
-                role: creep.memory?.role,
+                unit: creep.memory?.unit,
                 home: creep.memory?.home,
                 room: creep.room?.name,
                 pos: `${creep.pos}`,

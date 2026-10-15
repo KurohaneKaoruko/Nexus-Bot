@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { getUpgradeWorkTarget, getUpgraderPathTime } from '@/modules/economy/roomWorkforce';
 
@@ -105,7 +105,7 @@ const collectControllerLineRequests = (room: Room, requests: FillRequest[]): voi
 
     for (const creep of Object.values(Game.creeps)) {
         if (creep.room.name !== room.name || creep.spawning) continue;
-        if (creep.memory?.role !== ROLES.upgrader) continue;
+        if (creep.memory?.unit !== UNITS.upgrader) continue;
         if ((creep.store[RESOURCE_ENERGY] || 0) > 0) continue;
         const amount = creep.store.getFreeCapacity(RESOURCE_ENERGY);
         if (amount <= 0) continue;
@@ -125,8 +125,8 @@ const collectSuppliers = (room: Room): Creep[] => {
     const suppliers: Creep[] = [];
     for (const creep of Object.values(Game.creeps)) {
         if (creep.room.name !== room.name || creep.spawning) continue;
-        const role = creep.memory?.role;
-        if (role !== ROLES.carrier) continue;
+        const unit = creep.memory?.unit;
+        if (unit !== UNITS.carrier) continue;
         if ((creep.store[RESOURCE_ENERGY] || 0) <= 0) continue;
         suppliers.push(creep);
     }
@@ -273,7 +273,7 @@ const matchRoom = (room: Room, suppliers: Creep[]): MatchResult => {
     // 贪心阶段只补剩余缺口——杜绝多只奔向同一将满目标（运量先行扣除口径）
     const claimed = new Set<string>();
     for (const supplier of suppliers) {
-        const cachedId = (supplier.getRoleCache?.() as any)?._deliverTarget as string | undefined;
+        const cachedId = (supplier.getUnitCache?.() as any)?._deliverTarget as string | undefined;
         if (!cachedId) continue;
         const request = allRequests.find(r => r.id === cachedId);
         if (!request || (remaining.get(request.id) || 0) <= 0) continue;

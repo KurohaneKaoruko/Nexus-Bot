@@ -9,7 +9,7 @@ const lastKnownSourceNum = new Map<string, number>();
 import { isRoomTickAligned } from '@/utils/roomPhase';
 import { getRoomMode, getRoomModeProfile, isHighLikeMode } from '@/modules/strategy/roomModeAccess';
 import { getActiveRemoteThreshold } from '@/core/bucketGovernor';
-import { ROLES, RoleData, type RoleId } from '@/constant/CreepConstant';
+import { UNITS, UnitData, type UnitId } from '@/constant/CreepConstant';
 import { decompressBodyConfig } from '@/utils/compress';
 import { RoadBuilder, RoadMemory, RoadVisual } from '@/modules/external/externalRoad';
 import { buildHaulerBodyConfig, buildOutBuildBody, buildRemoteMinerBody } from '@/utils/remoteBody';
@@ -116,18 +116,18 @@ export class ExternalMineState {
     private static readonly LOW_MODE_MAX_REMOTE_BUDGET = 140;
     private static readonly SURPLUS_STATE_REMOTE_BUDGET_MULTIPLIER = 1.1;
     private static readonly REMOTE_QUEUE_ROLE_SET: ReadonlySet<string> = new Set([
-        ROLES['scout'],
-        ROLES['reserver'],
-        ROLES.harvester,
-        ROLES.carrier,
-        ROLES['out-build'],
-        ROLES['out-mineral'],
-        ROLES['out-attack'],
-        ROLES['out-ranged'],
-        ROLES['out-defend'],
-        ROLES['out-invader'],
-        ROLES['out-2attack'],
-        ROLES['out-2heal'],
+        UNITS['scout'],
+        UNITS['reserver'],
+        UNITS.harvester,
+        UNITS.carrier,
+        UNITS['out-build'],
+        UNITS['out-mineral'],
+        UNITS['out-attack'],
+        UNITS['out-ranged'],
+        UNITS['out-defend'],
+        UNITS['out-invader'],
+        UNITS['out-2attack'],
+        UNITS['out-2heal'],
     ]);
 
     private static getTargetList(memory: OutMineMemory, key: OutMineTargetListKey): string[] {
@@ -216,10 +216,10 @@ export class ExternalMineState {
     }
 
     private static getKeeperRemoteAttackCost(sourceRoom: Room): number {
-        const roleBody = sourceRoom.GetRoleBodys?.(ROLES['out-attack']);
+        const roleBody = sourceRoom.GetUnitBodys?.(UNITS['out-attack']);
         const roleBodyCost = this.getBodyConfigCost(roleBody);
         if (roleBodyCost > 0) return roleBodyCost;
-        const fallbackBody = RoleData[ROLES[ROLES['out-attack']]]?.bodypart as ((BodyPartConstant | number)[])[] | undefined;
+        const fallbackBody = UnitData[UNITS[UNITS['out-attack']]]?.bodypart as ((BodyPartConstant | number)[])[] | undefined;
         const fallbackCost = this.getBodyConfigCost(fallbackBody);
         return fallbackCost > 0 ? fallbackCost : this.DEFAULT_KEEPER_ATTACK_COST;
     }
@@ -255,9 +255,9 @@ export class ExternalMineState {
             const memory = (data && typeof data === 'object' && 'memory' in data)
                 ? (data.memory as Partial<CreepMemory> | undefined)
                 : undefined;
-            const role = memory?.role;
-            if (typeof role !== 'string' || !role) continue;
-            if (this.REMOTE_QUEUE_ROLE_SET.has(role) && (!memory.sourceRoom || memory.sourceRoom === sourceRoom.name)) {
+            const unit = memory?.unit;
+            if (typeof unit !== 'string' || !unit) continue;
+            if (this.REMOTE_QUEUE_ROLE_SET.has(unit) && (!memory.sourceRoom || memory.sourceRoom === sourceRoom.name)) {
                 continue;
             }
             localQueued++;
@@ -793,8 +793,8 @@ export type ExternalMineCarryPlan = {
 };
 
 const EXTERNAL_MINE_ANALYSIS = {
-    OUT_CARRY_ROLE_SET: new Set<string>([ROLES.carrier]),
-    OUT_HARVEST_ROLE_SET: new Set<string>([ROLES.harvester]),
+    OUT_CARRY_ROLE_SET: new Set<string>([UNITS.carrier]),
+    OUT_HARVEST_ROLE_SET: new Set<string>([UNITS.harvester]),
     SOURCE_CONTAINER_REPAIR_LOSS:
         (typeof REPAIR_COST === 'number' && typeof CONTAINER_DECAY === 'number' && typeof CONTAINER_DECAY_TIME === 'number')
             ? (REPAIR_COST * CONTAINER_DECAY) / CONTAINER_DECAY_TIME
@@ -985,7 +985,7 @@ const getExternalMineSourceHarvestingStats = (targetRoom: Room, source: Source):
     let power = 0;
     let count = 0;
     for (const creep of getExternalMineVisibleCreeps(targetRoom)) {
-        if (!creep?.memory?.role || !EXTERNAL_MINE_ANALYSIS.OUT_HARVEST_ROLE_SET.has(creep.memory.role)) continue;
+        if (!creep?.memory?.unit || !EXTERNAL_MINE_ANALYSIS.OUT_HARVEST_ROLE_SET.has(creep.memory.unit)) continue;
         const boundSourceId = creep.memory.targetSourceId as Id<Source> | undefined;
         const isBound = boundSourceId === source.id;
         const isStandingOnSource = creep.pos?.roomName === source.pos.roomName && creep.pos.inRangeTo(source.pos, 1);
@@ -1063,7 +1063,7 @@ const getExternalMineAssignedCarryCapacity = (
     let assigned = 0;
     for (const creep of Object.values(Game.creeps || {})) {
         if (!creep?.my || creep.spawning) continue;
-        if (!creep.memory?.role || !EXTERNAL_MINE_ANALYSIS.OUT_CARRY_ROLE_SET.has(creep.memory.role)) continue;
+        if (!creep.memory?.unit || !EXTERNAL_MINE_ANALYSIS.OUT_CARRY_ROLE_SET.has(creep.memory.unit)) continue;
         if (creep.name === excludeCreepName) continue;
         if (creep.memory.sourceRoom !== sourceRoomName) continue;
         if (creep.memory.targetRoom !== targetRoomName) continue;
@@ -1235,7 +1235,7 @@ export class ExternalMineAnalysis {
                 const creep = Game.creeps[name];
                 const memory = creep?.memory as any;
                 if (!memory) continue;
-                if (memory.role !== ROLES.carrier || !memory.targetRoom) continue;
+                if (memory.unit !== UNITS.carrier || !memory.targetRoom) continue;
                 if (memory.sourceRoom !== sourceRoom.name) continue;
                 const targetRoom = memory.targetRoom;
                 if (!targetRoom) continue;
@@ -1258,7 +1258,7 @@ export class ExternalMineAnalysis {
             for (const name in Game.creeps) {
                 const creep = Game.creeps[name];
                 const memory = creep?.memory as any;
-                if (!memory || memory.role !== ROLES.harvester || !memory.targetRoom) continue;
+                if (!memory || memory.unit !== UNITS.harvester || !memory.targetRoom) continue;
                 if (memory.sourceRoom !== sourceRoom.name) continue;
                 if (creep!.spawning!) continue;
                 const targetRoomName = memory.targetRoom;
@@ -1345,7 +1345,7 @@ export class ExternalMineAnalysis {
             const creep = Game.creeps[name];
             const memory = creep?.memory as any;
             if (!memory) continue;
-            if (memory.role !== ROLES.carrier || !memory.targetRoom) continue;
+            if (memory.unit !== UNITS.carrier || !memory.targetRoom) continue;
             if (memory.sourceRoom !== sourceRoomName) continue;
             if (memory.targetRoom !== targetRoomName) continue;
             // 濒死返程的搬运工这趟交完就退休，不再计入运力
@@ -1383,7 +1383,7 @@ export class ExternalMineAnalysis {
                     let harvesters = 0;
                     for (const creep of Object.values(Game.creeps || {})) {
                         if (!creep?.my) continue;
-                        if (creep.memory?.role !== ROLES.harvester || !creep.memory.targetRoom) continue;
+                        if (creep.memory?.unit !== UNITS.harvester || !creep.memory.targetRoom) continue;
                         if (creep.memory.sourceRoom !== sourceRoom.name) continue;
                         if (creep.memory.targetRoom !== roomName) continue;
                         harvesters++;
@@ -1433,16 +1433,16 @@ class ExternalMineMath {
         STRUCTURE_RAMPART,
     ]);
 
-    // 获取 high/rush 模式下的外矿小体型；具体体型配置直接复用 RoleLevelData.minipart。
+    // 获取 high/rush 模式下的外矿小体型；具体体型配置直接复用 UnitLevelData.minipart。
     static getModeLimitedBodyConfig(
         sourceRoom: Room,
-        role: string,
+        unit: string,
         upbody?: boolean
     ): ((BodyPartConstant | number)[])[] | null {
         if (upbody) return null;
         const mode = ExternalMineState.getRoomMode(sourceRoom);
         if (mode !== 'high' && mode !== 'rush') return null;
-        const body = sourceRoom.GetRoleBodys(role, false, undefined, true);
+        const body = sourceRoom.GetUnitBodys(unit, false, undefined, true);
         return Array.isArray(body) && body.length > 0 ? body : null;
     }
 
@@ -1619,12 +1619,12 @@ export class ExternalMineSpawner {
     // 注意：采集工/搬运工入队走专属流水线层级（采集 12 严格优先于搬运 13，见下），
     // 这里的 harvest/carry 只用于角色对齐与阅读参考，不再直接作为入队等级。
     private static readonly PRIORITY = {
-        reserver: RoleData[ROLES.reserver].level,
+        reserver: UnitData[UNITS.reserver].level,
         harvest: 12,
         carry: 13,
-        scout: RoleData[ROLES.scout].level,
-        build: RoleData[ROLES[ROLES['out-build']]].level,
-        mineral: RoleData[ROLES[ROLES['out-mineral']]].level,
+        scout: UnitData[UNITS.scout].level,
+        build: UnitData[UNITS[UNITS['out-build']]].level,
+        mineral: UnitData[UNITS[UNITS['out-mineral']]].level,
     } as const;
 
     // 采集与搬运的孵化层级：采集(12) 严格优先于搬运(13)，两者都直接读角色配置
@@ -1681,10 +1681,10 @@ export class ExternalMineSpawner {
     }
 
     // 统计本源房 spawn 池里、发往某目标房、且角色落在给定集合内的任务数。
-    static countPendingMissions(sourceRoom: Room, targetRoomName: string, roleSet: ReadonlySet<string>): number {
+    static countPendingMissions(sourceRoom: Room, targetRoomName: string, unitSet: ReadonlySet<string>): number {
         const memories = (sourceRoom.getAllMissionFromPool?.('spawn') || [])
             .map((task) => this.getSpawnTaskMemory(task));
-        return countPendingMissions(memories, sourceRoom.name, targetRoomName, roleSet);
+        return countPendingMissions(memories, sourceRoom.name, targetRoomName, unitSet);
     }
 
     // 统计本源房 spawn 池里、发往某目标房的外矿经济任务数（采集 + 搬运）。
@@ -1745,13 +1745,13 @@ export class ExternalMineSpawner {
     }
 
     // 统计某房间针对某目标房间的排队刷怪数量（仅本房间任务池）。
-    private static getQueuedSpawnRoleNumByTarget(sourceRoom: Room, role: string, targetRoomName: string): number {
+    private static getQueuedSpawnUnitNumByTarget(sourceRoom: Room, unit: string, targetRoomName: string): number {
         const tasks = sourceRoom.getAllMissionFromPool?.('spawn') || [];
         let count = 0;
         for (const task of tasks) {
             const memory = this.getSpawnTaskMemory(task);
-            if (!memory?.role) continue;
-            if (memory.role !== role) continue;
+            if (!memory?.unit) continue;
+            if (memory.unit !== unit) continue;
             if ((memory.targetRoom || '') !== targetRoomName) continue;
             const taskSourceRoom = memory.sourceRoom;
             if (taskSourceRoom && taskSourceRoom !== sourceRoom.name) continue;
@@ -1761,7 +1761,7 @@ export class ExternalMineSpawner {
     }
 
     // 统计全局所有房间针对某目标房间的排队刷怪数量（可选按 sourceRoom 过滤）。
-    private static getQueuedSpawnRoleNumByTargetGlobal(role: string, targetRoomName: string, sourceRoomName?: string): number {
+    private static getQueuedSpawnUnitNumByTargetGlobal(unit: string, targetRoomName: string, sourceRoomName?: string): number {
         let count = 0;
         for (const roomName in Game.rooms) {
             const room = Game.rooms[roomName];
@@ -1769,8 +1769,8 @@ export class ExternalMineSpawner {
             const tasks = room.getAllMissionFromPool?.('spawn') || [];
             for (const task of tasks) {
                 const memory = this.getSpawnTaskMemory(task);
-                if (!memory?.role) continue;
-                if (memory.role !== role) continue;
+                if (!memory?.unit) continue;
+                if (memory.unit !== unit) continue;
                 if ((memory.targetRoom || '') !== targetRoomName) continue;
                 if (sourceRoomName) {
                     const taskSourceRoom = memory.sourceRoom;
@@ -1783,11 +1783,11 @@ export class ExternalMineSpawner {
     }
 
     // 统计全局某角色在目标房间的存活数量。
-    private static getActiveRoleNumByTarget(role: string, targetRoomName: string): number {
+    private static getActiveRoleNumByTarget(unit: string, targetRoomName: string): number {
         let count = 0;
         for (const creepName in Game.creeps) {
             const creep = Game.creeps[creepName];
-            if (!creep || creep.memory?.role !== role) continue;
+            if (!creep || creep.memory?.unit !== unit) continue;
             if (creep.memory?.targetRoom !== targetRoomName) continue;
             count++;
         }
@@ -1797,7 +1797,7 @@ export class ExternalMineSpawner {
     // 统计“本 tick 已经开始孵化，但尚未进入 Game.creeps 活体索引”的数量。
     // Screeps 的状态结算按 tick 延后，spawn 成功后任务会先从队列移除；
     // 若此时不补上 spawning 中的单位，就会出现 1 tick 的统计空窗，从而重复补单。
-    private static getSpawningRoleNumByTargetGlobal(role: string, targetRoomName: string, sourceRoomName?: string): number {
+    private static getSpawningRoleNumByTargetGlobal(unit: string, targetRoomName: string, sourceRoomName?: string): number {
         let count = 0;
         for (const spawnName in Game.spawns) {
             const spawn = Game.spawns[spawnName];
@@ -1807,8 +1807,8 @@ export class ExternalMineSpawner {
             if (Game.creeps[spawning.name]) continue;
 
             const memory = Memory.creeps?.[spawning.name] as CreepMemory | undefined;
-            if (!memory?.role) continue;
-            if (memory.role !== role) continue;
+            if (!memory?.unit) continue;
+            if (memory.unit !== unit) continue;
             if ((memory.targetRoom || '') !== targetRoomName) continue;
             if (sourceRoomName) {
                 const taskSourceRoom = memory.sourceRoom;
@@ -1820,13 +1820,13 @@ export class ExternalMineSpawner {
     }
 
     // 统计某房间自身任务池里某角色排队数量（不关心 targetRoom）。
-    private static getQueuedSpawnRoleNumBySource(sourceRoom: Room, role: string): number {
+    private static getQueuedSpawnRoleNumBySource(sourceRoom: Room, unit: string): number {
         const tasks = sourceRoom.getAllMissionFromPool?.('spawn') || [];
         let count = 0;
         for (const task of tasks) {
             const memory = this.getSpawnTaskMemory(task);
-            if (!memory?.role) continue;
-            if (memory.role !== role) continue;
+            if (!memory?.unit) continue;
+            if (memory.unit !== unit) continue;
             if (memory.sourceRoom !== sourceRoom.name) continue;
             count++;
         }
@@ -1843,7 +1843,7 @@ export class ExternalMineSpawner {
         let count = 0;
         for (const creepName in Game.creeps) {
             const creep = Game.creeps[creepName];
-            if (!creep || creep.memory?.role !== ROLES.harvester || !creep.memory.targetRoom) continue;
+            if (!creep || creep.memory?.unit !== UNITS.harvester || !creep.memory.targetRoom) continue;
             if (creep.memory?.targetRoom !== targetRoomName) continue;
             if (!this.isSameSourceRoom(creep.memory?.sourceRoom, sourceRoom.name)) continue;
             if ((creep.ticksToLive ?? 0) <= minUsefulTtl) continue;
@@ -1859,7 +1859,7 @@ export class ExternalMineSpawner {
         let count = 0;
         for (const creepName in Game.creeps) {
             const creep = Game.creeps[creepName];
-            if (!creep || creep.memory?.role !== ROLES.harvester || !creep.memory.targetRoom) continue;
+            if (!creep || creep.memory?.unit !== UNITS.harvester || !creep.memory.targetRoom) continue;
             if (creep.memory?.targetRoom !== targetRoomName) continue;
             count++;
         }
@@ -1873,56 +1873,56 @@ export class ExternalMineSpawner {
 
     // 侦查：全局与本房均只允许 1 个 scout，以避免重复探路。
     static scout(sourceRoom: Room, targetRoomName: string): boolean {
-        const globalActive = this.getActiveRoleNumByTarget(ROLES['scout'], targetRoomName);
-        const globalQueued = this.getQueuedSpawnRoleNumByTargetGlobal(ROLES['scout'], targetRoomName);
+        const globalActive = this.getActiveRoleNumByTarget(UNITS['scout'], targetRoomName);
+        const globalQueued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['scout'], targetRoomName);
         if (globalActive + globalQueued > 0) return false;
 
         const activeSourceScouts = Object.values(Game.creeps).filter((creep) =>
             creep &&
-            creep.memory?.role === ROLES.scout &&
+            creep.memory?.unit === UNITS.scout &&
             creep.memory.sourceRoom === sourceRoom.name
         ).length;
-        const queuedSourceScouts = this.getQueuedSpawnRoleNumBySource(sourceRoom, ROLES['scout']);
+        const queuedSourceScouts = this.getQueuedSpawnRoleNumBySource(sourceRoom, UNITS['scout']);
         if (activeSourceScouts + queuedSourceScouts > 0) return false;
 
         const creepByTargetRoom = getCreepByTargetRoom(targetRoomName);
-        const scouts = (creepByTargetRoom[ROLES.scout] || [])
+        const scouts = (creepByTargetRoom[UNITS.scout] || [])
             .filter((c: any) => this.isSameSourceRoom(c?.sourceRoom, sourceRoom.name)).length;
-        const spawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['scout'], targetRoomName);
+        const spawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['scout'], targetRoomName);
         if (scouts + spawnNum > 0) return false;
 
-        sourceRoom.SpawnMissionAdd('OS', [], this.PRIORITY.scout, ROLES['scout'], ExternalMineState.createMemory(sourceRoom.name, targetRoomName));
+        sourceRoom.SpawnMissionAdd('OS', [], this.PRIORITY.scout, UNITS['scout'], ExternalMineState.createMemory(sourceRoom.name, targetRoomName));
         return true;
     }
 
     // 常规外矿攻击者（单目标房最多 1 个）。
     static attack(sourceRoom: Room, targetRoom: Room): boolean {
-        const globalActive = this.getActiveRoleNumByTarget(ROLES['out-attack'], targetRoom.name);
-        const globalQueued = this.getQueuedSpawnRoleNumByTargetGlobal(ROLES['out-attack'], targetRoom.name);
-        const globalSpawning = this.getSpawningRoleNumByTargetGlobal(ROLES['out-attack'], targetRoom.name);
+        const globalActive = this.getActiveRoleNumByTarget(UNITS['out-attack'], targetRoom.name);
+        const globalQueued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['out-attack'], targetRoom.name);
+        const globalSpawning = this.getSpawningRoleNumByTargetGlobal(UNITS['out-attack'], targetRoom.name);
         if (globalActive + globalQueued + globalSpawning >= 1) return false;
 
         const memory = ExternalMineState.createMemory(sourceRoom.name, targetRoom.name);
-        sourceRoom.SpawnMissionAdd('OA', [], -1, ROLES['out-attack'], memory);
+        sourceRoom.SpawnMissionAdd('OA', [], -1, UNITS['out-attack'], memory);
         return true;
     }
 
     static hasKeeperAttackCoverage(targetRoomName: string): boolean {
-        const active = this.getActiveRoleNumByTarget(ROLES['out-attack'], targetRoomName);
-        const queued = this.getQueuedSpawnRoleNumByTargetGlobal(ROLES['out-attack'], targetRoomName);
-        const spawning = this.getSpawningRoleNumByTargetGlobal(ROLES['out-attack'], targetRoomName);
+        const active = this.getActiveRoleNumByTarget(UNITS['out-attack'], targetRoomName);
+        const queued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['out-attack'], targetRoomName);
+        const spawning = this.getSpawningRoleNumByTargetGlobal(UNITS['out-attack'], targetRoomName);
         return active + queued + spawning > 0;
     }
 
     // 远程攻击者（单目标房最多 1 个）。
     static ranged(sourceRoom: Room, targetRoom: Room): boolean {
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
-        const outerRanged = (creepByTargetRoom[ROLES[ROLES['out-ranged']]] || [])
+        const outerRanged = (creepByTargetRoom[UNITS[UNITS['out-ranged']]] || [])
             .filter((c: any) => c.ticksToLive > 300 || c.spawning);
-        const spawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-ranged'], targetRoom.name);
+        const spawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-ranged'], targetRoom.name);
         if (outerRanged.length + spawnNum >= 1) return false;
 
-        sourceRoom.SpawnMissionAdd('OR', [], -1, ROLES['out-ranged'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+        sourceRoom.SpawnMissionAdd('OR', [], -1, UNITS['out-ranged'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
         return true;
     }
 
@@ -1933,7 +1933,7 @@ export class ExternalMineSpawner {
     // 主房成长后外矿规模自动放大——早期照常开张，但不再抽干主房孵化产能。
 
     /** 任务体型折算部件数（空体型 = 角色默认配置；压缩串 = 解码后求和） */
-    static resolveMissionBodyParts(sourceRoom: Room, role: string, body: ((BodyPartConstant | number)[])[] | string): number {
+    static resolveMissionBodyParts(sourceRoom: Room, unit: string, body: ((BodyPartConstant | number)[])[] | string): number {
         const sumPairs = (pairs: any): number => {
             if (!Array.isArray(pairs)) return 0;
             let sum = 0;
@@ -1944,7 +1944,7 @@ export class ExternalMineSpawner {
         };
         if (typeof body === 'string') {
             if (!body) {
-                const flat = sourceRoom.GenerateBodys(sourceRoom.GetRoleBodys(role as RoleId), role as RoleId);
+                const flat = sourceRoom.GenerateBodys(sourceRoom.GetUnitBodys(unit as UnitId), unit as UnitId);
                 return flat?.length ?? 0;
             }
             return sumPairs(decompressBodyConfig(body));
@@ -1965,17 +1965,17 @@ export class ExternalMineSpawner {
         let localDemand = 0;
         let remoteUsed = 0;
         for (const creep of Object.values(Game.creeps)) {
-            const role = creep?.memory?.role || '';
-            if (!role) continue;
-            if (role.startsWith('out-') || role === ROLES.reserver) remoteUsed += creep.body.length;
-            else if (role !== ROLES.harvester) localDemand += creep.body.length;
+            const unit = creep?.memory?.unit || '';
+            if (!unit) continue;
+            if (unit.startsWith('out-') || unit === UNITS.reserver) remoteUsed += creep.body.length;
+            else if (unit !== UNITS.harvester) localDemand += creep.body.length;
         }
         const tasks = (sourceRoom.getAllMissionFromPool?.('spawn') || []) as any[];
         for (const task of tasks) {
-            const role = task?.data?.memory?.role as string | undefined;
-            if (!role) continue;
-            const parts = this.resolveMissionBodyParts(sourceRoom, role, task?.data?.body);
-            if (role.startsWith('out-') || role === ROLES.reserver) remoteUsed += parts;
+            const unit = task?.data?.memory?.unit as string | undefined;
+            if (!unit) continue;
+            const parts = this.resolveMissionBodyParts(sourceRoom, unit, task?.data?.body);
+            if (unit.startsWith('out-') || unit === UNITS.reserver) remoteUsed += parts;
             else localDemand += parts;
         }
         // 本地源计划编成带距离因子：
@@ -1994,20 +1994,20 @@ export class ExternalMineSpawner {
     }
 
     /** 外矿经济单统一入口：过容量准入闸再落单（战争/防御/侦察单不走此闸） */
-    static addEconomyMission(sourceRoom: Room, name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, role: string, memory: any): boolean {
-        if (!this.hasRemoteSpawnBudget(sourceRoom, this.resolveMissionBodyParts(sourceRoom, role, body))) return false;
-        return sourceRoom.SpawnMissionAdd(name, body, level, role, memory) === OK;
+    static addEconomyMission(sourceRoom: Room, name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, unit: string, memory: any): boolean {
+        if (!this.hasRemoteSpawnBudget(sourceRoom, this.resolveMissionBodyParts(sourceRoom, unit, body))) return false;
+        return sourceRoom.SpawnMissionAdd(name, body, level, unit, memory) === OK;
     }
 
     // 外矿矿物采集（需要 RCL6+ 且单房仅 1 个）。
     static mineral(sourceRoom: Room, targetRoom: Room): boolean {
         if (sourceRoom.level < 6) return false;
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
-        const outerMiners = (creepByTargetRoom[ROLES[ROLES['out-mineral']]] || []).length;
-        const spawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-mineral'], targetRoom.name);
+        const outerMiners = (creepByTargetRoom[UNITS[UNITS['out-mineral']]] || []).length;
+        const spawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-mineral'], targetRoom.name);
         if (outerMiners + spawnNum >= 1) return false;
 
-        return this.addEconomyMission(sourceRoom, 'OMR', [], this.PRIORITY.mineral, ROLES['out-mineral'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+        return this.addEconomyMission(sourceRoom, 'OMR', [], this.PRIORITY.mineral, UNITS['out-mineral'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
     }
 
     // 常规防守：根据敌人种类/数量派遣 out-defend 或 out-invader。
@@ -2019,27 +2019,27 @@ export class ExternalMineSpawner {
         if (invaderCore.length === 0 && hostiles.length === 0) return false;
 
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
-        const outerDefenders = (creepByTargetRoom[ROLES[ROLES['out-defend']]] || []).length;
-        const outerInvaders = (creepByTargetRoom[ROLES[ROLES['out-invader']]] || []).length;
+        const outerDefenders = (creepByTargetRoom[UNITS[UNITS['out-defend']]] || []).length;
+        const outerInvaders = (creepByTargetRoom[UNITS[UNITS['out-invader']]] || []).length;
 
         if (hostiles.length > 0) {
-            const spawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-defend'], targetRoom.name);
+            const spawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-defend'], targetRoom.name);
             let maxNum = 1;
             if (sourceRoom.level < 4) maxNum = 3;
             else if (sourceRoom.level < 6) maxNum = 2;
             if (outerDefenders + spawnNum >= maxNum) return false;
-            sourceRoom.SpawnMissionAdd('OD', [], -1, ROLES['out-defend'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+            sourceRoom.SpawnMissionAdd('OD', [], -1, UNITS['out-defend'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
             return true;
         }
 
         if (invaderCore.length > 0) {
-            const spawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-invader'], targetRoom.name);
+            const spawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-invader'], targetRoom.name);
             let maxNum = 1;
             if (sourceRoom.level < 4) maxNum = 4;
             else if (sourceRoom.level < 6) maxNum = 3;
             else if (sourceRoom.level === 6) maxNum = 2;
             if (outerInvaders + spawnNum >= maxNum) return false;
-            sourceRoom.SpawnMissionAdd('OI', [], -1, ROLES['out-invader'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+            sourceRoom.SpawnMissionAdd('OI', [], -1, UNITS['out-invader'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
             return true;
         }
 
@@ -2051,20 +2051,20 @@ export class ExternalMineSpawner {
         if (hostiles.length === 0) return false;
 
         if (sourceRoom.level < this.DOUBLE_DEFEND_MIN_LEVEL) {
-            sourceRoom.deleteSpawnMissionsByRole([ROLES['out-2attack'], ROLES['out-2heal']]);
+            sourceRoom.deleteSpawnMissionsByRole([UNITS['out-2attack'], UNITS['out-2heal']]);
             return this.defend(sourceRoom, targetRoom, hostiles);
         }
 
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
-        const out2Attack = (creepByTargetRoom[ROLES[ROLES['out-2attack']]] || []).length || 0;
-        const out2AttackSpawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-2attack'], targetRoom.name);
+        const out2Attack = (creepByTargetRoom[UNITS[UNITS['out-2attack']]] || []).length || 0;
+        const out2AttackSpawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-2attack'], targetRoom.name);
         if (out2Attack + out2AttackSpawnNum >= 1) return false;
-        const out2Heal = (creepByTargetRoom[ROLES[ROLES['out-2heal']]] || []).length;
-        const out2HealSpawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-2heal'], targetRoom.name);
+        const out2Heal = (creepByTargetRoom[UNITS[UNITS['out-2heal']]] || []).length;
+        const out2HealSpawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-2heal'], targetRoom.name);
         if (out2Heal + out2HealSpawnNum >= 1) return false;
 
-        sourceRoom.SpawnMissionAdd('', [], -1, ROLES['out-2attack'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
-        sourceRoom.SpawnMissionAdd('', [], -1, ROLES['out-2heal'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+        sourceRoom.SpawnMissionAdd('', [], -1, UNITS['out-2attack'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+        sourceRoom.SpawnMissionAdd('', [], -1, UNITS['out-2heal'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
         return true;
     }
 
@@ -2092,8 +2092,8 @@ export class ExternalMineSpawner {
         // 不再按 sourceRoom 各自算一遍，避免多个源房叠加超孵化。
         // spawnInAdvance：快死的采集者不计入覆盖——接替者提前孵化，外矿不断档
         const globalEffective = this.getEffectiveOutHarvesterNum(sourceRoom, targetRoomName);
-        const globalQueued = this.getQueuedSpawnRoleNumByTargetGlobal(ROLES.harvester, targetRoomName);
-        const globalSpawning = this.getSpawningRoleNumByTargetGlobal(ROLES.harvester, targetRoomName);
+        const globalQueued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS.harvester, targetRoomName);
+        const globalSpawning = this.getSpawningRoleNumByTargetGlobal(UNITS.harvester, targetRoomName);
         if (globalEffective + globalQueued + globalSpawning >= targetNum) return false;
         // 工位闸用「所有存活 + 排队 + 孵化中」：换班排除只服务于定编覆盖，不作用于工位上限
         if (slotCap !== null && slotCap > 0) {
@@ -2116,7 +2116,7 @@ export class ExternalMineSpawner {
             ? (getRoomMode(sourceRoom) === 'rush' ? this.OUTMINE_RUSH_CARRY_LEVEL : this.OUTMINE_REPLACEMENT_LEVEL)
             : rushPipelineLevel;
         if (upbody) {
-            return this.addEconomyMission(sourceRoom, 'OH', [[WORK, 16], [CARRY, 6], [MOVE, 8]], replaceLevel, ROLES.harvester, memory);
+            return this.addEconomyMission(sourceRoom, 'OH', [[WORK, 16], [CARRY, 6], [MOVE, 8]], replaceLevel, UNITS.harvester, memory);
         } else {
             // 体型按当前预算最大化（WORK 优先补到 5、move 保持 0.5 机动比、
             // 自带 1 CARRY 自补）——LOW/CRITICAL 时预算取当前可用能量（
@@ -2135,7 +2135,7 @@ export class ExternalMineSpawner {
             // perSource=ceil(5/4)=2 超编挖）：掉落由外矿车队收取，
             // 550 恰好 [W5,M1] 满效 10e/t，每源 1 只定编
             const body = buildRemoteMinerBody(energyBudget, 5, !rushMode);
-            return this.addEconomyMission(sourceRoom, 'OH', body, replaceLevel, ROLES.harvester, memory);
+            return this.addEconomyMission(sourceRoom, 'OH', body, replaceLevel, UNITS.harvester, memory);
         }
     }
 
@@ -2158,10 +2158,10 @@ export class ExternalMineSpawner {
         }
 
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
-        const outerCarry = (creepByTargetRoom[ROLES.carrier] || [])
+        const outerCarry = (creepByTargetRoom[UNITS.carrier] || [])
             .filter((c: any) => c.sourceRoom === sourceRoom.name).length;
 
-        const spawnCarryNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES.carrier, targetRoom.name);
+        const spawnCarryNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS.carrier, targetRoom.name);
         // 体型按当前预算最大化 CARRY（走路段 [C,C,M] 整组扩展）——LOW/CRITICAL 时
         // 预算取当前可用能量（同采集工口径：贫困房也要出得起小搬运，能量回升
         // 每轮派单自动升回满配）。rush 例外：抽水造成的 LOW 不降级收入引擎，
@@ -2191,7 +2191,7 @@ export class ExternalMineSpawner {
                 ? this.OUTMINE_RUSH_CARRY_FAMINE_LEVEL
                 : this.OUTMINE_RUSH_CARRY_LEVEL)
             : this.OUTMINE_CARRY_PIPELINE_LEVEL;
-            const admitted = this.addEconomyMission(sourceRoom, 'OC', carryBody, carryLevel, ROLES.carrier, ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+            const admitted = this.addEconomyMission(sourceRoom, 'OC', carryBody, carryLevel, UNITS.carrier, ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
             return admitted ? true : trace('budget');
         }
 
@@ -2215,14 +2215,14 @@ export class ExternalMineSpawner {
             targetRoom.controller.reservation.username === sourceRoom.controller!.owner!.username! &&
             targetRoom.controller.reservation.ticksToEnd > 1000) return false;
 
-        const outerReservers = this.getActiveRoleNumByTarget(ROLES['reserver'], targetRoom.name);
-        const spawnNum = this.getQueuedSpawnRoleNumByTargetGlobal(ROLES['reserver'], targetRoom.name);
+        const outerReservers = this.getActiveRoleNumByTarget(UNITS['reserver'], targetRoom.name);
+        const spawnNum = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['reserver'], targetRoom.name);
         if (outerReservers + spawnNum >= 1) return false;
 
         // rush 预定提级（L6，升级之前）：reservation 决定 source 容量（有预定 3000/无 1500，
         // 砍半），是外矿收入的倍增器——垫底 L11 会在孵化繁忙期永久饿死
         const reserveLevel = getRoomMode(sourceRoom) === 'rush' ? 6 : this.PRIORITY.reserver;
-        return this.addEconomyMission(sourceRoom, '', '', reserveLevel, ROLES['reserver'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
+        return this.addEconomyMission(sourceRoom, '', '', reserveLevel, UNITS['reserver'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
     }
 
     private static getBuilderConstructionTargets(targetRoom: Room): ConstructionSite[] {
@@ -2257,8 +2257,8 @@ export class ExternalMineSpawner {
         const repairOnly = constructionTargets.length === 0 && repairTargets.length > 0;
 
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
-        const outerBuilder = (creepByTargetRoom[ROLES[ROLES['out-build']]] || []).length;
-        const spawnNum = this.getQueuedSpawnRoleNumByTarget(sourceRoom, ROLES['out-build'], targetRoom.name);
+        const outerBuilder = (creepByTargetRoom[UNITS[UNITS['out-build']]] || []).length;
+        const spawnNum = this.getQueuedSpawnUnitNumByTarget(sourceRoom, UNITS['out-build'], targetRoom.name);
 
         let num = 1;
         if (!repairOnly && workCount > 10) num = 2;
@@ -2273,14 +2273,14 @@ export class ExternalMineSpawner {
         // L12 在「等待高优先级能量」语义下永远轮不到（升级池常驻有任务）。
         // 任务本身按工地存在性自限（没工地不下单），提级不会造成空转孵化。
         const buildLevel = getRoomMode(sourceRoom) === 'rush' ? 9 : this.PRIORITY.build;
-        // 显式体型：out-build 无 RoleLevelData 分级表，空 body 会被孵化端按 Infinity
+        // 显式体型：out-build 无 UnitLevelData 分级表，空 body 会被孵化端按 Infinity
         // 成本跳过（结构性无法孵化）。rush 不缩水——建造力就是运力引擎本身。
         const energyState = ExternalMineState.getEnergyState(sourceRoom);
         const buildRush = getRoomMode(sourceRoom) === 'rush';
         const buildBudget = (!buildRush && (energyState === 'LOW' || energyState === 'CRITICAL'))
             ? Math.max(300, sourceRoom.energyAvailable)
             : sourceRoom.energyCapacityAvailable;
-        return this.addEconomyMission(sourceRoom, 'OB', buildOutBuildBody(buildBudget), buildLevel, ROLES['out-build'], memory);
+        return this.addEconomyMission(sourceRoom, 'OB', buildOutBuildBody(buildBudget), buildLevel, UNITS['out-build'], memory);
     }
 }
 
@@ -2371,8 +2371,8 @@ export class ExternalMine {
         // 会一直堆在扇区边界（表现为「完全不派出」）——直接回收，孵化侧也不再往这些房间派
         for (const creep of Object.values(Game.creeps)) {
             if (!creep?.my || !creep.memory?.targetRoom) continue;
-            const role = String(creep.memory.role || '');
-            if (!role.startsWith('out-') && role !== ROLES.reserver) continue;
+            const unit = String(creep.memory.unit || '');
+            if (!unit.startsWith('out-') && unit !== UNITS.reserver) continue;
             if (isRoomReachable(creep.memory.targetRoom)) continue;
             creep.suicide();
         }

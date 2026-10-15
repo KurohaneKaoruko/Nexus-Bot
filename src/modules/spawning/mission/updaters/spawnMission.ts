@@ -1,7 +1,7 @@
 
 import { addMissionToPool, getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { isRoleId, ROLES, RoleData, RoleLevelData, type RoleId } from '@/constant/CreepConstant';
+import { isUnitId, UNITS, UnitData, UnitLevelData, type UnitId } from '@/constant/CreepConstant';
 import { decompress, decompressBodyConfig } from '@/utils/compress';
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { getRoomData } from '@/core/store/accessor';
@@ -11,7 +11,7 @@ import { isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy
 import { isEnergyCheckEnabled, isRaceCompat } from '@/config/capabilities';
 
 /** rush 期走容量现算体型的角色集合（其余角色维持动态取表路径） */
-const RUSH_BODY_ROLES = new Set<string>([ROLES.harvester, ROLES.carrier, ROLES.upgrader, ROLES.worker]);
+const RUSH_BODY_ROLES = new Set<string>([UNITS.harvester, UNITS.carrier, UNITS.upgrader, UNITS.worker]);
 import { buildUpgraderBodyConfig } from '@/utils/upgradeBody';
 import { getDowngradedLogisticsCountByAssignedRoom, hasSoonDeadCreepByAssignedRoomRole } from '@/utils/creepTickIndex';
 import {
@@ -21,7 +21,7 @@ import {
     createSpawnCheckContext,
     getAdjustedSpawnRoleCurrent,
     shouldSpawnRole,
-    RoleSpawnCheck,
+    UnitSpawnCheck,
     getDowngradeUniversalSpawnMissing,
     getMyConstructionSites,
     isRemotePoolTask,
@@ -33,7 +33,7 @@ export {
     createSpawnCheckContext,
     getAdjustedSpawnRoleCurrent,
     shouldSpawnRole,
-    RoleSpawnCheck,
+    UnitSpawnCheck,
     getDowngradeUniversalSpawnMissing,
     getMyConstructionSites,
     pruneDelayedUpgraderSpawnMissions,
@@ -44,7 +44,7 @@ export {
 /**
  * rush 期体型现算（两个孵化落点统一入口）。
  *
- * - carrier：收口到 `GetRoleBodys` 的搬运动态体型特例——接力期 `maxCarry 4` 小体型快周转、
+ * - carrier：收口到 `GetUnitBodys` 的搬运动态体型特例——接力期 `maxCarry 4` 小体型快周转、
  *   lv7+ 直运放开 32、`forRoad` 按**建成的搬运路网覆盖率 ≥ 1/3**。与常规路径**同一口径**，
  *   消除「rush 走 `[C×2g, M×g]` 无上限组、绕开 hauler 口径」的双轨。
  * - harvester / upgrader / worker：走 rush 容量现算生成器（upgrader 传升级缺口与 carryRatio）。
@@ -53,18 +53,18 @@ export {
  */
 const buildRushSpawnBody = (
     room: Room,
-    role: RoleId,
+    unit: UnitId,
     budget: number,
 ): ((BodyPartConstant | number)[])[] | null => {
-    if (role === ROLES.carrier) {
-        const body = (room as any).GetRoleBodys?.(ROLES.carrier, undefined, budget) as
+    if (unit === UNITS.carrier) {
+        const body = (room as any).GetUnitBodys?.(UNITS.carrier, undefined, budget) as
             ((BodyPartConstant | number)[])[] | undefined;
         return Array.isArray(body) && body.length > 0 ? body : null;
     }
     return buildRushBody(
-        role,
+        unit,
         budget,
-        role === ROLES.upgrader ? { maxWork: getUpgradeWorkTarget(room), carryRatio: 1 } : {},
+        unit === UNITS.upgrader ? { maxWork: getUpgradeWorkTarget(room), carryRatio: 1 } : {},
     );
 };
 
@@ -108,72 +108,72 @@ export default class SpawnMission extends Room {
         // 升级紧迫插队：
         // 实测收入超过在场升级火力（濒死个体不计）时，升级单插队到采集/搬运之前——
         // 收入涨火力涨的自适应闭环；控制器临近降级时无条件最优先（PREVENT_DOWNGRADE）。
-        const roleOrder = Object.keys(RoleSpawnCheck);
+        const unitOrder = Object.keys(UnitSpawnCheck);
         {
             const income = estimateRoomEnergyIncome(this);
             let upgradeFire = 0;
             for (const c of this.find(FIND_MY_CREEPS) as Creep[]) {
-                if (c.memory.role !== ROLES.upgrader || c.spawning) continue;
+                if (c.memory.unit !== UNITS.upgrader || c.spawning) continue;
                 if ((c.ticksToLive || 1500) <= c.body.length * 3) continue;
                 upgradeFire += c.getActiveBodyparts(WORK);
             }
             const preventDowngrade = (this.controller?.ticksToDowngrade ?? 1e9) < UPGRADE_NEEDED_TTD;
             if (preventDowngrade || income > upgradeFire) {
-                const i = roleOrder.indexOf(ROLES.upgrader);
+                const i = unitOrder.indexOf(UNITS.upgrader);
                 if (i > 0) {
-                    roleOrder.splice(i, 1);
-                    roleOrder.unshift(ROLES.upgrader);
+                    unitOrder.splice(i, 1);
+                    unitOrder.unshift(UNITS.upgrader);
                 }
             }
         }
 
-        for (const role of roleOrder) {
-            const adjusted = getAdjustedSpawnRoleCurrent(context, role);
-            if (role === ROLES.universal) {
+        for (const unit of unitOrder) {
+            const adjusted = getAdjustedSpawnRoleCurrent(context, unit);
+            if (unit === UNITS.universal) {
                 const rescueMissing = getDowngradeUniversalSpawnMissing(this, adjusted);
                 if (rescueMissing > 0) {
                     for (let i = 0; i < rescueMissing; i++) {
                         this.SpawnMissionAdd(
-                            RoleData[role].code,
+                            UnitData[unit].code,
                             '',
-                            RoleData[role].level,
-                            role,
+                            UnitData[unit].level,
+                            unit,
                             { home: this.name } as CreepMemory
                         );
                     }
                     continue;
                 }
             }
-            this.checkAndQueueRoleMission(role as RoleId, context, adjusted);
+            this.checkAndQueueRoleMission(unit as UnitId, context, adjusted);
         }
         return false;
     }
 
     /** 单角色孵化判定与发单：rush 体型现算 / 缺口门 / 降级 L5 与加急分层 */
-    private checkAndQueueRoleMission(role: RoleId, context: SpawnCheckContext, adjusted: number): void {
-        if (!shouldSpawnRole(role, context, adjusted)) return;
+    private checkAndQueueRoleMission(unit: UnitId, context: SpawnCheckContext, adjusted: number): void {
+        if (!shouldSpawnRole(unit, context, adjusted)) return;
         // rush 体型统一走容量现算（rushBody）：任意预算成本≤预算、分级下探防死锁；
         // 非 rush 维持原路径（upgrader 按定编缺口配体型，其余空 body 动态取表）
         const isRush = getRoomMode(this) === 'rush';
         let body: ((BodyPartConstant | number)[])[] | string = '';
-        if (isRush && RUSH_BODY_ROLES.has(role)) {
-            const budget = role === ROLES.harvester && this.level <= 3
+        if (isRush && RUSH_BODY_ROLES.has(unit)) {
+            const budget = unit === UNITS.harvester && this.level <= 3
                 ? this.energyCapacityAvailable
                 : this.energyAvailable;
             // 升级工按缺口封顶（carryRatio=1）；
             // harvester 走默认 maxWork（单矿再生上限）/needCarry=false（rush 低 RCL 无源链）；
-            // carrier 收口到 GetRoleBodys 的搬运动态体型口径（见 buildRushSpawnBody）
-            const rushBody = buildRushSpawnBody(this, role, budget);
+            // carrier 收口到 GetUnitBodys 的搬运动态体型口径（见 buildRushSpawnBody）
+            const rushBody = buildRushSpawnBody(this, unit, budget);
             // 预算不足最小体型：本轮不发单（空 body 会落到动态取表，且让后续统计踩空）
             if (!rushBody) return;
             body = rushBody as any;
         }
-        if (!body && role === ROLES.upgrader && !isRush) {
+        if (!body && unit === UNITS.upgrader && !isRush) {
             body = buildUpgraderBodyConfig(this.energyCapacityAvailable, getUpgradeWorkTarget(this));
         }
         // 缺口门：WORK 缺口×2 都填不满一个身位时不发单（防小缺口反复孵化空转）。
         // 降级风险豁免：upgradeNeeded 时再小的缺口也孵
-        if (role === ROLES.upgrader && Array.isArray(body)) {
+        if (unit === UNITS.upgrader && Array.isArray(body)) {
             const bodyWork = body.reduce((sum, [part, n]) => sum + (part === WORK ? Number(n) : 0), 0);
             const deficit = Math.max(0, getUpgradeWorkTarget(this) - adjusted);
             const upgradeNeeded = (this.controller?.ticksToDowngrade ?? 0) < UPGRADE_NEEDED_TTD;
@@ -181,50 +181,50 @@ export default class SpawnMission extends Room {
         }
         // 升级任务分层：降级风险 → L5 预防降级（先于 worker L8）；
         // 加急（水位/收入口径） → L10 插到外矿流水线之前；常规 → L7
-        const level = role === ROLES.upgrader
+        const level = unit === UNITS.upgrader
             ? ((this.controller?.ticksToDowngrade ?? 0) < UPGRADE_NEEDED_TTD
                 ? 5
                 : isUpgraderSpawnUrgent(this)
                     ? UPGRADE_URGENT_SPAWN_LEVEL
-                    : RoleData[role].level)
-            : RoleData[role].level;
+                    : UnitData[unit].level)
+            : UnitData[unit].level;
         this.SpawnMissionAdd(
-            RoleData[role].code,
+            UnitData[unit].code,
             body,
             level,
-            role,
+            unit,
             { home: this.name } as CreepMemory
         );
     }
 
     /**
      * 添加孵化任务（spawn）
-     * @param name - 孵化任务标识（常用 RoleData[role].code）
+     * @param name - 孵化任务标识（常用 UnitData[unit].code）
      * @param body - 身体配置（数组或压缩字符串）
      * @param level - 任务优先级；<0 时使用默认等级
-     * @param role - creep 角色
-     * @param memory - creep memory（会克隆并写入 role）
+     * @param unit - creep 角色
+     * @param memory - creep memory（会克隆并写入 unit）
      * @param upbody - 是否启用升级 body（可选）
      * @returns OK 表示入队成功，-1 表示失败
      */
-    override SpawnMissionAdd(name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, role: string, memory?: CreepMemory, upbody?: boolean) {
-        if (!(RoleData as any) [role]) {
-            console.log(`role ${role} 不存在`);
+    override SpawnMissionAdd(name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, unit: string, memory?: CreepMemory, upbody?: boolean) {
+        if (!(UnitData as any) [unit]) {
+            console.log(`unit ${unit} 不存在`);
             return -1;
         }
 
         if (!memory) memory = {} as CreepMemory;
         else memory = { ...(memory as any) } as CreepMemory;
-        memory.role = role;
+        memory.unit = unit;
 
-        if (level < 0) level = (RoleData as Record<string, { level: number }>)[role]?.level ?? 0;
+        if (level < 0) level = (UnitData as Record<string, { level: number }>)[unit]?.level ?? 0;
         let bodypart: BodyPartConstant[];
         let energy = 0;
         if (typeof body === 'string') {
-            bodypart = this.GenerateBodys(decompressBodyConfig(body), role);
+            bodypart = this.GenerateBodys(decompressBodyConfig(body), unit);
             energy = this.CalculateEnergy(bodypart);
         } else {
-            bodypart = this.GenerateBodys(body, role);
+            bodypart = this.GenerateBodys(body, unit);
             energy = this.CalculateEnergy(bodypart);
         }
 
@@ -240,11 +240,11 @@ export default class SpawnMission extends Room {
 }
 
 // ==================== Getter Helpers ====================
-const SPAWN_GETTER_BUDGET_ROLES = new Set<string>([ROLES.harvester, ROLES.transporter, ROLES.carrier, ROLES.manager]);
+const SPAWN_GETTER_BUDGET_ROLES = new Set<string>([UNITS.harvester, UNITS.transporter, UNITS.carrier, UNITS.manager]);
 
-const getSpawnTaskRole = (taskData?: SpawnTask): RoleId | null => {
-    const role = taskData?.memory?.role;
-    return isRoleId(role) ? role : null;
+const getSpawnTaskRole = (taskData?: SpawnTask): UnitId | null => {
+    const unit = taskData?.memory?.unit;
+    return isUnitId(unit) ? unit : null;
 };
 
 type SpawnMissionSelection = {
@@ -333,18 +333,18 @@ const pickSpawnMission = (
 export class SpawnTaskGetter extends Room {
     private getSpawnTaskRequiredEnergy(task: Task, energyAvailable: number): number | null {
         const data = task.data as SpawnTask;
-        const role = getSpawnTaskRole(data);
-        if (!role) return null;
+        const unit = getSpawnTaskRole(data);
+        if (!unit) return null;
 
         let body = data.body as ((BodyPartConstant | number)[])[] | string;
         // rush 期本矿四职按当前可用能量现算体型（rushBody 容量现算）：
         // 固定满档体型会被建造/搬运的常态抽取压死——能量落在「够小体、不够大体」的区间时，
         // 动态角色（升级工）连续孵化而固定角色（采集工）永远付不起，滚成只孵一职的死循环。
         // 无稳定收入时矿工体型按当前能量取（income 口径）。
-        // 外矿角色不在此处理：无等级表（GetRoleBodys 会返回空 → Infinity），
+        // 外矿角色不在此处理：无等级表（GetUnitBodys 会返回空 → Infinity），
         // 其体型由派单侧每轮重铺时按预算现算（externalMine 的 buildRemoteMinerBody 口径）
-        if (RUSH_BODY_ROLES.has(role) && getRoomMode(this) === 'rush') {
-            body = (buildRushSpawnBody(this, role, energyAvailable) ?? '') as any;
+        if (RUSH_BODY_ROLES.has(unit) && getRoomMode(this) === 'rush') {
+            body = (buildRushSpawnBody(this, unit, energyAvailable) ?? '') as any;
         }
         const hasFixedBody = (typeof body === 'string' && !!body) || (Array.isArray(body) && body.length > 0);
         let requiredEnergy = Number(data.energy || 0);
@@ -356,16 +356,16 @@ export class SpawnTaskGetter extends Room {
             // 外矿单在 L9 等待位上不会卡本矿层，缩体型让外矿在 RCL2-3 就能以小队进场供能
             const allowBudgetSpawn =
                 ((state === 'LOW' || state === 'CRITICAL') &&
-                SPAWN_GETTER_BUDGET_ROLES.has(role)) ||
-                (role === ROLES.worker && getMyConstructionSites(this).length > 0) ||
+                SPAWN_GETTER_BUDGET_ROLES.has(unit)) ||
+                (unit === UNITS.worker && getMyConstructionSites(this).length > 0) ||
                 (getRoomMode(this) === 'rush' && isRemotePoolTask(task));
             const budget = allowBudgetSpawn ? energyAvailable : undefined;
-            body = this.GetRoleBodys(role, data.upbody, budget);
-            const bodypart = this.GenerateBodys(body as any[], role);
+            body = this.GetUnitBodys(unit, data.upbody, budget);
+            const bodypart = this.GenerateBodys(body as any[], unit);
             requiredEnergy = bodypart.length > 0 ? this.CalculateEnergy(bodypart) : Infinity;
         } else if (requiredEnergy <= 0) {
             const normalized = typeof body === 'string' ? decompressBodyConfig(body) : body;
-            const bodypart = this.GenerateBodys(normalized as any[], role);
+            const bodypart = this.GenerateBodys(normalized as any[], unit);
             requiredEnergy = bodypart.length > 0 ? this.CalculateEnergy(bodypart) : Infinity;
             data.energy = requiredEnergy;
         }
@@ -399,7 +399,7 @@ export class SpawnTaskGetter extends Room {
                 if (isRemotePoolTask(task)) {
                     // 外矿线：解锁闩未开前不出（本矿链饱和才轮到外矿），解锁后永不拦
                     if (!isRoomRemoteUnlocked(this)) continue;
-                } else if (taskRole !== ROLES.harvester && taskRole !== ROLES.upgrader && taskRole !== ROLES.universal) {
+                } else if (taskRole !== UNITS.harvester && taskRole !== UNITS.upgrader && taskRole !== UNITS.universal) {
                     continue;
                 }
             }
@@ -422,9 +422,9 @@ export class SpawnTaskGetter extends Room {
         // 有界让位、双向不饿死（升级单不存在/孵不起时收入链照常连跑）。
         const memAny = this.memory as any;
         const pickedMem = (picked.data as any)?.memory;
-        const pickedRole = pickedMem?.role;
+        const pickedRole = pickedMem?.unit;
         const isRemoteEconomy = !!pickedMem?.sourceRoom && !!pickedMem?.targetRoom
-            && (pickedRole === ROLES.harvester || pickedRole === ROLES.carrier);
+            && (pickedRole === UNITS.harvester || pickedRole === UNITS.carrier);
         if (picked.level >= 4 && picked.level <= 6 && isRemoteEconomy) {
             memAny.incomeChainRun = (memAny.incomeChainRun || 0) + 1;
         } else {
@@ -434,7 +434,7 @@ export class SpawnTaskGetter extends Room {
         if (memAny.incomeChainRun < 2) return picked;
 
         for (const task of tasks ?? []) {
-            if ((task.data as any)?.memory?.role !== ROLES.upgrader) continue;
+            if ((task.data as any)?.memory?.unit !== UNITS.upgrader) continue;
             const required = this.getSpawnTaskRequiredEnergy(task, availableEnergy);
             if (required != null && required <= availableEnergy) {
                 memAny.incomeChainRun = 0;
@@ -454,9 +454,9 @@ export class SpawnTaskGetter extends Room {
         const spawnMissionNum: Record<string, number> = {};
         for (const task of tasks ?? []) {
             const data = task.data as SpawnTask;
-            const role = getSpawnTaskRole(data);
-            if (!role) continue;
-            spawnMissionNum[role] = (spawnMissionNum[role] || 0) + 1;
+            const unit = getSpawnTaskRole(data);
+            if (!unit) continue;
+            spawnMissionNum[unit] = (spawnMissionNum[unit] || 0) + 1;
         }
 
         roomAny._spawnMissionNumCache = spawnMissionNum;
@@ -464,14 +464,14 @@ export class SpawnTaskGetter extends Room {
         return spawnMissionNum;
     }
 
-    override getSpawnMissionTotalByRoles(roles: string[]) {
+    override getSpawnMissionTotalByRoles(units: string[]) {
         const tasks = getAllMissionFromPool(this.name, MISSION_POOLS.spawn);
         let num = 0;
         for (const task of tasks ?? []) {
             const data = task.data as SpawnTask;
-            const role = getSpawnTaskRole(data);
-            if (!role) continue;
-            if (roles.includes(role)) num++;
+            const unit = getSpawnTaskRole(data);
+            if (!unit) continue;
+            if (units.includes(unit)) num++;
         }
         return num;
     }

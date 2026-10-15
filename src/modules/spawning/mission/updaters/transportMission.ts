@@ -2,7 +2,7 @@
 import { addMissionToPool, getMissionFromPool, getAllMissionFromPool, checkSameMissionInPool, lockMissionInPool, updateMissionPool, deleteMissionFromPool, checkMissionPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { qos } from '@/core/qos';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { compress } from '@/utils/compress';
 import { getLabAB } from '@/modules/industry/labReservations';
 import { getRoomData, getStructData } from '@/core/store/accessor';
@@ -199,10 +199,10 @@ export default class TransportMission extends Room {
         const highMode = getRoomModeProfile(this).highIntensity;
         // 常规升级已并入 worker，worker 空闲时会顶上控制器升级，也计入缓冲消费者
         const hasUpgradeConsumer =
-            (creepNum[ROLES.worker] || 0) +
-            (creepNum[ROLES.upgrader] || 0) +
-            (creepNum[ROLES['aid-upgrade']] || 0) +
-            (creepNum[ROLES.universal] || 0) > 0;
+            (creepNum[UNITS.worker] || 0) +
+            (creepNum[UNITS.upgrader] || 0) +
+            (creepNum[UNITS['aid-upgrade']] || 0) +
+            (creepNum[UNITS.universal] || 0) > 0;
         if (!highMode && !hasUpgradeConsumer) return availableEnergy;
 
         const ticksToDowngrade = controller.ticksToDowngrade || 0;

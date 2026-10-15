@@ -17,7 +17,7 @@ export const Economy: TickModule = {
 	run(ctx: TickContext): void {
 		const board = createTaskBoard(ctx.memory.tasks);
 		runEconomyPlanners(ctx, board);
-		// 外矿同名-role 采集任务 (邻房可见 source)
+		// 外矿同名-unit 采集任务 (邻房可见 source)
 		const w = ctx.world.current;
 		if (w) {
 			for (const room of Object.values(w.rooms)) {

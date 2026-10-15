@@ -1,4 +1,4 @@
-export type RoleDefinition = {
+export type UnitDefinition = {
     bodypart: any[];                    // body 配置
     must?: boolean;                    // 是否无论战争还是和平都得孵化
     level?: number;                    // 孵化优先级，越小越优先
@@ -7,7 +7,7 @@ export type RoleDefinition = {
     boostmap?: Record<string, string>; // boost 配置
 };
 
-export const RoleData = {
+export const UnitData = {
     /* 基本房间运营 */
     'harvester': {
         bodypart: [[WORK, 2], [MOVE, 2]],
@@ -58,7 +58,7 @@ export const RoleData = {
         executor: 'universal',
     }, // 采集搬运通用机，处理停摆与新房起步
     // 自爆拉能快递：由 rush-courier 任务链驱动（spawn 满仓盈余 → 满载自爆留墓碑给 upgrader），
-    // 无执行器（exec 跳过），也不进 RoleSpawnCheck（永不占用常规孵化队列）
+    // 无执行器（exec 跳过），也不进 UnitSpawnCheck（永不占用常规孵化队列）
     'rush-courier': {
         bodypart: [[CARRY, 1]],
         level: 11,
@@ -360,33 +360,33 @@ export const RoleData = {
     'keeper-killer': { bodypart: [], level: 12, code: 'KK' }, // Keeper 猎杀
     'score-hunter': { bodypart: [], level: 12, code: 'SH' }, // 分数猎取
     'out-repair': { bodypart: [], level: 12, code: 'ORE' }, // 外矿基建维修
-} satisfies Record<string, RoleDefinition>;
+} satisfies Record<string, UnitDefinition>;
 
-export type RoleId = keyof typeof RoleData;
+export type UnitId = keyof typeof UnitData;
 
-export const isRoleId = (role?: string): role is RoleId =>
-    !!role && role in RoleData;
+export const isUnitId = (unit?: string): unit is UnitId =>
+    !!unit && unit in UnitData;
 
 /**
- * 角色标识常量表（词表单一来源，派生自 RoleData 键）：
- * 功能代码引用 ROLES.x 而非字面量，改名/审查全走此表。
- * 值类型为键字面量（映射恒等），保证 RoleData[ROLES.x] 保留具体条目类型。
+ * 角色标识常量表（词表单一来源，派生自 UnitData 键）：
+ * 功能代码引用 UNITS.x 而非字面量，改名/审查全走此表。
+ * 值类型为键字面量（映射恒等），保证 UnitData[UNITS.x] 保留具体条目类型。
  */
-export const ROLES = Object.freeze(
-    Object.fromEntries((Object.keys(RoleData) as RoleId[]).map((id) => [id, id])),
-) as { readonly [K in RoleId]: K };
+export const UNITS = Object.freeze(
+    Object.fromEntries((Object.keys(UnitData) as UnitId[]).map((id) => [id, id])),
+) as { readonly [K in UnitId]: K };
 
-/** 执行器标识常量表（派生自 RoleData[].executor；roleRegistry 索引键与分发引用此表） */
+/** 执行器标识常量表（派生自 UnitData[].executor；roleRegistry 索引键与分发引用此表） */
 export const EXECUTORS = Object.freeze(
     Object.fromEntries(
-        (Object.entries(RoleData) as [RoleId, RoleDefinition][])
+        (Object.entries(UnitData) as [UnitId, UnitDefinition][])
             .filter(([, def]) => def.executor)
             .map(([, def]) => [def.executor!, def.executor!]),
     ),
 ) as Readonly<Record<string, string>>;
 
 // 根据等级的动态部件
-export const RoleLevelData = {
+export const UnitLevelData = {
     'harvester': {
         1: { bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]], num: 0 },
         2: { bodypart: [[WORK, 3], [CARRY, 1], [MOVE, 1]], num: 0 },
@@ -597,7 +597,7 @@ export const RoleLevelData = {
 }
 
 // 配置选项
-export const RoleBodys = {
+export const UnitBodys = {
     'aid-build': {
         'T3': {
             bodypart: [[WORK, 35], [CARRY, 5], [MOVE, 10]],

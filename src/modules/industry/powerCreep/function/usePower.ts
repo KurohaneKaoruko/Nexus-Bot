@@ -1,6 +1,6 @@
 
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { getLabAB } from '@/modules/industry/labReservations';
 import { getStructData } from '@/core/store/accessor';
 
@@ -56,14 +56,14 @@ export default class PowerCreepUsePower extends PowerCreep {
         if(!this.room!.spawn) return false;
         if(this.store[RESOURCE_OPS] < 100) return false;
         if (this.room!.my!) {
-            const roles = [
-                ROLES['power-attack'], ROLES['power-heal'], ROLES['power-carry'], 'power-defend',
-                ROLES['deposit-harvest'], ROLES['deposit-transfer'],
-                ROLES['team-attack'], ROLES['team-dismantle'], ROLES['team-ranged'], ROLES['team-heal'],
+            const units = [
+                UNITS['power-attack'], UNITS['power-heal'], UNITS['power-carry'], 'power-defend',
+                UNITS['deposit-harvest'], UNITS['deposit-transfer'],
+                UNITS['team-attack'], UNITS['team-dismantle'], UNITS['team-ranged'], UNITS['team-heal'],
             ]
             if (!Game.flags[this.name+'-upspawn'] && !this.room!.memory.defend &&
                 (!this.room!.checkMissionInPool! (MISSION_POOLS.mine) ||
-                this.room!.getSpawnMissionTotalByRoles! (roles) < 1)) return false;
+                this.room!.getSpawnMissionTotalByRoles! (units) < 1)) return false;
         }
         const spawns = this.room!.spawn!;
         if(!spawns) return false;

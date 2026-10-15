@@ -8,10 +8,10 @@ export type SpawnLiveMatcher = (creep: Creep) => boolean;
 export const matchesFlagSpawnMemory = (
     memory: any,
     flagName: string,
-    role: string,
+    unit: string,
     legacyMatch: SpawnMemoryMatcher
 ) => {
-    if (!memory || memory.role !== role) return false;
+    if (!memory || memory.unit !== unit) return false;
     if (memory.spawnFlag) return memory.spawnFlag === flagName;
     return legacyMatch(memory);
 };
@@ -19,7 +19,7 @@ export const matchesFlagSpawnMemory = (
 export const getFlagSpawnLoad = (
     spawnRoom: Room,
     flagName: string,
-    role: string,
+    unit: string,
     legacyMatch: SpawnMemoryMatcher,
     liveMatch?: SpawnLiveMatcher
 ) => {
@@ -27,7 +27,7 @@ export const getFlagSpawnLoad = (
     for (const creepName in Game.creeps) {
         const creep = Game.creeps[creepName];
         if (
-            matchesFlagSpawnMemory(creep?.memory, flagName, role, legacyMatch) &&
+            matchesFlagSpawnMemory(creep?.memory, flagName, unit, legacyMatch) &&
             (!liveMatch || liveMatch(creep))
         ) {
             live++;
@@ -37,7 +37,7 @@ export const getFlagSpawnLoad = (
     let queued = 0;
     const tasks = getAllMissionFromPool(spawnRoom.name, MISSION_POOLS.spawn) || [];
     for (const task of tasks as any[]) {
-        if (matchesFlagSpawnMemory(task?.data?.memory, flagName, role, legacyMatch)) {
+        if (matchesFlagSpawnMemory(task?.data?.memory, flagName, unit, legacyMatch)) {
             queued++;
         }
     }

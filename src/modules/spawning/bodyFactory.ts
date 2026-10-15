@@ -74,12 +74,12 @@ const ECONOMY_ROLES: ReadonlySet<string> = new Set([
 	"rush-courier",
 ]);
 
-export function isEconomyRole(role: string): role is EconomyRole {
-	return ECONOMY_ROLES.has(role);
+export function isEconomyRole(unit: string): unit is EconomyRole {
+	return ECONOMY_ROLES.has(unit);
 }
 
-export function isSpawnUnit(role: string): role is SpawnUnit {
-	return ECONOMY_ROLES.has(role) || role === "defender";
+export function isSpawnUnit(unit: string): unit is SpawnUnit {
+	return ECONOMY_ROLES.has(unit) || unit === "defender";
 }
 
 function segmentCost(segment: BodyPartConstant[]): number {
@@ -125,11 +125,11 @@ export function buildCourierBody(budget: number): BodyPartConstant[] | null {
  * 慢地形 harvester speed=1 (1:1 move/work, 到位前的沼泽路段不积疲劳)。
  */
 export function buildBody(
-	role: SpawnUnit,
+	unit: SpawnUnit,
 	budget: number,
 	hints?: BodyHints,
 ): BodyPartConstant[] | null {
-	switch (role) {
+	switch (unit) {
 		case "harvester":
 			return buildRushHarvesterBody(budget, { speed: hints?.slowTerrain ? 1 : 0.5 });
 		case "upgrader":
@@ -181,6 +181,6 @@ export function buildBody(
 }
 
 /** 角色的典型生产时间上界 (替补窗口估算用: 满配体型) */
-export function typicalSpawnTime(role: SpawnUnit): number {
-	return spawnTimeOf(buildBody(role, Number.MAX_SAFE_INTEGER) ?? []);
+export function typicalSpawnTime(unit: SpawnUnit): number {
+	return spawnTimeOf(buildBody(unit, Number.MAX_SAFE_INTEGER) ?? []);
 }

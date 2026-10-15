@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import { isRoleId, ROLES, RoleData } from '@/constant/CreepConstant';
+import { isUnitId, UNITS, UnitData } from '@/constant/CreepConstant';
 import { CompoundColor } from '@/constant/ResourceConstant';
 import { getLabAB } from '@/modules/industry/labReservations';
 import { getRoomMode } from '@/modules/strategy/roomModeAccess';
@@ -18,13 +18,13 @@ export function drawSpawnInfo(spawns: StructureSpawn[]): void {
         if (!spawn.spawning) continue;
 
         const creepMemory = Memory.creeps[spawn.spawning.name];
-        const role = creepMemory?.role;
-        if (!isRoleId(role)) {
+        const unit = creepMemory?.unit;
+        if (!isUnitId(unit)) {
             spawn.spawning.cancel();
             continue;
         }
 
-        const code = RoleData[role].code;
+        const code = UnitData[unit].code;
         spawn.room.visual.text(
             `${code} 🕒${spawn.spawning.remainingTime}`,
             spawn.pos.x,
@@ -254,14 +254,14 @@ export function raceVisual(room: Room): void {
     let ohTotal = 0;
     let ohOnSite = 0;
     for (const creep of Object.values(Game.creeps)) {
-        const role = creep.memory?.role;
-        if (role === ROLES.carrier) {
+        const unit = creep.memory?.unit;
+        if (unit === UNITS.carrier) {
             ocTotal++;
             if ((creep.memory as any).relayedTick === now) relayThisTick++;
-        } else if (role === ROLES.harvester) {
+        } else if (unit === UNITS.harvester) {
             ohTotal++;
             if (creep.pos.roomName === (creep.memory as any).targetRoom) ohOnSite++;
-        } else if (role === ROLES.upgrader) {
+        } else if (unit === UNITS.upgrader) {
             uWork += creep.getActiveBodyparts(WORK);
         }
     }
@@ -343,11 +343,11 @@ export function raceVisual(room: Room): void {
     }
 
     // 孵化队列角色摘要（角色代号大写：OH/OC/RSV…，按数量取前 4）
-    const pool = ((room as any).getAllMissionFromPool?.('spawn') || []) as Array<{ data?: { memory?: { role?: string } } }>;
+    const pool = ((room as any).getAllMissionFromPool?.('spawn') || []) as Array<{ data?: { memory?: { unit?: string } } }>;
     const poolCount: Record<string, number> = {};
     for (const task of pool) {
-        const role = task.data?.memory?.role || '?';
-        const code = (RoleData as any)[role]?.code || role.toUpperCase();
+        const unit = task.data?.memory?.unit || '?';
+        const code = (UnitData as any)[unit]?.code || unit.toUpperCase();
         poolCount[code] = (poolCount[code] || 0) + 1;
     }
     const poolText = Object.entries(poolCount)
@@ -425,7 +425,7 @@ export function raceVisual(room: Room): void {
     for (const creep of Object.values(Game.creeps)) {
         if (creep.room.name !== room.name) continue;
         const mem = creep.memory as any;
-        if (mem.role !== ROLES.carrier) continue;
+        if (mem.unit !== UNITS.carrier) continue;
         const load = creep.store.getUsedCapacity(RESOURCE_ENERGY) || 0;
         const phase = load > 0 ? '送' : '取';
         const assign = mem._assign ?? (load > 0 ? '满' : '等');

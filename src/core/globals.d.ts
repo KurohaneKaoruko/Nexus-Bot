@@ -15,6 +15,6 @@ interface CreepMemory {
 	/** 当前持有的任务租约 (TaskBoard 分配) */
 	taskId?: string;
 	/** 角色代号 (生产时写入) */
-	role?: string;
+	unit?: string;
 	homeRoom?: string;
 }

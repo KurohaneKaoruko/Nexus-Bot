@@ -10,7 +10,7 @@
 		"src/modules/teams/",
 		"src/modules/industry/",
 		"src/modules/intershard/",
-		"src/modules/economy/roles/",
+		"src/modules/economy/units/",
 		"src/modules/spawning/legacy/",
 		"src/modules/spawning/mission/",
 		"src/modules/defense/legacy/",

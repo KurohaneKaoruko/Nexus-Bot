@@ -13,7 +13,7 @@ type UniversalTargetCache = {
 };
 
 const getUniversalTargetCache = (creep: Creep): UniversalTargetCache =>
-    ensureMemoryCache(creep.memory).role as UniversalTargetCache;
+    ensureMemoryCache(creep.memory).unit as UniversalTargetCache;
 
 const isUrgentRefill = (room: Room) => room.CheckSpawnAndTower();
 const hasMyConstructionSites = (room: Room) => room.find(FIND_CONSTRUCTION_SITES).some(site => (site as any).my);

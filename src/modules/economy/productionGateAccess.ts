@@ -3,7 +3,7 @@
  * 生产阶段门：产出就绪 / 外矿解锁判定（自 spawnRules 迁出，供孵化规则与外矿模块共用）。
  * 开局序列：先矿工孵化到位、产出稳住，之后才放行升级/搬运扩张/外矿。
  */
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { getRoomMode } from '@/modules/strategy/roomModeAccess';
 import { buildRushBody } from '@/utils/rush';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
@@ -62,10 +62,10 @@ export const getHarvesterTargetBySource = (room: Room): number => {
     // 定编口径必须与实际孵化体一致：rush 走 rushBody 现算（容量≥550 即 5W 满速体）。
     // 按等级表 W2 低估单体会把每源上限算成 2-3 只，5W 采集工成对孵出压爆 10e/t 源速率
     const rushBodyConfig = getRoomMode(room) === 'rush'
-        ? buildRushBody(ROLES.harvester, room.energyCapacityAvailable)
+        ? buildRushBody(UNITS.harvester, room.energyCapacityAvailable)
         : null;
-    const bodyConfig = rushBodyConfig ?? room.GetRoleBodys(ROLES.harvester);
-    const harvesterBody = room.GenerateBodys(bodyConfig, ROLES.harvester);
+    const bodyConfig = rushBodyConfig ?? room.GetUnitBodys(UNITS.harvester);
+    const harvesterBody = room.GenerateBodys(bodyConfig, UNITS.harvester);
     const workPerHarvester = Math.max(1, getWorkPartCount(harvesterBody));
     const maxByWorkCap = Math.max(1, Math.ceil(HARVESTER_MAX_WORK_PER_SOURCE / workPerHarvester));
     for (const source of room.source || []) {
@@ -83,7 +83,7 @@ export const isRoomProductionSecured = (room: Room): boolean => {
     if (target <= 0) return true;
     const alive = getRoomTickCacheValue(room, 'production_secured_harvesters', () =>
         room.find(FIND_MY_CREEPS, {
-            filter: (c: Creep) => c.memory?.role === ROLES.harvester && !c.spawning,
+            filter: (c: Creep) => c.memory?.unit === UNITS.harvester && !c.spawning,
         }).length,
     );
     return alive >= target;

@@ -1,5 +1,5 @@
 /**
- * 外矿同名-role 实现: 侦查邻房 → 记录远程 source → 产出跨房采集任务。
+ * 外矿同名-unit 实现: 侦查邻房 → 记录远程 source → 产出跨房采集任务。
  * 远程 harvester 与本矿同名 (memory.targetRoom 区分), 任务 kind 仍为 harvest。
  * 侦查无状态化: 邻房不可见时产出 scout 任务 (到达即获视野), 可见时产出采集任务。
  */

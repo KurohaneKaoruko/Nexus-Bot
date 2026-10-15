@@ -2,7 +2,7 @@
 import { log } from '@/utils/log';
 import { getRoleHandler } from '@/modules/agents/prototype/Creep/runtime/registry';
 import { ensureMemoryCache } from '@/modules/agents/creepCache';
-import { RoleData } from '@/constant/CreepConstant';
+import { UnitData } from '@/constant/CreepConstant';
 
 const creepExecuteErrorTickCache: Record<string, number> = {};
 
@@ -18,13 +18,13 @@ const reportExecuteIssue = (key: string, message: string) => {
 
 export default class CreepExecute extends Creep {
     override exec() {
-        const role = this.memory.role;
-        if (!role) return;
-        const roledata = (RoleData as any) [role];
+        const unit = this.memory.unit;
+        if (!unit) return;
+        const roledata = (UnitData as any) [unit];
         if (!roledata) {
             reportExecuteIssue(
-                `missing-role:${role}`,
-                `[CreepExecute] 未找到角色 ${role} 的 RoleData 配置，当前 creep 将跳过执行。`
+                `missing-unit:${unit}`,
+                `[CreepExecute] 未找到角色 ${unit} 的 UnitData 配置，当前 creep 将跳过执行。`
             );
             return;
         }
@@ -39,8 +39,8 @@ export default class CreepExecute extends Creep {
 
         const handler = getRoleHandler(executor, (missingId) => {
             reportExecuteIssue(
-                `missing-handler:${role}:${missingId}`,
-                `[CreepExecute] 角色 ${role} 绑定的统一处理器 ${missingId} 不存在，请检查 RoleData.executor 与 roleRegistry 是否一致。`
+                `missing-handler:${unit}:${missingId}`,
+                `[CreepExecute] 角色 ${unit} 绑定的统一处理器 ${missingId} 不存在，请检查 UnitData.executor 与 roleRegistry 是否一致。`
             );
         });
         if (!handler) return;

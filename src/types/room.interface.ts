@@ -234,7 +234,7 @@ interface Room {
      * @description 统计所有home为该房间的creep，按角色分类计数
      * @example const nums = room.getCreepNum(); // { harvester: 2, upgrader: 1, ... }
      */
-    getCreepNum(): { [role: string]: number };
+    getCreepNum(): { [unit: string]: number };
     
     /** 
      * 返回一个等级, 取决于spawn总容量
@@ -343,22 +343,22 @@ interface Room {
     // ==================== 体型生成 ====================
     /** 
      * 生成role体型, 压缩形式
-     * @param role - 角色名称，如'harvester'、'upgrader'等
+     * @param unit - 角色名称，如'harvester'、'upgrader'等
      * @param upbody - 可选，是否使用升级版体型
      * @returns 压缩形式的体型数组，如[[WORK, 5], [CARRY, 1], [MOVE, 3]]
      * @description 根据房间等级和能量容量动态生成合适的体型
-     * @example const body = room.GetRoleBodys('harvester'); // [[WORK, 5], [CARRY, 1], [MOVE, 3]]
+     * @example const body = room.GetUnitBodys('harvester'); // [[WORK, 5], [CARRY, 1], [MOVE, 3]]
      */
-    GetRoleBodys(role: string, upbody?: boolean, energyBudget?: number, miniBody?: boolean): ((BodyPartConstant | number)[])[];
+    GetUnitBodys(unit: string, upbody?: boolean, energyBudget?: number, miniBody?: boolean): ((BodyPartConstant | number)[])[];
     
     /** 
      * 生成creep body
      * @param bodypartList - 压缩形式的体型数组，如[[WORK, 5], [CARRY, 1], [MOVE, 3]]
-     * @param role - 可选，角色名称，用于特殊体型排列
+     * @param unit - 可选，角色名称，用于特殊体型排列
      * @returns 展开后的body数组，如[WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE]
      * @description 将压缩体型展开为实际body数组，某些角色有特殊排列顺序
      */
-    GenerateBodys(bodypartList: ((BodyPartConstant | number)[])[], role?: string): BodyPartConstant[];
+    GenerateBodys(bodypartList: ((BodyPartConstant | number)[])[], unit?: string): BodyPartConstant[];
     
     /** 
      * 计算孵化所需能量

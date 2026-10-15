@@ -2,9 +2,9 @@
 import { deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { log } from '@/utils/log';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { isRoleId, ROLES, RoleData, type RoleId } from '@/constant/CreepConstant';
+import { isUnitId, UNITS, UnitData, type UnitId } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
-import { GenCreepName } from '@/utils/naming';
+import { GenUnitName, generateCreepName } from '@/utils/naming';
 import { decompressBodyConfig } from '@/utils/compress';
 import { getRoomData } from '@/core/store/accessor';
 import { getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
@@ -27,27 +27,27 @@ const getEnergyState = (room: Room) =>
 // 它们的队列优先级(level 12)天然让位于本地角色(worker 8)，本地编制吃满后
 // 能量会攒到Extensions，远程 mission 随之孵出；真正的饥荒期远程转暗本身合理
 // （外矿经济的容量门槛另见 externalMine.REMOTE_ECONOMY_MIN_CAPACITY）。
-const EMERGENCY_DOWNSIZE_ROLES = new Set<string>([ROLES.harvester, ROLES.transporter, ROLES.carrier, ROLES.manager]);
+const EMERGENCY_DOWNSIZE_ROLES = new Set<string>([UNITS.harvester, UNITS.transporter, UNITS.carrier, UNITS.manager]);
 const EMERGENCY_RECOVERY_UNIVERSAL_BODY: BodyPartConstant[] = [WORK, CARRY, MOVE];
-const DOWNGRADED_LOGISTICS_ROLE_SET = new Set<RoleId>([ROLES.transporter, ROLES.carrier, ROLES.manager]);
+const DOWNGRADED_LOGISTICS_ROLE_SET = new Set<UnitId>([UNITS.transporter, UNITS.carrier, UNITS.manager]);
 
-const getFullRoleBodyCost = (room: Room, role: RoleId, upbody?: boolean) => {
-    const fullConfig = room.GetRoleBodys(role, upbody, undefined);
-    const fullBody = room.GenerateBodys(fullConfig, role);
+const getFullRoleBodyCost = (room: Room, unit: UnitId, upbody?: boolean) => {
+    const fullConfig = room.GetUnitBodys(unit, upbody, undefined);
+    const fullBody = room.GenerateBodys(fullConfig, unit);
     return fullBody?.length ? room.CalculateEnergy(fullBody) : null;
 };
 
 const updateDowngradedFlag = (
     room: Room,
-    role: RoleId,
+    unit: UnitId,
     taskData: SpawnTask,
     cost: number,
     usedBudget: boolean,
     state = getEnergyState(room)
 ) => {
-    if (!DOWNGRADED_LOGISTICS_ROLE_SET.has(role)) return;
+    if (!DOWNGRADED_LOGISTICS_ROLE_SET.has(unit)) return;
 
-    const fullCost = getFullRoleBodyCost(room, role, taskData.upbody) ?? cost;
+    const fullCost = getFullRoleBodyCost(room, unit, taskData.upbody) ?? cost;
     const isLowEnergy = state === 'LOW' || state === 'CRITICAL';
 
     if (usedBudget && isLowEnergy) {
@@ -69,9 +69,9 @@ const getAvailableSpawn = (room: Room) => {
     return room.spawn?.find((spawn) => !spawn.spawning && (!requireActive || spawn.isActive()));
 };
 
-const finishSpawnTask = (room: Room, role: RoleId, taskId: string) => {
+const finishSpawnTask = (room: Room, unit: UnitId, taskId: string) => {
     const creepNum = room.getCreepNum();
-    creepNum[role] = (creepNum[role] || 0) + 1;
+    creepNum[unit] = (creepNum[unit] || 0) + 1;
     room.submitSpawnMission(taskId);
 };
 
@@ -89,7 +89,7 @@ export default class SpawnControl extends Room {
     }
 
     private getEmergencyRecoveryUniversalBody() {
-        const normalBody = this.GenerateBodys(this.GetRoleBodys(ROLES.universal), ROLES.universal);
+        const normalBody = this.GenerateBodys(this.GetUnitBodys(UNITS.universal), UNITS.universal);
         if (normalBody?.length && this.CalculateEnergy(normalBody) <= this.energyAvailable) return normalBody;
         if (this.energyAvailable < THRESHOLDS.SPAWN.MIN_ENERGY) return null;
         return [...EMERGENCY_RECOVERY_UNIVERSAL_BODY];
@@ -105,7 +105,7 @@ export default class SpawnControl extends Room {
         let hasFillableCarrier = false;
         for (const c of Object.values(Game.creeps)) {
             const m = (c.memory || {}) as any;
-            if (m.role !== ROLES.carrier || m.home !== this.name || c.spawning) continue;
+            if (m.unit !== UNITS.carrier || m.home !== this.name || c.spawning) continue;
             if ((c.store[RESOURCE_ENERGY] || 0) > 0) { hasFillableCarrier = true; break; }
         }
         const haulableEnergy =
@@ -118,19 +118,19 @@ export default class SpawnControl extends Room {
 
         const creepNum = this.getCreepNum();
         const spawnMissionNum = this.getSpawnMissionNum() || {};
-        const transporterNum = (creepNum[ROLES.transporter] || 0) + (spawnMissionNum[ROLES.transporter] || 0);
-        const carrierNum = (creepNum[ROLES.carrier] || 0) + (spawnMissionNum[ROLES.carrier] || 0);
-        const harvesterNum = (creepNum[ROLES.harvester] || 0) + (spawnMissionNum[ROLES.harvester] || 0);
+        const transporterNum = (creepNum[UNITS.transporter] || 0) + (spawnMissionNum[UNITS.transporter] || 0);
+        const carrierNum = (creepNum[UNITS.carrier] || 0) + (spawnMissionNum[UNITS.carrier] || 0);
+        const harvesterNum = (creepNum[UNITS.harvester] || 0) + (spawnMissionNum[UNITS.harvester] || 0);
 
-        const spawnBootstrap = (role: RoleId, body: BodyPartConstant[]) => {
+        const spawnBootstrap = (unit: UnitId, body: BodyPartConstant[]) => {
             const result = spawn.spawnCreep(
                 body,
-                GenCreepName(RoleData[role].code),
-                { memory: { role, home: this.name, cache: {} } as CreepMemory }
+                generateCreepName(unit, { random: Math.random }),
+                { memory: { unit, home: this.name, cache: {} } as CreepMemory }
             );
             if (result !== OK) return false;
-            creepNum[role] = (creepNum[role] || 0) + 1;
-            log(`房间 ${this.name} 应急孵化 ${role}（能量 ${this.energyAvailable}）。`);
+            creepNum[unit] = (creepNum[unit] || 0) + 1;
+            log(`房间 ${this.name} 应急孵化 ${unit}（能量 ${this.energyAvailable}）。`);
             return true;
         };
 
@@ -138,14 +138,14 @@ export default class SpawnControl extends Room {
         // 判定只看场上活体（池内挂单可能永远付不起，不算补给）——
         // 无活体矿工先补矿工重启收入，有活体矿工才补搬运收掉落
         if (getRoomMode(this) === 'rush') {
-            const aliveHarvesters = creepNum[ROLES.harvester] || 0;
-            if (aliveHarvesters > 0 && (creepNum[ROLES.carrier] || 0) < 4) {
-                return spawnBootstrap(ROLES.carrier, [CARRY, CARRY, MOVE, MOVE]);
+            const aliveHarvesters = creepNum[UNITS.harvester] || 0;
+            if (aliveHarvesters > 0 && (creepNum[UNITS.carrier] || 0) < 4) {
+                return spawnBootstrap(UNITS.carrier, [CARRY, CARRY, MOVE, MOVE]);
             }
             if (aliveHarvesters === 0) {
                 return this.energyAvailable >= 200
-                    ? spawnBootstrap(ROLES.harvester, [WORK, WORK, MOVE, MOVE])
-                    : spawnBootstrap(ROLES.harvester, [WORK, MOVE]);
+                    ? spawnBootstrap(UNITS.harvester, [WORK, WORK, MOVE, MOVE])
+                    : spawnBootstrap(UNITS.harvester, [WORK, MOVE]);
             }
             return false;
         }
@@ -155,7 +155,7 @@ export default class SpawnControl extends Room {
             && (this.controller?.progress || 0) === 0
             && Object.keys(Game.creeps).length === 0;
         if (coldStart) {
-            if (harvesterNum === 0) return spawnBootstrap(ROLES.harvester, [WORK, WORK, MOVE, MOVE]);
+            if (harvesterNum === 0) return spawnBootstrap(UNITS.harvester, [WORK, WORK, MOVE, MOVE]);
             return false;
         }
 
@@ -164,7 +164,7 @@ export default class SpawnControl extends Room {
         if (!universalBody || universalBody.length <= 0) return false;
         const bodyCost = this.CalculateEnergy(universalBody);
         if (bodyCost <= 0 || bodyCost > this.energyAvailable) return false;
-        if ((creepNum[ROLES.universal] || 0) >= this.getEmergencyUniversalCap()) return false;
+        if ((creepNum[UNITS.universal] || 0) >= this.getEmergencyUniversalCap()) return false;
 
         const compareCost = Math.max(referenceCost, bodyCost);
         const storedEnergy =
@@ -180,12 +180,12 @@ export default class SpawnControl extends Room {
 
         const result2 = spawn.spawnCreep(
             universalBody,
-            GenCreepName(RoleData[ROLES.universal].code),
-            { memory: { role: ROLES.universal, home: this.name, cache: {} } as CreepMemory }
+            generateCreepName(UNITS.universal, { random: Math.random }),
+            { memory: { unit: UNITS.universal, home: this.name, cache: {} } as CreepMemory }
         );
         if (result2 !== OK) return false;
 
-        creepNum[ROLES.universal] = (creepNum[ROLES.universal] || 0) + 1;
+        creepNum[UNITS.universal] = (creepNum[UNITS.universal] || 0) + 1;
         log(`房间 ${this.name} 因 ${blockedRole} 卡住或断档，已紧急孵化 universal 进行恢复。`);
         return true;
     }
@@ -208,16 +208,16 @@ export default class SpawnControl extends Room {
         if (!task) return null;
 
         const data = task.data as SpawnTask;
-        const role = data.memory.role;
+        const unit = data.memory.unit;
 
-        if (!isRoleId(role)) {
+        if (!isUnitId(unit)) {
             deleteMissionFromPool(this.name, MISSION_POOLS.spawn, task.id);
             return null;
         }
 
         const state = getEnergyState(this);
-        const resolved = this.resolveBodyConfig(role, data, state);
-        const bodypart = this.GenerateBodys(resolved.body, role);
+        const resolved = this.resolveBodyConfig(unit, data, state);
+        const bodypart = this.GenerateBodys(resolved.body, unit);
         if (!bodypart?.length) {
             deleteMissionFromPool(this.name, MISSION_POOLS.spawn, task.id);
             return null;
@@ -229,9 +229,9 @@ export default class SpawnControl extends Room {
 
         if (!data.memory.cache) data.memory.cache = {};
 
-        updateDowngradedFlag(this, role, data, cost, resolved.usedBudget, state);
+        updateDowngradedFlag(this, unit, data, cost, resolved.usedBudget, state);
 
-        const name = GenCreepName(data.name || RoleData[role].code);
+        const name = data.name ? GenUnitName(data.name) : generateCreepName(unit, { random: Math.random });
 
         return {
             bodypart,
@@ -245,15 +245,15 @@ export default class SpawnControl extends Room {
 
     /** 任务体型的解析与决策：字符串解压 / rush 升级分级表 / 预算缩水三分支归一 */
     private resolveBodyConfig(
-        role: RoleId,
+        unit: UnitId,
         data: SpawnTask,
         state: string,
     ): { body: ((BodyPartConstant | number)[][]); usedBudget: boolean } {
         let usedBudget = false;
         let body: ((BodyPartConstant | number)[])[] | string = data.body;
         // rush 升级：按当前可用能量走分级表（与孵化端同口径，防零余量死锁）
-        if (role === ROLES.upgrader && getRoomMode(this) === 'rush') {
-            body = this.GetRoleBodys(ROLES.upgrader, false, this.energyAvailable);
+        if (unit === UNITS.upgrader && getRoomMode(this) === 'rush') {
+            body = this.GetUnitBodys(UNITS.upgrader, false, this.energyAvailable);
         }
         if (typeof body === 'string' && body) {
             body = decompressBodyConfig(body);
@@ -262,10 +262,10 @@ export default class SpawnControl extends Room {
             // 工期——等满编身体，不要小件
             const allowBudgetSpawn =
                 (state === 'LOW' || state === 'CRITICAL') &&
-                EMERGENCY_DOWNSIZE_ROLES.has(role);
+                EMERGENCY_DOWNSIZE_ROLES.has(unit);
             const budget = allowBudgetSpawn ? this.energyAvailable : undefined;
             usedBudget = budget !== undefined;
-            body = this.GetRoleBodys(role, data.upbody, budget);
+            body = this.GetUnitBodys(unit, data.upbody, budget);
         }
         return { body, usedBudget };
     }
@@ -292,8 +292,8 @@ export default class SpawnControl extends Room {
         // 记录出生 tick：供 harvester 无缝换班的路程实测（spawnRules）使用
         data.memory.spawnTick = Game.time;
         const result = spawn.spawnCreep(data.bodypart, data.name, { memory: data.memory });
-        const role = data.memory.role;
-        if (!isRoleId(role)) return;
+        const unit = data.memory.unit;
+        if (!isUnitId(unit)) return;
         if (result === OK) {
             // energyCheck 关闭时校验孵化真实启动：引擎可能吞单（OK 但 spawning 未启动）。
             // 幻单不消耗挂单，退池 30t 后重试——只消耗真正孵得出来的
@@ -302,7 +302,7 @@ export default class SpawnControl extends Room {
                 if (poolTask) poolTask.phantomRetryAt = Game.time + 30;
                 return;
             }
-            finishSpawnTask(this, role, data.taskId);
+            finishSpawnTask(this, unit, data.taskId);
             return;
         }
         // energyCheck 关闭：可孵性由引擎裁决，本轮失败直接重试，不进停摆处理
@@ -314,25 +314,25 @@ export default class SpawnControl extends Room {
         // 远程投资类角色（out-* / reserver）孵不起就静默排队等能量：
         // 不缩水体（会产出零 CARRY 废体型）、也不代孵 universal（挤占编制）。
         // 它们的队列优先级天然低于本地角色，本地需求总是先被满足。
-        if (role.startsWith('out-') || role === ROLES.reserver) return;
+        if (unit.startsWith('out-') || unit === UNITS.reserver) return;
         // 低能量期预算小体型重试（仅 EMERGENCY_DOWNSIZE 角色）
         const state = getEnergyState(this);
-        if ((state === 'LOW' || state === 'CRITICAL') && EMERGENCY_DOWNSIZE_ROLES.has(role)) {
-            const config = this.GetRoleBodys(role, false, this.energyAvailable);
-            const bodypart = this.GenerateBodys(config, role);
+        if ((state === 'LOW' || state === 'CRITICAL') && EMERGENCY_DOWNSIZE_ROLES.has(unit)) {
+            const config = this.GetUnitBodys(unit, false, this.energyAvailable);
+            const bodypart = this.GenerateBodys(config, unit);
             const cost = this.CalculateEnergy(bodypart);
             if (bodypart.length > 0 && cost > 0 && cost <= this.energyAvailable) {
-                if (DOWNGRADED_LOGISTICS_ROLE_SET.has(role)) {
+                if (DOWNGRADED_LOGISTICS_ROLE_SET.has(unit)) {
                     data.memory.downgraded = true;
                 }
-                const emergencyResult = spawn.spawnCreep(bodypart, GenCreepName(RoleData[role].code), { memory: data.memory });
+                const emergencyResult = spawn.spawnCreep(bodypart, generateCreepName(unit, { random: Math.random }), { memory: data.memory });
                 if (emergencyResult === OK) {
-                    finishSpawnTask(this, role, data.taskId);
-                    log(`房间 ${this.name} 不足以孵化目标体型 ${role}，已按当前能量孵化缩小体型。`);
+                    finishSpawnTask(this, unit, data.taskId);
+                    log(`房间 ${this.name} 不足以孵化目标体型 ${unit}，已按当前能量孵化缩小体型。`);
                     return;
                 }
             }
         }
-        this.trySpawnEmergencyUniversal(spawn, role, data.cost);
+        this.trySpawnEmergencyUniversal(spawn, unit, data.cost);
     }
 }

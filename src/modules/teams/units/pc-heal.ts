@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { getBoostCache } from '@/modules/spawning/legacy/boostFunction';
 
 
@@ -41,7 +41,7 @@ const runLegacy = (creep: Creep) => {
     const lockedHealerName = (pc.memory as any).healerName as string | undefined;
     if (lockedHealerName && lockedHealerName !== creep.name) {
         const locked = Game.creeps[lockedHealerName];
-        if (locked && locked.memory.role === ROLES['pc-heal']) {
+        if (locked && locked.memory.unit === UNITS['pc-heal']) {
             if (creep.room.my) creep.suicide();
             return;
         }

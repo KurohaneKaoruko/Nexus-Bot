@@ -294,7 +294,7 @@ interface Creep {
 
     /**
      * 确保 creep 完成 boost 的唯一入口（Tier 1 boost 管理统一）。
-     * 解析优先级：显式传入 > memory.boostmap > ROLE_BOOST_CONFIGS[role]。
+     * 解析优先级：显式传入 > memory.boostmap > ROLE_BOOST_CONFIGS[unit]。
      * @returns true 表示 boost 已完成或已按策略退化，creep 可以开始正常工作
      */
     ensureBoosted(
@@ -352,12 +352,12 @@ interface Creep {
     getCache(): CreepFlatCache;
 
     /**
-     * 获取角色私有状态命名空间（`cache.role`）。
+     * 获取角色私有状态命名空间（`cache.unit`）。
      *
      * @remarks
      * 角色私有字段统一读写这里；命名空间由 ensureMemoryCache 保证存在。
      */
-    getRoleCache(): Record<string, any>;
+    getUnitCache(): Record<string, any>;
 
     /**
      * 清除由统一目标缓存辅助方法维护的目标字段。
@@ -829,7 +829,7 @@ interface Creep {
  * @description 定义creep.memory的结构，所有属性都是可选的以支持部分初始化
  * @example
  * // 完整初始化
- * const memory: CreepMemory = { role: 'harvester', home: 'W1N1' };
+ * const memory: CreepMemory = { unit: 'harvester', home: 'W1N1' };
  * // 部分初始化（用于孵化任务）
  * const memory = { sourceRoom: 'W1N1', targetRoom: 'W2N2' } as CreepMemory;
  */
@@ -838,7 +838,7 @@ interface CreepMemory {
      * creep角色
      * @description 决定creep的行为逻辑，孵化后由SpawnMission自动设置
      */
-    role?: string;
+    unit?: string;
     
     /** 
      * 固定工作房间名（简写）
@@ -940,7 +940,7 @@ interface CreepMemory {
         /** 兼容旧缓存后的 target 分区 */
         target?: { [key: string]: any };
         /** 角色私有状态命名空间：角色私有字段统一写这里，禁止新增无命名空间的顶层临时字段 */
-        role?: { [key: string]: any };
+        unit?: { [key: string]: any };
         /** boost 框架私有状态命名空间：boosted 标志与 lab/重试缓存，由 boostFunction 惰性创建 */
         boost?: { [key: string]: any };
         /** 缓存的路径 */

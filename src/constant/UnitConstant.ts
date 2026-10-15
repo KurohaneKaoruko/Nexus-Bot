@@ -79,8 +79,8 @@ export const UNIT_CODES = {
 export type UnitId = keyof typeof UNIT_CODES;
 
 /** 取角色代号; 未收录的角色回退为自身大写 */
-export function unitCode(role: string): string {
-	return (UNIT_CODES as Record<string, string>)[role] ?? role.toUpperCase();
+export function unitCode(unit: string): string {
+	return (UNIT_CODES as Record<string, string>)[unit] ?? unit.toUpperCase();
 }
 
 /** 已确立的中文体名; 其余展示回退为角色代号 */
@@ -98,6 +98,6 @@ export const UNIT_BODY_NAMES: Partial<Record<UnitId, string>> = {
 };
 
 /** 取角色中文体名; 未收录角色回退为角色代号 */
-export function unitBodyName(role: string): string {
-	return UNIT_BODY_NAMES[role as UnitId] ?? unitCode(role);
+export function unitBodyName(unit: string): string {
+	return UNIT_BODY_NAMES[unit as UnitId] ?? unitCode(unit);
 }

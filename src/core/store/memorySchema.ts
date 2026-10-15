@@ -164,7 +164,7 @@ export interface EconomyMemory {
 		quotaFloorBias: number;
 		updatedAt: number;
 	};
-	/** role:room → 实测路程样本 (bornAt→首次到岗), 固定窗口 */
+	/** unit:room → 实测路程样本 (bornAt→首次到岗), 固定窗口 */
 	travel: Record<string, { samples: number[]; p95: number }>;
 }
 

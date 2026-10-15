@@ -4,7 +4,7 @@ import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { ensureMemoryCache } from '@/modules/agents/creepCache';
 import { isArrivedInRoom } from '@/modules/movement/arrival';
 import { runWorkLayer, WORK_EVENTS, type WorkEvent } from '@/modules/agents/workLayer';
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 
 const NEAR_RANGE = 2;
 const STAY_BUILD_RANGE = 3;
@@ -72,7 +72,7 @@ const transferToNearbyCarrier = (creep: Creep): boolean => {
     const carriers = getRoomTickCacheValue(creep.room, 'out_harvest_nearby_carriers', () =>
         creep.room.find(FIND_MY_CREEPS, {
             filter: (c) =>
-                c.memory.role === ROLES.carrier &&
+                c.memory.unit === UNITS.carrier &&
                 c.store.getFreeCapacity(RESOURCE_ENERGY) > 0
         }) as Creep[]
     );
@@ -222,13 +222,13 @@ const runSourcePhase = (creep: Creep): boolean => {
         if (!closestSource) {
             creep.say('No source');
             // 工位全满（孵化超额/换班重叠）：限时等待后自我回收，避免永久站桩占人口
-            const roleCache = creep.getRoleCache();
-            if (!roleCache.noSourceSince) roleCache.noSourceSince = Game.time;
-            if (Game.time - roleCache.noSourceSince > 200) creep.suicide();
+            const unitCache = creep.getUnitCache();
+            if (!unitCache.noSourceSince) unitCache.noSourceSince = Game.time;
+            if (Game.time - unitCache.noSourceSince > 200) creep.suicide();
             return false;
         }
         creep.memory.targetSourceId = closestSource.id;
-        delete creep.getRoleCache().noSourceSince;
+        delete creep.getUnitCache().noSourceSince;
     }
 
     let targetSource = Game.getObjectById(creep.memory.targetSourceId) as Source | null;
@@ -374,12 +374,12 @@ export default {
                     return;
                 }
                 // 首次到场：实测「出生 → 工作位」路程，供孵化系统无缝换班
-                if (!creep.getRoleCache().calibrated) {
+                if (!creep.getUnitCache().calibrated) {
                     const roomMem = creep.room.memory as any;
                     roomMem.sourceTiming ??= {};
                     const timing = roomMem.sourceTiming[source.id] ?? (roomMem.sourceTiming[source.id] = {});
                     timing.pathTime = Math.max(10, Math.min(500, Game.time - (creep.memory.spawnTick ?? Game.time)));
-                    creep.getRoleCache().calibrated = true;
+                    creep.getUnitCache().calibrated = true;
                 }
                 creep.goHaverst(source);
                 // 边采边填：顺手把身上的能量补进相邻 ext（rush 特殊子模式 / mini 迷你房的核心补给链）

@@ -32,11 +32,11 @@ export default class MissionSubmit extends Room {
     }
 
     /**
-     * 删除指定 role 的孵化任务
+     * 删除指定 unit 的孵化任务
      * @description 用于防御结束后撤销未孵化的防御兵孵化队列，避免继续出兵浪费能量。
      */
-    override deleteSpawnMissionsByRole(roles: string[] | string): number {
-        const roleSet = new Set(Array.isArray(roles) ? roles : [roles]);
+    override deleteSpawnMissionsByRole(units: string[] | string): number {
+        const unitSet = new Set(Array.isArray(units) ? units : [units]);
         const pools = getMissionPools()?.[this.name];
         const tasks = pools?.spawn;
         if (!Array.isArray(tasks) || tasks.length === 0) return 0;
@@ -46,8 +46,8 @@ export default class MissionSubmit extends Room {
 
         for (const task of tasks) {
             const data = task?.data as SpawnTask | undefined;
-            const role = data?.memory?.role;
-            if (role && roleSet.has(role)) {
+            const unit = data?.memory?.unit;
+            if (unit && unitSet.has(unit)) {
                 removed++;
                 continue;
             }

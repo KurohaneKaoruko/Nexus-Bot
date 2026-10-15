@@ -339,8 +339,8 @@ const helpTexts: Record<string, string> = {
     helpSpawn: [
         title('🐣', '孵化指令列表'),
         line(),
-        `${cmd('spawn.creep(roomName, bodypart, role, memory?)')}：孵化指定体型的 Creep（bodypart: 体型字符串）`,
-        `${cmd('spawn.role(roomName, role, memory?, num?)')}：孵化指定角色的 Creep（使用默认体型）`,
+        `${cmd('spawn.creep(roomName, bodypart, unit, memory?)')}：孵化指定体型的 Creep（bodypart: 体型字符串）`,
+        `${cmd('spawn.unit(roomName, unit, memory?, num?)')}：孵化指定角色的 Creep（使用默认体型）`,
         `- memory.home：仅主力 creep 使用，表示出生房=工作房；memory.homeRoom：外派 creep 的孵化房/归属房；memory.sourceRoom：往返任务的源头房`,
         `- 约定上 home 不应和另外两个共存；homeRoom 和 sourceRoom 在少数外派场景下可以同时存在`,
         `${cmd('spawn.sign(roomName, targetRoom, sign)')}：孵化 scout 进行签名`,

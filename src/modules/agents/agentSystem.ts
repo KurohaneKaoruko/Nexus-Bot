@@ -448,7 +448,7 @@ function runCreep(
 			return;
 		}
 		case "harvest": {
-			// 外矿同名-role: 目标房 ≠ 当前房间时, 走跨房采集
+			// 外矿同名-unit: 目标房 ≠ 当前房间时, 走跨房采集
 			if (task.targetPos?.roomName && task.targetPos.roomName !== room.roomName) {
 				runRemoteHarvest(ctx, broker, creep, task);
 				return;
@@ -904,7 +904,7 @@ function submitCourierTransfer(
 
 /** agent 系统直接驱动的角色代号集 (有对应任务 kind 分支); 其余走原型执行 */
 /**
- * 外矿同名-role 采集: 目标在远程房 → 走到目标房 source → harvest → 满载走回本矿 spawn 卸货。
+ * 外矿同名-unit 采集: 目标在远程房 → 走到目标房 source → harvest → 满载走回本矿 spawn 卸货。
  * 跨房能量流: 远程 harvester 满载回本矿, 交付到 spawn/ext (carrier 接力可选)。
  */
 function runRemoteHarvest(

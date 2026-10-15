@@ -2,7 +2,7 @@
 import { getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { isWarMode } from '@/core/store/accessor';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES, RoleLevelData } from '@/constant/CreepConstant';
+import { UNITS, UnitLevelData } from '@/constant/CreepConstant';
 import { getBuiltRoomLevel, getHarvesterTargetBySource, isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy/productionGateAccess';
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { getDowngradedLogisticsCountByAssignedRoom, hasSoonDeadCreepByAssignedRoomRole } from '@/utils/creepTickIndex';
@@ -24,7 +24,7 @@ const TRANSPORT_MIN = THRESHOLDS.TRANSPORT.MIN_AMOUNT;
 const TRANSPORT_HIGH = THRESHOLDS.TRANSPORT.HIGH_AMOUNT;
 // 只有 transporter 允许在恢复期按“缩水物流”扣减 current；
 // manager 是中心单点位，若扣减会把“已有缩水 manager”误判成缺口，导致反复补人堵路。
-const RECOVERY_DOWNGRADED_CORRECTION_ROLE_SET = new Set<string>([ROLES.transporter]);
+const RECOVERY_DOWNGRADED_CORRECTION_ROLE_SET = new Set<string>([UNITS.transporter]);
 
 // 低等级允许多采集位，高等级默认一矿一采（判定链已迁 productionGate.ts，此处按来源引用）。
 
@@ -38,8 +38,8 @@ export const pruneDelayedUpgraderSpawnMissions = (room: Room) => {
     let removed = 0;
     for (const task of tasks) {
         const taskData = task.data as SpawnTask
-        const role = taskData?.memory?.role;
-        if (role !== ROLES.upgrader && role !== ROLES['up-upgrade']) continue;
+        const unit = taskData?.memory?.unit;
+        if (unit !== UNITS.upgrader && unit !== UNITS['up-upgrade']) continue;
         room.deleteMissionFromPool?.(MISSION_POOLS.spawn, task.id);
         removed += 1;
     }
@@ -53,7 +53,7 @@ const getHarvesterSuccessionNeeds = (room: Room): number => {
     if (!timing) return 0;
     const harvesters = getRoomTickCacheValue(room, 'succession_harvesters', () =>
         room.find(FIND_MY_CREEPS, {
-            filter: (c: Creep) => c.memory.role === ROLES.harvester && !!c.memory.targetSourceId
+            filter: (c: Creep) => c.memory.unit === UNITS.harvester && !!c.memory.targetSourceId
         }) as Creep[]
     );
 
@@ -79,8 +79,8 @@ const getHarvesterSuccessionNeeds = (room: Room): number => {
 //   运行时由 worker 动作层的职责切分保证配额外的个体专职升级。
 
 // 每个角色一个检查函数，保持结构清晰
-export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boolean> = {
-    [ROLES.harvester]: (room: Room, current: number) => {
+export const UnitSpawnCheck: Record<string, (room: Room, current: number) => boolean> = {
+    [UNITS.harvester]: (room: Room, current: number) => {
         if (room.memory.defend) return false;
         let baseTarget = getHarvesterTargetBySource(room);
         // CRITICAL 复苏：定编压到每 source 1 只——多矿位小爬群只会吃光能量，
@@ -98,17 +98,17 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         let num = baseTarget;
         if (isHighLikeMode(getRoomMode(room)) && getBuiltRoomLevel(room) <= 3) {
             // high/rush 下，提前补一个临近到期的 harvester
-            const shouldPreSpawn = hasSoonDeadCreepByAssignedRoomRole(room.name, ROLES.harvester, 10);
+            const shouldPreSpawn = hasSoonDeadCreepByAssignedRoomRole(room.name, UNITS.harvester, 10);
             if (shouldPreSpawn) num += 1;
         }
         return current < num;
     },
-    [ROLES.transporter]: (room: Room, current: number) => {
+    [UNITS.transporter]: (room: Room, current: number) => {
         const state = getEnergyState(room);
         const highMode = isHighLikeMode(getRoomMode(room));
         const storedEnergy = getStoredEnergy(room);
         const hasStorageLike = !!room.storage || !!room.terminal;
-        let num = ((RoleLevelData[ROLES.transporter] as any) [room.level] as any) ['num'];
+        let num = ((UnitLevelData[UNITS.transporter] as any) [room.level] as any) ['num'];
 
         // transporter 当前仍依赖 storage / terminal 体系与 transport mission 调度，
         // 因此在只有 container 的恢复期不能提前孵化，否则只会空转占位。
@@ -124,8 +124,8 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         if (storedEnergy < TRANSPORT_MIN) return false;
         return hasStorageLike;
     },
-    [ROLES.manager]: (room: Room, current: number) => {
-        const num = ((RoleLevelData[ROLES.manager] as any) [room.level] as any) ['num'];
+    [UNITS.manager]: (room: Room, current: number) => {
+        const num = ((UnitLevelData[UNITS.manager] as any) [room.level] as any) ['num'];
         if (num == 0) return false;
         const center = room.getCenter();
         const storage = room.storage;
@@ -133,16 +133,16 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         const link = room.link?.find(l => l.pos.inRangeTo(center, 1));
         return current < num && !!storage && !!(terminal || link);
     },
-    [ROLES.carrier]: (room: Room, current: number) => {
+    [UNITS.carrier]: (room: Room, current: number) => {
         // 无源房短路（能力闸）：没有能量产出源的房间不需要搬运线
         if (!(room.source || []).length) return false;
-        const num = ((RoleLevelData[ROLES.carrier] as any) [room.level] as any) ['num'];
+        const num = ((UnitLevelData[UNITS.carrier] as any) [room.level] as any) ['num'];
 
         // 开局序列（race 兼容闸门）：采矿工满编产出稳住之前，搬运工不超矿工数
         // （防止开局出现 3 搬运工 : 1 矿工的倒挂，spawn 槽被物流爬吃光）
         if (isRaceCompat() && !isRoomProductionSecured(room)) {
             const harvestersAlive = getRoomTickCacheValue(room, 'carrier_gate_harvesters', () =>
-                room.find(FIND_MY_CREEPS, { filter: (c: Creep) => c.memory?.role === ROLES.harvester && !c.spawning }).length,
+                room.find(FIND_MY_CREEPS, { filter: (c: Creep) => c.memory?.unit === UNITS.harvester && !c.spawning }).length,
             );
             if (current >= Math.max(1, harvestersAlive)) return false;
         }
@@ -165,7 +165,7 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         if (current >= 1) return false;
         if (!room.storage && !room.terminal) {
             const creepNum = room.getCreepNum() || {};
-            const hasHarvester = (creepNum[ROLES.harvester] || 0) > 0;
+            const hasHarvester = (creepNum[UNITS.harvester] || 0) > 0;
             if (hasHarvester && room.CheckSpawnAndTower()) return true;
         }
 
@@ -178,7 +178,7 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
     // 运行时按「建造配额 → 配额外专职升级」做职责切分（见 action/economy/worker.ts）。
     // 总人口受 getWorkerPopulationCap 硬上限约束——work 部件预算是为大体型升级工设计的，
     // 低 RCL 的 1-work 体型直接折算会孵出几十只。
-    [ROLES.worker]: (room: Room, current: number) => {
+    [UNITS.worker]: (room: Room, current: number) => {
         if (isWarMode()) return false;
 
         // 换班制：基建工地存在 = worker 全员转建造
@@ -200,7 +200,7 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
     //   rush     → 按升级 work 需求折算（受冲级工位上限约束）；两者都先被按 RCL 的人口上限封顶，
     //              避免低 RCL 的 1-WORK 体型把一笔 work 预算折成几十只升级工
     // 这里只负责把缺口补齐，不重复任何策略判断。
-    [ROLES.upgrader]: (room: Room, current: number) => {
+    [UNITS.upgrader]: (room: Room, current: number) => {
         if (isWarMode()) return false;
         // 能量储备闸：spawn/extension 里的能量必须留足房间运作底仓（≈两次基础孵化），
         // 只用盈余孵升级工——rush 冲级也不许把开局能量无脑烧光。
@@ -213,7 +213,7 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         if (isRaceCompat() && current > 0) {
             const fieldWork = getRoomTickCacheValue(room, 'upgrader_field_work', () =>
                 room.find(FIND_MY_CREEPS, {
-                    filter: (c: Creep) => c.memory?.role === ROLES.upgrader && !c.spawning,
+                    filter: (c: Creep) => c.memory?.unit === UNITS.upgrader && !c.spawning,
                 }).reduce((sum, c) => sum + c.getActiveBodyparts(WORK), 0),
             );
             if (estimateRoomEnergyIncome(room) <= fieldWork) return false;
@@ -228,7 +228,7 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         if (getUpgraderSuccessionNeeds(room) > 0 && current < target + 1) return true;
         return current < target;
     },
-    [ROLES.miner]: (room: Room, current: number) => {
+    [UNITS.miner]: (room: Room, current: number) => {
         const lv = room.level;
         if (lv < 6) return false;
         if (room.memory.defend) return false;
@@ -253,14 +253,14 @@ export const RoleSpawnCheck: Record<string, (room: Room, current: number) => boo
         if (room.energyCapacityAvailable < extMaxEnergyCapacity) return false;
         return current < 1 && lv >= 6;
     },
-    [ROLES.universal]: (room: Room, current: number) => {
+    [UNITS.universal]: (room: Room, current: number) => {
         // UNIV 仅在「真停摆」时孵化：采集端（矿工+搬运）场上活体归零，
         // 或控制器临近降级。判定只看活体——池内挂单可能永远付不起，
         // 把挂单算成补给会让停摆检测被幻影订单致盲（死锁实录）。
         // bootstrap LOW 态、外矿爬坡期、spawn 繁忙都是常态——不是停摆。
         const creepNum = room.getCreepNum() || {};
         const incomeAlive =
-            (creepNum[ROLES.harvester] || 0) + (creepNum[ROLES.carrier] || 0);
+            (creepNum[UNITS.harvester] || 0) + (creepNum[UNITS.carrier] || 0);
         const downgradeUrgent = !!room.controller?.my
             && (room.controller.ticksToDowngrade || 1e9) < 3000
             && room.level < 8;
@@ -301,25 +301,25 @@ export const createSpawnCheckContext = (
 };
 
 // 获取某个角色经过“恢复期物流扣减”后的有效当前数量。
-export const getAdjustedSpawnRoleCurrent = (context: SpawnCheckContext, role: string): number => {
-    const current = (context.creepNum[role] || 0) + (context.spawnMissionNum[role] || 0);
+export const getAdjustedSpawnRoleCurrent = (context: SpawnCheckContext, unit: string): number => {
+    const current = (context.creepNum[unit] || 0) + (context.spawnMissionNum[unit] || 0);
     if (!context.shouldRecover) return current;
-    if (!RECOVERY_DOWNGRADED_CORRECTION_ROLE_SET.has(role)) return current;
-    return Math.max(0, current - (context.downgradedCount[role] || 0));
+    if (!RECOVERY_DOWNGRADED_CORRECTION_ROLE_SET.has(unit)) return current;
+    return Math.max(0, current - (context.downgradedCount[unit] || 0));
 };
 
 // 统一角色孵化判定入口：
 // 默认使用上下文中的当前数量，也允许外部显式传入 current 做单点判断。
 export const shouldSpawnRole = (
-    role: string,
+    unit: string,
     context: SpawnCheckContext,
-    current = getAdjustedSpawnRoleCurrent(context, role),
+    current = getAdjustedSpawnRoleCurrent(context, unit),
 ): boolean => {
-    if (role === ROLES.universal) {
-        return getDowngradeUniversalSpawnMissing(context.room, current) > 0 || RoleSpawnCheck[role]?.(context.room, current) === true;
+    if (unit === UNITS.universal) {
+        return getDowngradeUniversalSpawnMissing(context.room, current) > 0 || UnitSpawnCheck[unit]?.(context.room, current) === true;
     }
 
-    const checker = RoleSpawnCheck[role];
+    const checker = UnitSpawnCheck[unit];
     if (!checker) return false;
     return checker(context.room, current);
 };
@@ -327,12 +327,12 @@ export const shouldSpawnRole = (
 // ==================== rush 外矿受控让位 ====================
 
 // 外矿链挂单角色（含预订）；carrier/harvester 不入集合——家内同角色，经 isRemotePoolTask 双字段判别
-const REMOTE_POOL_ROLES: ReadonlySet<string> = new Set([ROLES['out-build'], ROLES['out-defend'], ROLES.reserver]);
+const REMOTE_POOL_ROLES: ReadonlySet<string> = new Set([UNITS['out-build'], UNITS['out-defend'], UNITS.reserver]);
 export { REMOTE_POOL_ROLES };
 // 外矿任务判别：固定外矿角色直判；合并角色以 sourceRoom+targetRoom 双字段标识远端工作位
 const isRemotePoolTask = (task: Task): boolean => {
     const memory = (task.data as any)?.memory || {};
-    if (REMOTE_POOL_ROLES.has(memory.role || '')) return true;
+    if (REMOTE_POOL_ROLES.has(memory.unit || '')) return true;
     return !!(memory.sourceRoom && memory.targetRoom);
 };
 export { isRemotePoolTask };
@@ -390,14 +390,14 @@ export const pruneRushRemoteMissions = (room: Room, pool: Task[]): number => {
  */
 export const effectiveSpawnLevel = (room: Room, task: Task): number => {
     if (getRoomMode(room) !== 'rush') return task.level;
-    const role = (task.data as any)?.memory?.role || '';
+    const unit = (task.data as any)?.memory?.unit || '';
     // reserver 豁免让位：预定决定外矿 source 容量（有预定 3000 / 无 1500），是收入倍增器；
     // 每房仅 1 只不会灌池，压到 L9 会在孵化繁忙期永久饿死（与 reserve 提级 L6 的设计冲突）
-    if (role === ROLES.reserver) return task.level;
+    if (unit === UNITS.reserver) return task.level;
     if (!isRemotePoolTask(task)) return task.level;
     // 参考 TASK_TYPES 序：REMOTE_SOURCE 仅高于普通 UPGRADE——经济外矿压到升级单同档，
     // 本矿采集 L3/搬运 L4/worker L5 恒先于外矿；预算准入与每房挂单上限继续防灌池
-    if (role === ROLES.harvester || role === ROLES.carrier) {
+    if (unit === UNITS.harvester || unit === UNITS.carrier) {
         return Math.max(task.level, RUSH_REMOTE_ECONOMY_LEVEL_FLOOR);
     }
     return Math.max(task.level, RUSH_REMOTE_LEVEL_FLOOR);
@@ -406,6 +406,6 @@ export const effectiveSpawnLevel = (room: Room, task: Task): number => {
 /**
  * 房间孵化任务模块（spawn）
  * @description
- * - 根据房间状态与 RoleSpawnCheck 规则动态生成孵化任务
+ * - 根据房间状态与 UnitSpawnCheck 规则动态生成孵化任务
  * - 提供 SpawnMissionAdd 将孵化任务写入任务池，并失效 SpawnMissionNum 缓存
  */

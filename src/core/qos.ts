@@ -1,6 +1,6 @@
 
 import { getStatsMemory } from '@/core/store/accessor';
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 /**
  * QoS（Quality of Service）档位
  * - normal：资源充足，模块按正常频率运行
@@ -172,27 +172,27 @@ export const isTickAligned = (mod: number, offset = 0, tick = Game.time) => {
  */
 export const ROLE_CPU_FREEZE_PRIORITY: Record<string, number> = {
     // —— 最先冻结：升级类 ——
-    [ROLES.upgrader]: -10,
-    [ROLES['up-upgrade']]: -10,
-    [ROLES['aid-upgrade']]: -8,
+    [UNITS.upgrader]: -10,
+    [UNITS['up-upgrade']]: -10,
+    [UNITS['aid-upgrade']]: -8,
     // —— 其次：建造/维修/清理/侦察 ——
-    [ROLES.worker]: -5,
+    [UNITS.worker]: -5,
     'cleaner': -4,
-    [ROLES.scout]: -3,
-    [ROLES['up-repair']]: -2,
+    [UNITS.scout]: -3,
+    [UNITS['up-repair']]: -2,
     // —— 保命链：正分，emergency 永不冻结（显式登记以表达牺牲顺序）——
-    [ROLES.harvester]: 10,
-    [ROLES.universal]: 5,
-    [ROLES.carrier]: 1,
-    [ROLES.transporter]: 1,
-    [ROLES.manager]: 1,
+    [UNITS.harvester]: 10,
+    [UNITS.universal]: 5,
+    [UNITS.carrier]: 1,
+    [UNITS.transporter]: 1,
+    [UNITS.manager]: 1,
 };
 
 /** emergency 档下该角色是否应被冻结（跳过本 tick 执行） */
-export function shouldSkipCreepInEmergency(role?: string): boolean {
+export function shouldSkipCreepInEmergency(unit?: string): boolean {
     const qos = getQoS();
     if (!qos || qos.level !== 'emergency') return false;
-    return (ROLE_CPU_FREEZE_PRIORITY[role || ''] ?? 0) < 0;
+    return (ROLE_CPU_FREEZE_PRIORITY[unit || ''] ?? 0) < 0;
 }
 
 export const qos: QoSAPI = {

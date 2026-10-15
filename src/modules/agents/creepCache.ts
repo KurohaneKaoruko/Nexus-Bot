@@ -29,10 +29,10 @@ const migrateLegacyCacheSection = (memory: CreepMemory, root: CreepCacheRoot, ke
     delete (memory as any)[legacyField];
 };
 
-// 确保角色私有命名空间存在：角色私有状态统一写 cache.role，不散落在 cache 根。
+// 确保角色私有命名空间存在：角色私有状态统一写 cache.unit，不散落在 cache 根。
 const ensureRoleNamespace = (root: CreepCacheRoot) => {
-    if (root.role == null || typeof root.role !== 'object' || Array.isArray(root.role)) {
-        root.role = {};
+    if (root.unit == null || typeof root.unit !== 'object' || Array.isArray(root.unit)) {
+        root.unit = {};
     }
 };
 
@@ -92,14 +92,14 @@ export default class CacheFunction extends Creep {
     }
 
     /**
-     * 获取角色私有状态命名空间（`cache.role`）。
+     * 获取角色私有状态命名空间（`cache.unit`）。
      *
      * @remarks
      * 角色私有字段统一读写这里，不落在 cache 根或其他分节；
      * 命名空间由 ensureMemoryCache 保证存在。
      */
-    override getRoleCache(): Record<string, any> {
-        return ensureMemoryCache(this.memory).role as Record<string, any>;
+    override getUnitCache(): Record<string, any> {
+        return ensureMemoryCache(this.memory).unit as Record<string, any>;
     }
 
     /**
@@ -180,8 +180,8 @@ export default class CacheFunction extends Creep {
      */
     override validateCacheDepth(cache: CreepFlatCache = this.getCache()): boolean {
         for (const key in cache) {
-            // role/boost 为受控嵌套命名空间，不在扁平断言范围内
-            if (key === 'role' || key === 'boost') continue;
+            // unit/boost 为受控嵌套命名空间，不在扁平断言范围内
+            if (key === 'unit' || key === 'boost') continue;
             const value = cache[key];
             if (value === null || value === undefined) continue;
             if (typeof value !== 'object') continue;

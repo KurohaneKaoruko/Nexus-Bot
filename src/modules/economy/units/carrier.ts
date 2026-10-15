@@ -3,7 +3,7 @@
 // 一只搬运工绑定一条源线，空载回我方容器取满（满载纪律：容器不足一车则在容器旁
 // 捡散落并等待，不四处找货），满载按能量中枢的请求配送（spawn/ext/tower/cc/断供升级工，
 // 两阶段匹配 + 专线回流）。无请求时持能原地待命——搬运工永远在两点之间，不自主游荡。
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { getAssignedEnergyTarget } from '@/modules/economy/energyLogistics';
 import { createPendingLedger, evaluateHeadOnSwap, expectedOutputDelta, selectCarryDeposit } from '@/utils/haulerStrategy';
@@ -26,14 +26,14 @@ const sourceLinePending = (room: Room, source: Source): number => {
 /** 已锁定的取货线（粘滞认领）：
  *  线还有待运能量就守住，线干了才解锁重选。 */
 export const lockedSourceLine = (creep: Creep): Source | null => {
-    const roleCache = creep.getRoleCache();
-    const lockedId = roleCache._loadLineId as Id<Source> | undefined;
+    const unitCache = creep.getUnitCache();
+    const lockedId = unitCache._loadLineId as Id<Source> | undefined;
     if (!lockedId) return null;
     const locked = Game.getObjectById(lockedId) as Source | null;
     // 粘滞判据用原始待运量：预订账本（含别车预扣）只服务于初始选线，
     // 用它判自己的锁会让锁被别车的预扣顶掉 → 换线抖动
     if (locked && sourceLinePending(creep.room, locked) > 0) return locked;
-    roleCache._loadLineId = null;
+    unitCache._loadLineId = null;
     return null;
 };
 
@@ -42,7 +42,7 @@ export const lockedSourceLine = (creep: Creep): Source | null => {
  *  旧「名字 hash 永久绑线」在批量孵化的名字序列上 hash 相关，整批同线，
  *  另一源容器/掉落无人搬、能量烂地。 */
 export const pickSourceLineByDemand = (creep: Creep): Source | null => {
-    const roleCache = creep.getRoleCache();
+    const unitCache = creep.getUnitCache();
     const locked = lockedSourceLine(creep);
     if (locked) return locked;
     const sources = (creep.room.source || []) as Source[];
@@ -60,7 +60,7 @@ export const pickSourceLineByDemand = (creep: Creep): Source | null => {
         }
     }
     void pendingLedger.reserve(best!.id, Game.time, creep.store.getCapacity(RESOURCE_ENERGY) ?? 0);
-    roleCache._loadLineId = best!.id;
+    unitCache._loadLineId = best!.id;
     return best;
 };
 
@@ -80,7 +80,7 @@ const sourceHarvestPower = (room: Room, source: Source): number => {
     if (cached !== undefined) return cached;
     let power = 0;
     for (const c of source.pos.findInRange(FIND_MY_CREEPS, 1)) {
-        if ((c.memory as any).role !== ROLES.harvester) continue;
+        if ((c.memory as any).unit !== UNITS.harvester) continue;
         power += c.getActiveBodyparts(WORK) * HARVEST_POWER;
     }
     harvestPowerBySource.set(source.id, power);
@@ -164,21 +164,21 @@ const findTimeLimitedDeposit = (creep: Creep): Tombstone | Ruin | null => {
  *  整趟一次选定，只有目标消失或装满才重新认领——
  *  旧口径每 tick 重跑中枢匹配，等距候选/水位浮动会让搬运工反复改目标，来回走路空耗。 */
 export const resolveDeliveryTarget = (creep: Creep): AnyStoreStructure | Creep | null => {
-    const roleCache = creep.getRoleCache();
-    const cachedId = roleCache._deliverTarget as Id<AnyStoreStructure | Creep> | undefined;
+    const unitCache = creep.getUnitCache();
+    const cachedId = unitCache._deliverTarget as Id<AnyStoreStructure | Creep> | undefined;
     if (cachedId) {
         const cached = Game.getObjectById(cachedId) as AnyStoreStructure | Creep | null;
         if (cached && (cached.store.getFreeCapacity(RESOURCE_ENERGY) || 0) > 0) return cached;
-        delete roleCache._deliverTarget;
+        delete unitCache._deliverTarget;
     }
     const fresh = getAssignedEnergyTarget(creep) as AnyStoreStructure | Creep | null;
-    if (fresh) roleCache._deliverTarget = fresh.id;
+    if (fresh) unitCache._deliverTarget = fresh.id;
     return fresh;
 };
 
 /** 释放交付占领：卸空、目标装满后调用，下次交付再认领（占领记录直接删除，不设过期） */
 export const clearDeliveryTarget = (creep: Creep): void => {
-    delete creep.getRoleCache()._deliverTarget;
+    delete creep.getUnitCache()._deliverTarget;
 };
 
 /** 源线取货（导出供测试）：返回 true = 已满转送货 */
@@ -305,7 +305,7 @@ export const runCarrierDeliver = (creep: Creep, urgentEnergy: boolean): boolean 
             return false;
         }
         const hasUpgrader = Object.values(Game.creeps).some(c =>
-            c.room.name === creep.room.name && !c.spawning && (c.memory as any)?.role === ROLES.upgrader);
+            c.room.name === creep.room.name && !c.spawning && (c.memory as any)?.unit === UNITS.upgrader);
         if (!hasUpgrader) return false;
         const depot = cc ?? controller;
         if (creep.pos.inRangeTo(depot, 1)) {
@@ -362,12 +362,12 @@ const tryRelayHandoff = (creep: Creep, toward: { x: number; y: number } | null):
     }
 
     const other = creep.room.lookForAt(LOOK_CREEPS, coord.x, coord.y)[0];
-    if (!other || !other.my || (other.memory as any).role !== ROLES.carrier) return false;
+    if (!other || !other.my || (other.memory as any).unit !== UNITS.carrier) return false;
     const otherMem = other.memory as any;
     if (otherMem._relayed === Game.time) return false;
 
     // 矿工 pull 搭车：空车意图格上是矿工 → 让矿工拉自己（省一步移动）
-    if (!supplying && other.memory.role === ROLES.harvester && other.store[RESOURCE_ENERGY] > 0) {
+    if (!supplying && other.memory.unit === UNITS.harvester && other.store[RESOURCE_ENERGY] > 0) {
         other.pull(creep);
         mem._relayed = Game.time;
         return true;
@@ -399,12 +399,12 @@ const tryRelayHandoff = (creep: Creep, toward: { x: number; y: number } | null):
     const fetcher = supplying ? other : creep;
     if (supplier.transfer(fetcher, RESOURCE_ENERGY) !== OK) return false;
 
-    // 任务互换（memory/heap 整对象互换）：cache.role 整对象 + 协议字段
+    // 任务互换（memory/heap 整对象互换）：cache.unit 整对象 + 协议字段
     // 随属主走——双方原地接管对方任务（源线锁/目标分配），无需走完全程
     const supplierCreep = supplying ? creep : other;
     const fetcherCreep = supplying ? other : creep;
-    const supplierCache = supplierCreep.getRoleCache();
-    const fetcherCache = fetcherCreep.getRoleCache();
+    const supplierCache = supplierCreep.getUnitCache();
+    const fetcherCache = fetcherCreep.getUnitCache();
     const supplierState = { ...supplierCache };
     for (const key of Object.keys(supplierCache)) delete supplierCache[key];
     Object.assign(supplierCache, fetcherCache);
@@ -798,7 +798,7 @@ const recordCollectBinding = (creep: Creep, stat: ExternalMineSourceStat | null)
 // 源边是否有采集体在产出（外矿采集/建造都会向搬运工直递）
 const hasActiveMinerNear = (sourcePos: RoomPosition): boolean =>
     sourcePos.findInRange(FIND_MY_CREEPS, 3, {
-        filter: (c: Creep) => c.memory.role === ROLES.harvester || c.memory.role === ROLES['out-build'],
+        filter: (c: Creep) => c.memory.unit === UNITS.harvester || c.memory.unit === UNITS['out-build'],
     }).length > 0;
 
 // ==================== 模式切换 ====================
@@ -1110,7 +1110,7 @@ const tryOutCarryRelayHandoff = (creep: Creep): Creep | null => {
     const candidates = creep.pos.findInRange(FIND_MY_CREEPS, 1, {
         filter: (c: Creep) =>
             c.id !== creep.id &&
-            c.memory.role === ROLES.carrier &&
+            c.memory.unit === UNITS.carrier &&
             !(c.memory as any).retreat &&
             (c.memory as any).relayedTick !== Game.time,
     }) as Creep[];

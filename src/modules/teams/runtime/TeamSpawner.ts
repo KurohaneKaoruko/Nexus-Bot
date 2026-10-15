@@ -528,7 +528,7 @@ export default class TeamSpawner {
      * 下发孵化任务：为配置中的每个角色创建 SpawnMission。
      *
      * @param teamID 队伍 ID（写入 creep memory，用于归队）
-     * @param Team_Config 小队配置数组（包含 role/bodypart/boostmap）
+     * @param Team_Config 小队配置数组（包含 unit/bodypart/boostmap）
      * @param room 孵化房间（通过 `room.SpawnMissionAdd` 下发任务）
      *
      * @remarks
@@ -538,7 +538,7 @@ export default class TeamSpawner {
     private static spawnTeamCreeps(teamID: string, Team_Config: any[], room: Room): void {
         // 孵化小队成员 (直接孵化, 绕池)
         for (const c of Team_Config) {
-            directSpawn(room, c.role, {
+            directSpawn(room, c.unit, {
                 teamID,
                 ...(isBoostResCheckEnabled() ? { boostmap: { ...c.boostmap } } : {}),
             }, (c.bodypart as BodyPartConstant[]).flat());

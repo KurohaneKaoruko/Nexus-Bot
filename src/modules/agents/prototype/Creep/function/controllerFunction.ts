@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { BASE_CONFIG } from '@/constant/BaseConstant';
 import { getRoomData } from '@/core/store/accessor';
 
@@ -14,7 +14,7 @@ const CONTROLLER_LANE_PASSABLE_STRUCTURES = new Set<StructureConstant>([
 
 // 允许参与控制器工位“让前排”判断的角色。
 // 这里仅纳入会长期围绕 controller 工作的 creep。
-const CONTROLLER_FRONT_FOLLOWER_ROLES = new Set<string>([ROLES.upgrader, ROLES.worker, ROLES['aid-upgrade']]);
+const CONTROLLER_FRONT_FOLLOWER_ROLES = new Set<string>([UNITS.upgrader, UNITS.worker, UNITS['aid-upgrade']]);
 
 type ControllerEnergyKind = 'link' | 'dropped' | 'container' | 'terminal' | 'storage';
 
@@ -132,7 +132,7 @@ const tryAdvanceControllerFront = (creep: Creep, controller: StructureController
     const hasFollower = creep.pos.findInRange(FIND_MY_CREEPS, 1, {
         filter: (other) =>
             other.id !== creep.id &&
-            CONTROLLER_FRONT_FOLLOWER_ROLES.has(other.memory.role || '') &&
+            CONTROLLER_FRONT_FOLLOWER_ROLES.has(other.memory.unit || '') &&
             other.pos.getRangeTo(anchorPos) > currentAnchorRange
     }).length > 0;
     if (!hasFollower) return false;
@@ -299,7 +299,7 @@ export default class ControllerFunction extends Creep {
         const candidates: ControllerEnergyTarget[] = [];
 
         // 先收集所有合法来源，再统一按优先级排序。
-        // 这样 role 侧只需要关心“取控制器缓冲能量”，不用重复实现来源决策。
+        // 这样 unit 侧只需要关心“取控制器缓冲能量”，不用重复实现来源决策。
         const link = this.getControllerLink(linkRange);
         if (link) candidates.push({ kind: 'link', target: link, energy: link.store[RESOURCE_ENERGY] || 0 });
 

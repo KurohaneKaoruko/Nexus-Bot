@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 /**
  * 外矿补员调度的纯决策层。
  *
@@ -11,8 +11,8 @@ import { ROLES } from '@/constant/CreepConstant';
 // 外矿采集工 / 搬运工的角色集合。
 // 两者分别设额度：采集工定编小（单源 1 个）且是搬运的前置，绝不能被搬运队列堵住；
 // 搬运工体型最大、孵化最久，才是真正需要限流的一方。
-export const OUTMINE_HARVEST_ROLE_SET: ReadonlySet<string> = new Set<string>([ROLES.harvester]);
-export const OUTMINE_CARRY_ROLE_SET: ReadonlySet<string> = new Set<string>([ROLES.carrier]);
+export const OUTMINE_HARVEST_ROLE_SET: ReadonlySet<string> = new Set<string>([UNITS.harvester]);
+export const OUTMINE_CARRY_ROLE_SET: ReadonlySet<string> = new Set<string>([UNITS.carrier]);
 // 并集：用于「本房整体挂了多少外矿经济任务」的派单排序。
 export const OUTMINE_PENDING_ECONOMY_ROLE_SET: ReadonlySet<string> = new Set([
     ...OUTMINE_HARVEST_ROLE_SET,
@@ -34,19 +34,19 @@ export type OutMineSpawnTargetStat = {
  * @param memories 任务池中已解析出的 creep memory（无效项会被忽略）。
  * @param sourceRoomName 发起孵化的源房名；任务的 `sourceRoom` 与之不符时不计入。
  * @param targetRoomName 目标房名。
- * @param roleSet 计入的角色集合。
+ * @param unitSet 计入的角色集合。
  * @returns 计入额度的任务条数。
  */
 export const countPendingMissions = (
-    memories: ReadonlyArray<{ role?: string; targetRoom?: string; sourceRoom?: string } | null | undefined>,
+    memories: ReadonlyArray<{ unit?: string; targetRoom?: string; sourceRoom?: string } | null | undefined>,
     sourceRoomName: string,
     targetRoomName: string,
-    roleSet: ReadonlySet<string>,
+    unitSet: ReadonlySet<string>,
 ): number => {
     let count = 0;
     for (const memory of memories) {
-        const role = memory?.role;
-        if (!role || !roleSet.has(role)) continue;
+        const unit = memory?.unit;
+        if (!unit || !unitSet.has(unit)) continue;
         if ((memory?.targetRoom || '') !== targetRoomName) continue;
         const missionSourceRoom = memory?.sourceRoom;
         if (missionSourceRoom && missionSourceRoom !== sourceRoomName) continue;
@@ -64,7 +64,7 @@ export const countPendingMissions = (
  * @returns 计入挂单额度的任务条数。
  */
 export const countPendingEconomyMissions = (
-    memories: ReadonlyArray<{ role?: string; targetRoom?: string; sourceRoom?: string } | null | undefined>,
+    memories: ReadonlyArray<{ unit?: string; targetRoom?: string; sourceRoom?: string } | null | undefined>,
     sourceRoomName: string,
     targetRoomName: string,
 ): number => countPendingMissions(memories, sourceRoomName, targetRoomName, OUTMINE_PENDING_ECONOMY_ROLE_SET);
@@ -73,8 +73,8 @@ export const countPendingEconomyMissions = (
 // 这些任务是按当前需求算出来的，不含一次性任务（防御、侦查、预定）。
 export const OUTMINE_PLANNED_ROLE_SET: ReadonlySet<string> = new Set([
     ...OUTMINE_PENDING_ECONOMY_ROLE_SET,
-    ROLES['out-build'],
-    ROLES['out-mineral'],
+    UNITS['out-build'],
+    UNITS['out-mineral'],
 ]);
 
 /**
@@ -92,11 +92,11 @@ export const OUTMINE_PLANNED_ROLE_SET: ReadonlySet<string> = new Set([
  * @returns 需要删除时返回 true。
  */
 export const shouldDropPlannedMission = (
-    memory: { role?: string; sourceRoom?: string } | null | undefined,
+    memory: { unit?: string; sourceRoom?: string } | null | undefined,
     sourceRoomName: string,
 ): boolean => {
-    const role = memory?.role;
-    if (!role || !OUTMINE_PLANNED_ROLE_SET.has(role)) return false;
+    const unit = memory?.unit;
+    if (!unit || !OUTMINE_PLANNED_ROLE_SET.has(unit)) return false;
     const missionSourceRoom = memory?.sourceRoom;
     return !missionSourceRoom || missionSourceRoom === sourceRoomName;
 };

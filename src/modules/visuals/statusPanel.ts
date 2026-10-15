@@ -118,12 +118,12 @@ function worldHudLines(ctx: TickContext, room: Room): HudLine[] {
 	lines.push({ text: `任务  活 ${active} · 待 ${avail}`, color: T.text });
 
 	// 编制: 全名经 UNIT_CODES 折叠为代号 (H/C/U/W...), 未收录回退大写
-	const roles = new Map<string, number>();
+	const units = new Map<string, number>();
 	for (const u of Object.values(ctx.memory.units)) {
 		const code = unitCode(u.unitCode);
-		roles.set(code, (roles.get(code) ?? 0) + 1);
+		units.set(code, (units.get(code) ?? 0) + 1);
 	}
-	const roster = [...roles]
+	const roster = [...units]
 		.sort()
 		.map(([code, n]) => `${code}×${n}`)
 		.join(" ");

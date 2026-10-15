@@ -11,7 +11,7 @@ import { downgradeEmergency } from "@/core/world";
 import { STRATEGY_CONFIG } from "@/config/strategy";
 import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
-import { RoleData } from "@/constant/CreepConstant";
+import { UnitData } from "@/constant/CreepConstant";
 import { generateCreepName } from "@/utils/naming";
 import { createTaskBoard } from "@/modules/tasks";
 import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy/remoteMining";
@@ -48,8 +48,8 @@ function roleFromCode(code: string): SpawnUnit | undefined {
 	if (!entry) {
 		return undefined;
 	}
-	const roleName = entry[0];
-	return isSpawnUnit(roleName) ? roleName : undefined;
+	const unitName = entry[0];
+	return isSpawnUnit(unitName) ? unitName : undefined;
 }
 
 /** 任务类型 → 生产角色 */
@@ -75,7 +75,7 @@ function unitForTaskKind(kind: string): SpawnUnit | undefined {
 }
 
 interface SpawnRequest {
-	role: SpawnUnit;
+	unit: SpawnUnit;
 	priority: number;
 	purpose: string;
 	/** 快递等按请求给定预算编译的角色 (缺省走容量/存量定档) */
@@ -95,7 +95,7 @@ function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
 	const rooms = world ? Object.values(world.rooms) : [];
 	const sources = rooms.reduce((sum, room) => sum + room.sources.length, 0);
 	const sites = rooms.reduce((sum, room) => sum + room.sites.length, 0);
-	// 外矿同名-role 定编: 远程 harvest 任务每源 +1 harvester; scout 按活跃侦查任务
+	// 外矿同名-unit 定编: 远程 harvest 任务每源 +1 harvester; scout 按活跃侦查任务
 	const board = createTaskBoard(ctx.memory.tasks);
 	const remoteHarvest = activeRemoteHarvestCount(ctx, board);
 	const scoutNeed = activeScoutCount(ctx, board);
@@ -131,10 +131,10 @@ function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
 }
 
 /** 诊断调整后的有效编制: carrier 乘运力乘数 (吞吐目标已由 workforce 现算, 不再有第二公式) */
-function effectiveTarget(ctx: TickContext, role: SpawnUnit): number {
-	const base = unitTargets(ctx)[role];
+function effectiveTarget(ctx: TickContext, unit: SpawnUnit): number {
+	const base = unitTargets(ctx)[unit];
 	const diagnosis = ctx.memory.economy.diagnosis;
-	if (role === "carrier") {
+	if (unit === "carrier") {
 		const multiplierTarget = Math.round(base * diagnosis.carrierMultiplier);
 		const rclCap = Math.min(
 			CARRY_STAFFING_CONFIG.maxCarriers,
@@ -142,7 +142,7 @@ function effectiveTarget(ctx: TickContext, role: SpawnUnit): number {
 		);
 		return Math.max(CARRY_STAFFING_CONFIG.minCarriers, Math.min(rclCap, multiplierTarget));
 	}
-	if (role === "upgrader") {
+	if (unit === "upgrader") {
 		return base + diagnosis.upgraderBonus;
 	}
 	return base;
@@ -191,12 +191,12 @@ function ccBelowSpawnGate(ctx: TickContext): boolean {
  */
 function replacementLead(
 	ctx: TickContext,
-	role: SpawnUnit,
+	unit: SpawnUnit,
 	roomName: string,
 	creepName: string,
 ): number {
 	const base =
-		typicalSpawnTime(role) + travelP95(ctx, role, roomName) + REPLACEMENT_CONFIG.setupMargin;
+		typicalSpawnTime(unit) + travelP95(ctx, unit, roomName) + REPLACEMENT_CONFIG.setupMargin;
 	return Math.round(base * (1 + nameJitter(creepName)));
 }
 
@@ -254,13 +254,13 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	const inflightRoles = new Map<string, number>();
 	for (const spawn of spawns) {
 		const name = spawn.spawning?.name;
-		const role = name ? ctx.memory.units[name]?.unitCode : undefined;
-		if (role) {
-			inflightRoles.set(role, (inflightRoles.get(role) ?? 0) + 1);
+		const unit = name ? ctx.memory.units[name]?.unitCode : undefined;
+		if (unit) {
+			inflightRoles.set(unit, (inflightRoles.get(unit) ?? 0) + 1);
 		}
 	}
-	const staffed = (role: string): number =>
-		(aliveRoles.get(unitCode(role)) ?? 0) + (inflightRoles.get(role) ?? 0);
+	const staffed = (unit: string): number =>
+		(aliveRoles.get(unitCode(unit)) ?? 0) + (inflightRoles.get(unit) ?? 0);
 
 	// 战略指令 (设计 D5): survive 姿态暂停非关键岗位的新排 (缺口与替补均停),
 	// carrier/harvester 与从零起步的 bootstrap 不受影响; 不做身体缩水 (避免与替补窗口耦合);
@@ -271,19 +271,19 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	const pauseRoles =
 		directiveFor(ctx).posture === "survive"
 			? STRATEGY_CONFIG.surviveSpawnPauseRoles.filter(
-					(role) => role !== "upgrader" || !downgradeActive,
+					(unit) => unit !== "upgrader" || !downgradeActive,
 				)
 			: [];
 
 	// 缺口聚合: 未分配任务 → 角色请求
 	const requests = new Map<SpawnUnit, SpawnRequest>();
-	const addRequest = (role: SpawnUnit, priority: number, purpose: string): void => {
-		if (pauseRoles.includes(role)) {
+	const addRequest = (unit: SpawnUnit, priority: number, purpose: string): void => {
+		if (pauseRoles.includes(unit)) {
 			return;
 		}
-		const existing = requests.get(role);
+		const existing = requests.get(unit);
 		if (!existing || priority > existing.priority) {
-			requests.set(role, { role, priority, purpose });
+			requests.set(unit, { unit, priority, purpose });
 		}
 	};
 
@@ -318,43 +318,43 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		// 常驻编制缺口 (bugs/P1-5): harvester/upgrader/carrier 的岗位与任务 available 状态解耦——
 		// 任务被租住或处于失败冷却期时缺口仍可见, 否则岗位长期空转;
 		// carrier 可按角色覆盖优先级 (物流骨干不被任务驱动请求永久压队)
-		for (const roleName of SPAWN_CONFIG.standingRoles) {
-			if (!isSpawnUnit(roleName)) {
+		for (const unitName of SPAWN_CONFIG.standingRoles) {
+			if (!isSpawnUnit(unitName)) {
 				continue;
 			}
 			// 水位门: cc 存量低于升级抽水缓冲时暂停升级体孵化, 孵化槽让位物流
-			if (roleName === "upgrader" && !downgradeActive && ccBelowSpawnGate(ctx)) {
+			if (unitName === "upgrader" && !downgradeActive && ccBelowSpawnGate(ctx)) {
 				continue;
 			}
-			if (staffed(roleName) < effectiveTarget(ctx, roleName)) {
+			if (staffed(unitName) < effectiveTarget(ctx, unitName)) {
 				const priority =
-					SPAWN_CONFIG.standingPriorityByRole[roleName] ?? SPAWN_CONFIG.standingPriority;
-				addRequest(roleName, priority, `staffing:${roleName}`);
+					SPAWN_CONFIG.standingPriorityByRole[unitName] ?? SPAWN_CONFIG.standingPriority;
+				addRequest(unitName, priority, `staffing:${unitName}`);
 			}
 		}
 		for (const task of board.list({ statuses: ["available"] })) {
-			const role = unitForTaskKind(task.kind);
-			if (role && staffed(role) < effectiveTarget(ctx, role)) {
-				addRequest(role, task.priority, role);
+			const unit = unitForTaskKind(task.kind);
+			if (unit && staffed(unit) < effectiveTarget(ctx, unit)) {
+				addRequest(unit, task.priority, unit);
 			}
 		}
 		// 替补窗口 (docs/nexus-design/07 §7.5): TTL 低于 lead = 生产 + 实测路程 P95 + 余量 时提前补位;
 		// 关键岗位允许短暂在编重叠 (staffed ≤ target), 廉价岗位严格不超编 (staffed < target)
 		for (const room of Object.values(world.rooms)) {
 			for (const creep of room.creeps) {
-				const role = roleFromCode(creep.unitCode);
-				if (!role) {
+				const unit = roleFromCode(creep.unitCode);
+				if (!unit) {
 					continue;
 				}
-				if (creep.ticksToLive >= replacementLead(ctx, role, room.roomName, creep.name)) {
+				if (creep.ticksToLive >= replacementLead(ctx, unit, room.roomName, creep.name)) {
 					continue;
 				}
-				const target = effectiveTarget(ctx, role);
-				const overlapping = REPLACEMENT_CONFIG.keyRoles.includes(role)
-					? staffed(role) <= target
-					: staffed(role) < target;
+				const target = effectiveTarget(ctx, unit);
+				const overlapping = REPLACEMENT_CONFIG.keyRoles.includes(unit)
+					? staffed(unit) <= target
+					: staffed(unit) < target;
 				if (overlapping) {
-					addRequest(role, 60, `replacement:${role}`);
+					addRequest(unit, 60, `replacement:${unit}`);
 				}
 			}
 		}
@@ -365,7 +365,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	for (const courier of takeCourierRequests()) {
 		if (courier.roomName in world.rooms) {
 			requests.set("rush-courier", {
-				role: "rush-courier",
+				unit: "rush-courier",
 				priority: courier.priority,
 				purpose: courier.reason,
 				budget: courier.budget,
@@ -387,16 +387,16 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		// 不得超过采集面规模 (防「3 搬运 : 1 矿工」倒挂吃光孵化槽)
 		const spawnRoom = world.rooms[spawn.room.name];
 		const secured = spawnRoom ? isProductionSecured(ctx, spawnRoom) : true;
-		const gateAllows = (role: SpawnUnit): boolean => {
+		const gateAllows = (unit: SpawnUnit): boolean => {
 			if (secured) {
 				return true;
 			}
-			if (role === "carrier") {
+			if (unit === "carrier") {
 				return staffed("carrier") < Math.max(1, staffed("harvester"));
 			}
-			return PRODUCTION_GATE_CONFIG.unsecuredAllowedRoles.includes(role);
+			return PRODUCTION_GATE_CONFIG.unsecuredAllowedRoles.includes(unit);
 		};
-		const gated = ordered.filter((r) => gateAllows(r.role));
+		const gated = ordered.filter((r) => gateAllows(r.unit));
 		// 体型按容量定档 (energyCapacityAvailable), 攒能等待: 涓流经济下按瞬时存量定档
 		// 会永远困在最小体型 (sim 实证: 5 万 tick 仍 3 部件);
 		// 高优先请求 (bootstrap/应急) 例外——按现有能量立即生产, 保开局速度;
@@ -417,25 +417,25 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		const urgent = gated.find(
 			(r) =>
 				r.priority >= SPAWN_CONFIG.immediatePriority &&
-				(!SPAWN_CONFIG.capacityWaitRoles.includes(r.role) ||
+				(!SPAWN_CONFIG.capacityWaitRoles.includes(r.unit) ||
 					// 采集面归零时立即小体复产 (自举通道): 攒能等待的前提是有收入,
 					// 矿工全灭后等待只会让能量归零死锁 (50k 普查: 0 harvester 存活实锤)
-					(r.role === "harvester" && staffed("harvester") === 0)) &&
-				buildBody(r.role, r.budget ?? available, hints) !== null,
+					(r.unit === "harvester" && staffed("harvester") === 0)) &&
+				buildBody(r.unit, r.budget ?? available, hints) !== null,
 		);
 		let body: BodyPartConstant[] | null = null;
 		let request: SpawnRequest | undefined;
 		if (urgent) {
 			request = urgent;
-			body = buildBody(urgent.role, urgent.budget ?? available, hints);
+			body = buildBody(urgent.unit, urgent.budget ?? available, hints);
 		} else {
-			request = gated.find((r) => buildBody(r.role, r.budget ?? capacity, hints) !== null);
+			request = gated.find((r) => buildBody(r.unit, r.budget ?? capacity, hints) !== null);
 			if (request) {
-				const desired = buildBody(request.role, request.budget ?? capacity, hints);
+				const desired = buildBody(request.unit, request.budget ?? capacity, hints);
 				if (desired && bodyCost(desired) > available) {
 					// 期望体型未攒够: 等待 (超时后退回按存量降档); 攒能角色用短窗——
 					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测)
-					const waitLimit = SPAWN_CONFIG.capacityWaitRoles.includes(request.role)
+					const waitLimit = SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
 						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
 						: SPAWN_CONFIG.capacityWaitTicks;
 					if (ctx.tick - idleSince < waitLimit) {
@@ -443,7 +443,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 						ctx.cpu.recordSkip("spawn-director", "budget");
 						continue;
 					}
-					body = buildBody(request.role, request.budget ?? available, hints);
+					body = buildBody(request.unit, request.budget ?? available, hints);
 				} else {
 					body = desired;
 				}
@@ -458,9 +458,9 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		delete spawnIdleSince[spawn.id];
 		// defender 生产能源经共享账本预留 (specs/combat-spawning): 失败等待, 不与搬运承诺重复花销
 		let reservationId: string | null = null;
-		if (request.role === "defender") {
+		if (request.unit === "defender") {
 			reservationId = reserve(ctx, {
-				owner: `spawn-request:${request.role}:${ctx.tick}`,
+				owner: `spawn-request:${request.unit}:${ctx.tick}`,
 				roomName: spawn.room.name,
 				amount: bodyCost(body),
 			});
@@ -469,17 +469,17 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				continue;
 			}
 		}
-		const name = generateCreepName(request.role, {
+		const name = generateCreepName(request.unit, {
 			random: Math.random,
 			exists: (candidate) => candidate in Game.creeps,
 		});
 		const code = spawn.spawnCreep(body, name, {
-			memory: { role: request.role, homeRoom: spawn.room.name },
+			memory: { unit: request.unit, homeRoom: spawn.room.name },
 		});
 		if (code === OK) {
 			ctx.memory.units[name] = {
 				name,
-				unitCode: request.role,
+				unitCode: request.unit,
 				homeRoom: spawn.room.name,
 				bornAt: ctx.tick,
 				lastTaskChange: ctx.tick,
@@ -492,7 +492,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			if (reservationId) {
 				releaseReservation(ctx, reservationId, "spawn-failed");
 			}
-			ctx.logger.warn(`spawn.${code}`, `生产 ${request.role} 失败: ${code}`);
+			ctx.logger.warn(`spawn.${code}`, `生产 ${request.unit} 失败: ${code}`);
 		}
 	}
 }
@@ -507,7 +507,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
  */
 export function directSpawn(
 	room: Room,
-	role: string,
+	unit: string,
 	memory: Record<string, unknown>,
 	body?: BodyPartConstant[],
 	namePrefix?: string,
@@ -515,12 +515,12 @@ export function directSpawn(
 	const spawns = room.find(FIND_MY_SPAWNS);
 	const spawn = spawns.find((s) => !s.spawning);
 	if (!spawn) return ERR_BUSY;
-	const config = (RoleData as unknown as Record<string, { level: number; code?: string }>)[role];
+	const config = (UnitData as unknown as Record<string, { level: number; code?: string }>)[unit];
 	if (!config) {
 		return ERR_INVALID_ARGS;
 	}
-	const bodyFinal = body ?? (room as any).GenerateBodys?.((room as any).GetRoleBodys?.(role, undefined, undefined), role);
+	const bodyFinal = body ?? (room as any).GenerateBodys?.((room as any).GetUnitBodys?.(unit, undefined, undefined), unit);
 	if (!bodyFinal?.length) return ERR_NOT_ENOUGH_RESOURCES;
-	const mem = { ...memory, role, cache: {} } as CreepMemory;
-	return spawn.spawnCreep(bodyFinal, generateCreepName(String(namePrefix ?? config.code ?? role), { random: Math.random, exists: (n) => n in Game.creeps }), { memory: mem });
+	const mem = { ...memory, unit, cache: {} } as CreepMemory;
+	return spawn.spawnCreep(bodyFinal, generateCreepName(String(namePrefix ?? config.code ?? unit), { random: Math.random, exists: (n) => n in Game.creeps }), { memory: mem });
 }

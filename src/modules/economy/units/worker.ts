@@ -37,7 +37,7 @@ const getWorkTargetCache = (() => {
 })();
 
 const getCache = (creep: Creep) =>
-    ensureMemoryCache(creep.memory).role as WorkerCache;
+    ensureMemoryCache(creep.memory).unit as WorkerCache;
 
 const resetCacheIfRoomChanged = (creep: Creep, cache: WorkerCache) => {
     const roomName = creep.room.name;
@@ -413,7 +413,7 @@ const WORKER_FAMILY_ROLE_SET = new Set<string>(WORKER_FAMILY_ROLES);
 const getWorkerDutySplit = (room: Room): WorkerDutySplit =>
     getRoomTickCacheValue(room, 'worker_duty_split', () => {
         // 原型方法缺失（测试桩 / 未初始化房间）时退回旧行为：不切分
-        if (typeof (room as any).GetRoleBodys !== 'function' ||
+        if (typeof (room as any).GetUnitBodys !== 'function' ||
             typeof (room as any).checkMissionInPool !== 'function') {
             return { quota: Number.POSITIVE_INFINITY, upgradeDemand: false };
         }
@@ -440,41 +440,41 @@ const isWorkerConstructionSlot = (creep: Creep, split: WorkerDutySplit): boolean
 
     const roster = getRoomTickCacheValue(creep.room, 'worker_duty_roster', () =>
         ((creep.room.find(FIND_MY_CREEPS, {
-            filter: (c: Creep) => !!(c && c.memory && WORKER_FAMILY_ROLE_SET.has(c.memory.role || '')),
+            filter: (c: Creep) => !!(c && c.memory && WORKER_FAMILY_ROLE_SET.has(c.memory.unit || '')),
         }) as Creep[]).slice())
             .sort((a, b) => a.name.localeCompare(b.name))
     );
     const index = roster.findIndex((c) => c.name === creep.name);
     if (index < 0) return true;
 
-    const roleCache = creep.getRoleCache();
+    const unitCache = creep.getUnitCache();
 
     // 粘滞职责：已有明确职责的个体优先保持，配额小幅波动不翻转
-    if (roleCache.duty === 'build') {
+    if (unitCache.duty === 'build') {
         // 建造工：配额扩张或处于滞回带内都保持在岗，直到配额明显收缩
         if (index < split.quota + DUTY_HYSTERESIS) {
-            roleCache.duty = 'build';
+            unitCache.duty = 'build';
             return true;
         }
-        roleCache.duty = 'upgrade';
+        unitCache.duty = 'upgrade';
         return false;
     }
-    if (roleCache.duty === 'upgrade') {
+    if (unitCache.duty === 'upgrade') {
         // 升级工：只有名字序明确进入建造配额（有建造槽空出）才转建造
         if (index < split.quota) {
-            roleCache.duty = 'build';
+            unitCache.duty = 'build';
             return true;
         }
-        roleCache.duty = 'upgrade';
+        unitCache.duty = 'upgrade';
         return false;
     }
 
     // 新个体 / 无记录：按名字序一次性定岗
     if (index < split.quota) {
-        roleCache.duty = 'build';
+        unitCache.duty = 'build';
         return true;
     }
-    roleCache.duty = 'upgrade';
+    unitCache.duty = 'upgrade';
     return false;
 };
 

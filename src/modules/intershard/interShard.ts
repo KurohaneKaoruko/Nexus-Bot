@@ -41,7 +41,7 @@ export type InterShardRoot = {
     cmdAcks?: Record<string, number>;
     plans?: Record<string, InterShardExpandPlanSummary>;
     status?: Record<string, InterShardExpandStatus>;
-    expandCreepCounts?: Record<string, { time: number; roles: Record<string, number> }>;
+    expandCreepCounts?: Record<string, { time: number; units: Record<string, number> }>;
     creepTransfers?: Record<string, Record<string, InterShardCreepTransfer>>;
     transferAcks?: Record<string, Record<string, string>>;
 };
@@ -222,9 +222,9 @@ export function publishExpandStatus(planId: string, status: InterShardExpandStat
 export function publishExpandCreepCounts(counts: Record<string, Record<string, number>>): void {
     const local = readInterShardLocalRoot();
     local.expandCreepCounts = {};
-    for (const [planId, roles] of Object.entries(counts || {})) {
-        if (!roles || typeof roles !== 'object') continue;
-        local.expandCreepCounts[planId] = { time: Game.time, roles: roles as Record<string, number> };
+    for (const [planId, units] of Object.entries(counts || {})) {
+        if (!units || typeof units !== 'object') continue;
+        local.expandCreepCounts[planId] = { time: Game.time, units: units as Record<string, number> };
     }
     writeInterShardLocalRoot(local);
 }

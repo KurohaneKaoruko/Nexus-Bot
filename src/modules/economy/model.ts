@@ -14,21 +14,21 @@ import type { ActionResult } from "@/modules/agents/actionBroker";
 
 /* ── 实测路程样本 (替补窗口) ── */
 
-function travelKey(role: string, roomName: string): string {
-	return `${role}:${roomName}`;
+function travelKey(unit: string, roomName: string): string {
+	return `${unit}:${roomName}`;
 }
 
 /** 记录一次 bornAt→首次到岗 的实测路程 (窗口有界, 写入时重算 P95) */
 export function recordTravelSample(
 	ctx: TickContext,
-	role: string,
+	unit: string,
 	roomName: string,
 	ticks: number,
 ): void {
 	if (ticks < 0 || !Number.isFinite(ticks)) {
 		return;
 	}
-	const key = travelKey(role, roomName);
+	const key = travelKey(unit, roomName);
 	const entry = ctx.memory.economy.travel[key] ?? {
 		samples: [],
 		p95: REPLACEMENT_CONFIG.travelFallback,
@@ -43,10 +43,10 @@ export function recordTravelSample(
 	ctx.memory.economy.travel[key] = entry;
 }
 
-/** role+room 的路程 P95; 样本不足回退配置估算 */
-export function travelP95(ctx: TickContext, role: string, roomName: string): number {
+/** unit+room 的路程 P95; 样本不足回退配置估算 */
+export function travelP95(ctx: TickContext, unit: string, roomName: string): number {
 	return (
-		ctx.memory.economy.travel[travelKey(role, roomName)]?.p95 ?? REPLACEMENT_CONFIG.travelFallback
+		ctx.memory.economy.travel[travelKey(unit, roomName)]?.p95 ?? REPLACEMENT_CONFIG.travelFallback
 	);
 }
 

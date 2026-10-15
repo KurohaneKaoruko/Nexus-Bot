@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { writeMoveWorkTileCandidates } from '@/utils/moveWork';
 import { WORK_EVENTS, type WorkEvent } from '@/modules/agents/workLayer';
 import { runWorkLayer } from '@/modules/agents/workLayer';
@@ -39,9 +39,9 @@ const shouldRetire = (creep: Creep): boolean => {
 };
 
 const retire = (creep: Creep): void => {
-    const roleCache = creep.getRoleCache();
-    if (roleCache.retireStartTick == null) roleCache.retireStartTick = Game.time;
-    const timedOut = Game.time - roleCache.retireStartTick > RETIRE_UNBOOST_TIMEOUT;
+    const unitCache = creep.getUnitCache();
+    if (unitCache.retireStartTick == null) unitCache.retireStartTick = Game.time;
+    const timedOut = Game.time - unitCache.retireStartTick > RETIRE_UNBOOST_TIMEOUT;
 
     if (!timedOut && isBodyBoosted(creep)) {
         // unBoost 自带移动逻辑：走向紧邻 lab 的容器并触发卸载
@@ -77,7 +77,7 @@ const borrowFromAdjacentUpgrader = (creep: Creep): boolean => {
     const selfDist = creep.pos.getRangeTo(cc.pos);
     const mate = creep.pos.findInRange(FIND_MY_CREEPS, 1, {
         filter: (c: Creep) => {
-            if (c.id === creep.id || c.memory.role !== ROLES.upgrader) return false;
+            if (c.id === creep.id || c.memory.unit !== UNITS.upgrader) return false;
             if ((c.store[RESOURCE_ENERGY] || 0) === 0) return false;
             if ((c as any)._transfered === Game.time) return false;
             return c.pos.getRangeTo(cc.pos) < selfDist;

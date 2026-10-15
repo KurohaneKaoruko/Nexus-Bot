@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 export default class PowerCreepDoubleAction extends PowerCreep {
     override pcDoubleMove(Direction: DirectionConstant, healer?: Creep): number {
         const bindCreep = healer || this.getPcHealer();
@@ -101,7 +101,7 @@ export default class PowerCreepDoubleAction extends PowerCreep {
         if (!name) return undefined;
         const creep = Game.creeps[name];
         if (!creep) return undefined;
-        if (creep.memory.role !== ROLES['pc-heal']) return undefined;
+        if (creep.memory.unit !== UNITS['pc-heal']) return undefined;
         if ((creep.memory as any).targetPcName !== this.name) return undefined;
         return creep;
     }

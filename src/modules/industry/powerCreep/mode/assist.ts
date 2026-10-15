@@ -1,8 +1,8 @@
 
 import { directSpawn } from '@/modules/spawning/spawnDirector';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES } from '@/constant/CreepConstant';
-import { RoleData } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
+import { UnitData } from '@/constant/CreepConstant';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 
 export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
@@ -29,7 +29,7 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
 
     const healerName = mem.healerName as string | undefined;
     const healer = healerName ? Game.creeps[healerName] : undefined;
-    if (healer && healer.memory.role !== ROLES['pc-heal']) {
+    if (healer && healer.memory.unit !== UNITS['pc-heal']) {
         mem.healerName = undefined;
     }
     if (healerName && !healer) {
@@ -148,7 +148,7 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
             if (room && room.my) {
                 const lastReq = mem.healerReqTime as number | undefined;
                 const boostOwnerId = `PCH-${pc.name}`;
-                const boostBody = RoleData[ROLES['pc-heal']]?.bodypart || [];
+                const boostBody = UnitData[UNITS['pc-heal']]?.bodypart || [];
                 const boostmap = {
                     [HEAL]: ['XLHO2', 'LHO2', 'LO'],
                     [MOVE]: ['XZHO2', 'ZHO2', 'ZO']
@@ -169,7 +169,7 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
                         // [MOVE]: ['XZHO2', 'ZHO2', 'ZO']
                     } as any;
                     if (room.CheckBoostRes(boostBody, boostmap)) {
-                        const ret = directSpawn(room, ROLES['pc-heal'], {
+                        const ret = directSpawn(room, UNITS['pc-heal'], {
                             targetPcName: pc.name,
                             home: idleRoom,
                             boostmap,
@@ -263,13 +263,13 @@ function hasPendingHealer(room: Room, targetPcName: string): boolean {
             const spawning = spawn.spawning;
             if (!spawning) continue;
             const mem = Memory.creeps?.[spawning.name] as any;
-            if (mem?.role === ROLES['pc-heal'] && mem.targetPcName === targetPcName) return true;
+            if (mem?.unit === UNITS['pc-heal'] && mem.targetPcName === targetPcName) return true;
         }
     }
 
     const tasks = room.getAllMissionFromPool?.(MISSION_POOLS.spawn) as any[] | undefined;
     if (!tasks || tasks.length <= 0) return false;
-    return tasks.some(t => t?.type === 'spawn' && t?.data?.memory?.role === ROLES['pc-heal'] && t.data.memory.targetPcName === targetPcName);
+    return tasks.some(t => t?.type === 'spawn' && t?.data?.memory?.unit === UNITS['pc-heal'] && t.data.memory.targetPcName === targetPcName);
 }
 
 const getAssignedHealerNameByPc = (() => {
@@ -282,7 +282,7 @@ const getAssignedHealerNameByPc = (() => {
         for (const creepName in Game.creeps) {
             const creep = Game.creeps[creepName];
             if (!creep) continue;
-            if (creep.memory.role !== ROLES['pc-heal']) continue;
+            if (creep.memory.unit !== UNITS['pc-heal']) continue;
             const targetPcName = (creep.memory as any).targetPcName as string | undefined;
             if (!targetPcName || byPcName[targetPcName]) continue;
             byPcName[targetPcName] = creep.name;

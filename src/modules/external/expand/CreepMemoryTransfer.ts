@@ -32,7 +32,7 @@ const restoreIncoming = () => {
         const creep = Game.creeps[creepName];
         if (!creep) continue;
         const mem = Memory.creeps?.[creep.name] as any;
-        if (mem && mem.role) continue;
+        if (mem && mem.unit) continue;
 
         for (const fromShard of remotes) {
             const remote = readInterShardRemoteRoot(fromShard);

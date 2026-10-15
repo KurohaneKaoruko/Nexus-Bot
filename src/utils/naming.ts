@@ -13,9 +13,9 @@ export interface CreepNameSource {
 
 const NAME_RETRY_LIMIT = 8;
 
-export function generateCreepName(role: string, source: CreepNameSource): string {
-	const bodyName = unitBodyName(role);
-	const code = unitCode(role);
+export function generateCreepName(unit: string, source: CreepNameSource): string {
+	const bodyName = unitBodyName(unit);
+	const code = unitCode(unit);
 	let name = "";
 	for (let attempt = 0; attempt < NAME_RETRY_LIMIT; attempt += 1) {
 		// 2 字节短十六进制串: 65536 空间对单角色足够, 碰撞时重试
@@ -39,11 +39,11 @@ export function GenShortNumber(len = 4) {
             .toUpperCase();
 }
 
-export function GenCreepName(code: string) {
+export function GenUnitName(code: string) {
     const number = GenShortNumber();
-    const name = `${code}#${number}`;
+    const name = `${code}-${number}`;
     if (Game.creeps[name]) {
-        return GenCreepName(code);
+        return GenUnitName(code);
     } else {
         return name;
     }

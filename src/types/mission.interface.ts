@@ -224,14 +224,14 @@ interface Room {
      * @param name - creep名称
      * @param body - 体型配置，可以是压缩形式数组或字符串
      * @param level - 任务优先级，-1表示使用角色默认优先级
-     * @param role - 角色名称，如'harvester'、'upgrader'等
+     * @param unit - 角色名称，如'harvester'、'upgrader'等
      * @param memory - 可选，creep初始memory
      * @param upbody - 可选，是否使用升级版体型
      * @returns OK(0)表示成功，-1表示失败（角色不存在或能量不足）
      * @example room.SpawnMissionAdd('harvester_1', [[WORK, 5], [CARRY, 1], [MOVE, 3]], 0, 'harvester');
      * @example room.SpawnMissionAdd('upgrader_1', 'w5c1m3', -1, 'upgrader', { targetRoom: 'W1N1' });
      */
-    SpawnMissionAdd(name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, role: string, memory?: CreepMemory, upbody?: boolean): OK | -1;
+    SpawnMissionAdd(name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, unit: string, memory?: CreepMemory, upbody?: boolean): OK | -1;
 
     // ==================== 任务获取方法 ====================
     /**
@@ -307,15 +307,15 @@ interface Room {
      * @description 统计各角色的待孵化任务数量
      * @example const nums = room.getSpawnMissionNum(); // { harvester: 1, upgrader: 2 }
      */
-    getSpawnMissionNum(): { [role: string]: number };
+    getSpawnMissionNum(): { [unit: string]: number };
 
     /**
      * 根据角色列表获取孵化任务总数
-     * @param roles - 角色名称数组
+     * @param units - 角色名称数组
      * @returns 指定角色的孵化任务总数
      * @example const total = room.getSpawnMissionTotalByRoles(['harvester', 'carrier']); // 3
      */
-    getSpawnMissionTotalByRoles(roles: string[]): number;
+    getSpawnMissionTotalByRoles(units: string[]): number;
 
     // ==================== 任务提交方法 ====================
     /**
@@ -338,13 +338,13 @@ interface Room {
     submitSpawnMission(id: Task['id']): OK | void;
 
     /**
-     * 删除指定 role 的孵化任务
-     * @param roles - 单个角色名或角色名数组
+     * 删除指定 unit 的孵化任务
+     * @param units - 单个角色名或角色名数组
      * @returns 本次删除的任务数量
      * @description 常用于防御结束后撤销未孵化的防御兵孵化队列，避免继续出兵浪费能量。
      * @example room.deleteSpawnMissionsByRole(['defend-attack', 'defend-ranged']);
      */
-    deleteSpawnMissionsByRole(roles: string[] | string): number;
+    deleteSpawnMissionsByRole(units: string[] | string): number;
 
     // ==================== 任务更新 ====================
     /**

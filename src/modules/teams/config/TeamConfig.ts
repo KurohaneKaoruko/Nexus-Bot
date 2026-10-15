@@ -14,7 +14,7 @@
  * 成员模板名就是体型描述，由 member() 解析成配置：
  * - 语法为 `字母+数字` 序列，字母取 A/W/R/H/T/M = attack/work/ranged/heal/tough/move
  * - 名字以 `N` 结尾 = 无 boost；否则挂全套 T3 boost
- * - role 默认按第一个 A/W/R/H 部件推导，编队不同时显式覆盖
+ * - unit 默认按第一个 A/W/R/H 部件推导，编队不同时显式覆盖
  */
 
 /** T3 boost 对照表：部件 -> 化合物 */
@@ -28,7 +28,7 @@ const T3_BOOST_MAP = {
 } as const;
 
 export type TeamMemberConfig = {
-    role: string;
+    unit: string;
     bodypart: (BodyPartConstant | number)[][];
     boostmap?: { [part: string]: string };
 };
@@ -48,9 +48,9 @@ export const member = (name: string): TeamMemberConfig => {
     if (!rolePart) {
         throw new Error(`体型名 ${name} 缺少角色部件(A/W/R/H)`);
     }
-    const role = ROLE[rolePart[0] as keyof typeof ROLE];
+    const unit = ROLE[rolePart[0] as keyof typeof ROLE];
     const bodypart = parts.map((p) => [PART[p[0] as keyof typeof PART], Number(p.slice(1))]);
-    return plain ? { role, bodypart } : { role, bodypart, boostmap: T3_BOOST_MAP };
+    return plain ? { unit, bodypart } : { unit, bodypart, boostmap: T3_BOOST_MAP };
 };
 
 // ── T3 boost 成员模板 ──────────────────────────────────────────
@@ -79,7 +79,7 @@ const R15T10R15M10 = member('R15T10R15M10');
 const T12M10H28 = member('T12M10H28');
 const T5M10H35 = member('T5M10H35');
 // 特例：带 1 远程补刀，但仍按奶妈编队（默认推导会误判成远程）
-const T10R1H29M10 = { ...member('T10R1H29M10'), role: 'team-heal' };
+const T10R1H29M10 = { ...member('T10R1H29M10'), unit: 'team-heal' };
 
 // 40 档顶配：X40 M10，无 TOUGH
 const A40M10 = member('A40M10');
@@ -90,7 +90,7 @@ const H40M10 = member('H40M10');
 // RH 一体化：前排 R 重 / 后排 H 重，都按远程编队
 const R10T10R10H10M10 = member('R10T10R10H10M10');
 // 特例：后排 H 更多，但按远程编队
-const H10T10R10H10M10 = { ...member('H10T10R10H10M10'), role: 'team-ranged' };
+const H10T10R10H10M10 = { ...member('H10T10R10H10M10'), unit: 'team-ranged' };
 
 // ── 无 boost 成员模板（无 TOUGH，以 N 结尾）───────────────────
 

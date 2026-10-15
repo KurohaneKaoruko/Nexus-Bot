@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { type CombatHealPriority, resolveBoundPartner, runHealAndFollow, tryBindNearestPartner } from '@/modules/teams/core/boundPartner';
 
@@ -12,8 +12,8 @@ import { type CombatHealPriority, resolveBoundPartner, runHealAndFollow, tryBind
  * 全是策略，不是逻辑。这四份实现原本各写一遍，改一处要改四处（且已经开始漂移：
  * 有的自愈是「只要受伤就治」，有的是「比搭档更惨才治」）。
  *
- * 分工用**角色 id 作为元数据**驱动：`makeCombatHealHandler(role)` 按角色 id 预绑定策略，
- * registry 为四个角色各注册一个处理器，运行时不再按 memory.role 查表分发。
+ * 分工用**角色 id 作为元数据**驱动：`makeCombatHealHandler(unit)` 按角色 id 预绑定策略，
+ * registry 为四个角色各注册一个处理器，运行时不再按 memory.unit 查表分发。
  */
 
 /** 还没结上搭档时的兜底行为。 */
@@ -47,28 +47,28 @@ type CombatHealPolicy = {
 /** 按角色 id 分工：这是四种治疗角色的唯一配置点。 */
 const COMBAT_HEAL_POLICIES: Record<string, CombatHealPolicy> = {
     // 外矿双人队的治疗手：只要自己受伤就先自愈，其余治疗量给搭档
-    [ROLES['out-2heal']]: {
+    [UNITS['out-2heal']]: {
         bind: {
             cacheKey: 'out_2heal_attackers',
-            filter: (_self, candidate) => candidate.memory.role === ROLES['out-2attack'],
+            filter: (_self, candidate) => candidate.memory.unit === UNITS['out-2attack'],
         },
         selfHeal: 'always',
         unbound: 'selfHeal',
     },
     // 沉积物小队的治疗手：同上
-    [ROLES['deposit-heal']]: {
+    [UNITS['deposit-heal']]: {
         bind: {
             cacheKey: 'deposit_heal_attackers',
-            filter: (_self, candidate) => candidate.memory.role === ROLES['deposit-attack'],
+            filter: (_self, candidate) => candidate.memory.unit === UNITS['deposit-attack'],
         },
         selfHeal: 'always',
         unbound: 'selfHeal',
     },
     // 母房守卫的治疗手：把 HEAL 优先留给更该救的搭档，且守住站位/退役回收 boost
-    [ROLES['defend-2heal']]: {
+    [UNITS['defend-2heal']]: {
         bind: {
             cacheKey: 'defend2_heal_candidates',
-            filter: (_self, candidate) => candidate.memory.role === 'defend2-attack',
+            filter: (_self, candidate) => candidate.memory.unit === 'defend2-attack',
         },
         selfHeal: 'ifWorseThanPartner',
         unbound: 'selfHeal',
@@ -77,11 +77,11 @@ const COMBAT_HEAL_POLICIES: Record<string, CombatHealPolicy> = {
         ensureBoosted: true,
     },
     // 双人队的治疗手：只在小队内结伴；等搭档时顺手救最近的伤兵
-    [ROLES['double-heal']]: {
+    [UNITS['double-heal']]: {
         bind: {
             cacheKey: 'double_heal_squad_candidates',
             filter: (self, candidate) =>
-                candidate.memory.role !== ROLES['double-heal'] && candidate.memory.squad === self.memory.squad,
+                candidate.memory.unit !== UNITS['double-heal'] && candidate.memory.squad === self.memory.squad,
         },
         selfHeal: 'ifWorseThanPartner',
         unbound: { kind: 'rescueNearest', minDamage: 100 },
@@ -92,9 +92,9 @@ const COMBAT_HEAL_POLICIES: Record<string, CombatHealPolicy> = {
 };
 
 /** 伤兵判定门槛：这些角色按「掉了多少血」挑救援对象。 */
-const rescueCacheKey = (role: string): string => `${role.replace(/-/g, '_')}_need_targets`;
+const rescueCacheKey = (unit: string): string => `${unit.replace(/-/g, '_')}_need_targets`;
 
-const runUnboundFallback = (creep: Creep, role: string, unbound: UnboundBehavior): void => {
+const runUnboundFallback = (creep: Creep, unit: string, unbound: UnboundBehavior): void => {
     if (unbound === 'none') return;
 
     if (creep.hits < creep.hitsMax) {
@@ -103,7 +103,7 @@ const runUnboundFallback = (creep: Creep, role: string, unbound: UnboundBehavior
     if (unbound === 'selfHeal') return;
 
     // 还没结上伴也在干活：救最近的伤兵
-    const needHealTargets = getRoomTickCacheValue(creep.room, rescueCacheKey(role), () =>
+    const needHealTargets = getRoomTickCacheValue(creep.room, rescueCacheKey(unit), () =>
         creep.room.find(FIND_MY_CREEPS, {
             filter: (myCreep: Creep) => myCreep.hitsMax - myCreep.hits > unbound.minDamage,
         }) as Creep[]
@@ -121,7 +121,7 @@ const runUnboundFallback = (creep: Creep, role: string, unbound: UnboundBehavior
     }
 };
 
-const runCombatHeal = (creep: Creep, role: string, policy: CombatHealPolicy): void => {
+const runCombatHeal = (creep: Creep, unit: string, policy: CombatHealPolicy): void => {
     creep.disableAttackNotificationsOnce();
 
     if (policy.unBoostWhenDying && creep.ticksToLive! < 100 && creep.room.my) {
@@ -137,7 +137,7 @@ const runCombatHeal = (creep: Creep, role: string, policy: CombatHealPolicy): vo
 
     const partner = resolveBoundPartner(creep);
     if (!partner) {
-        runUnboundFallback(creep, role, policy.unbound);
+        runUnboundFallback(creep, unit, policy.unbound);
         return;
     }
 
@@ -149,8 +149,8 @@ const runCombatHeal = (creep: Creep, role: string, policy: CombatHealPolicy): vo
 /**
  * 按角色 id 构造治疗处理器：策略在注册时预绑定，运行时零查表。
  */
-export const makeCombatHealHandler = (role: string) => {
-    const policy = COMBAT_HEAL_POLICIES[role];
+export const makeCombatHealHandler = (unit: string) => {
+    const policy = COMBAT_HEAL_POLICIES[unit];
     return {
         prepare: (creep: Creep) => {
             if (!policy?.ensureBoosted) return true;
@@ -158,7 +158,7 @@ export const makeCombatHealHandler = (role: string) => {
         },
         run: (creep: Creep) => {
             if (!policy) return;
-            runCombatHeal(creep, role, policy);
+            runCombatHeal(creep, unit, policy);
         },
     };
 };

@@ -1,8 +1,8 @@
 
 import { getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES } from '@/constant/CreepConstant';
-import { RoleData, type RoleDefinition } from "@/constant/CreepConstant";
+import { UNITS } from '@/constant/CreepConstant';
+import { UnitData, type UnitDefinition } from "@/constant/CreepConstant";
 import { log } from '@/utils/log';
 import { AIO_CONFIG, LOOT_CONFIG, type BoostMap } from '@/modules/teams/config/spawnFlagConfig';
 import { getSpawnRoomOrRemove, parseFlagNumber, tickThrottle } from '@/modules/teams/flags/utils';
@@ -15,10 +15,10 @@ type SpawnMemoryMatcher = (memory: any) => boolean;
 const matchesFlagSpawnMemory = (
     memory: any,
     flagName: string,
-    role: string,
+    unit: string,
     legacyMatch: SpawnMemoryMatcher
 ) => {
-    if (!memory || memory.role !== role) return false;
+    if (!memory || memory.unit !== unit) return false;
     if (memory.spawnFlag) return memory.spawnFlag === flagName;
     return legacyMatch(memory);
 };
@@ -26,13 +26,13 @@ const matchesFlagSpawnMemory = (
 const getFlagSpawnLoad = (
     spawnRoom: Room,
     flagName: string,
-    role: string,
+    unit: string,
     legacyMatch: SpawnMemoryMatcher
 ) => {
     let live = 0;
     for (const creepName in Game.creeps) {
         const creep = Game.creeps[creepName];
-        if (matchesFlagSpawnMemory(creep?.memory, flagName, role, legacyMatch)) {
+        if (matchesFlagSpawnMemory(creep?.memory, flagName, unit, legacyMatch)) {
             live++;
         }
     }
@@ -40,7 +40,7 @@ const getFlagSpawnLoad = (
     let queued = 0;
     const tasks = getAllMissionFromPool(spawnRoom.name, MISSION_POOLS.spawn) || [];
     for (const task of tasks as any[]) {
-        if (matchesFlagSpawnMemory(task?.data?.memory, flagName, role, legacyMatch)) {
+        if (matchesFlagSpawnMemory(task?.data?.memory, flagName, unit, legacyMatch)) {
             queued++;
         }
     }
@@ -75,13 +75,13 @@ export default class WarSpawnFunction extends Flag {
         const spawnLoad = getFlagSpawnLoad(
             room,
             flagName,
-            ROLES.aio,
+            UNITS.aio,
             (memory) => memory.targetRoom === targetRoom
         )
         if (spawnLoad.total > 0) return true
 
         let bodys: [BodyPartConstant, number][] = []
-        let boostmap: BoostMap = ((RoleData[ROLES.aio] as RoleDefinition).boostmap || {}) as BoostMap
+        let boostmap: BoostMap = ((UnitData[UNITS.aio] as UnitDefinition).boostmap || {}) as BoostMap
 
         const B = flagName.match(/AIO\/(\w+)/)?.[1] as any
         if (AIO_CONFIG[B]) {
@@ -89,7 +89,7 @@ export default class WarSpawnFunction extends Flag {
             boostmap = AIO_CONFIG[B].boostmap || boostmap
         }
 
-        const boostBody = bodys.length == 0 ? RoleData[ROLES.aio].bodypart : bodys
+        const boostBody = bodys.length == 0 ? UnitData[UNITS.aio].bodypart : bodys
         // boost 资源不足：不删旗弃单——跳过 boost 任务按原体型孵化，
         // creep 端 ensureBoosted 等 80t 后自动退化无 boost 出击（与 aidSpawn 同口径）。
         // 无限能量等特殊规则服没有 boost 产能，删旗会导致战争旗永久不可用
@@ -107,7 +107,7 @@ export default class WarSpawnFunction extends Flag {
         }
 
         const boostOwnerId = `${flagName}:${Game.time}`
-        const spawnRet = room.SpawnMissionAdd('', bodys, -1, ROLES.aio, {
+        const spawnRet = room.SpawnMissionAdd('', bodys, -1, UNITS.aio, {
             homeRoom: room.name,
             targetRoom: targetRoom,
             boostmap: boostable ? boostmap : {},
@@ -161,7 +161,7 @@ export default class WarSpawnFunction extends Flag {
         const spawnLoad = getFlagSpawnLoad(
             room,
             flagName,
-            ROLES['attack-claimer'],
+            UNITS['attack-claimer'],
             (memory) => memory.targetRoom === targetRoom
         )
         const missing = Math.max(0, num - spawnLoad.total)
@@ -169,7 +169,7 @@ export default class WarSpawnFunction extends Flag {
         // memory.num 需 JSON 安全（Infinity 序列化为 null），无限用 999 哨兵
         const memNum = Number.isFinite(num) ? num : 999
         for (let i = 0; i < batch; i++) {
-            room.SpawnMissionAdd('', '', memNum, ROLES['attack-claimer'], { homeRoom: room.name, targetRoom, num: memNum, spawnFlag: flagName })
+            room.SpawnMissionAdd('', '', memNum, UNITS['attack-claimer'], { homeRoom: room.name, targetRoom, num: memNum, spawnFlag: flagName })
         }
         if (missing > 0) {
             log('CLAIM', `${room.name} 补充了 ${missing} 个 attack-claimer 来攻击 ${targetRoom}`)
@@ -188,12 +188,12 @@ export default class WarSpawnFunction extends Flag {
         const spawnLoad = getFlagSpawnLoad(
             room,
             flagName,
-            ROLES.dismantle,
+            UNITS.dismantle,
             (memory) => memory.targetRoom === targetRoom && memory.dismantleMode === 'route'
         )
         if (spawnLoad.total > 0) return true
-        const bodys = RoleData[ROLES.dismantle].bodypart as any
-        const boostmap = (RoleData[ROLES.dismantle].boostmap || {}) as BoostMap
+        const bodys = UnitData[UNITS.dismantle].bodypart as any
+        const boostmap = (UnitData[UNITS.dismantle].boostmap || {}) as BoostMap
 
         // boost 资源不足降级无 boost 孵化（与 AIO 同口径，见 handleAioFlag）
         const boostable = !boostmap || room.CheckBoostRes(bodys, boostmap)
@@ -210,8 +210,8 @@ export default class WarSpawnFunction extends Flag {
         }
 
         const boostOwnerId = `${flagName}:${Game.time}`
-        // 拆除策略由 creep.memory.dismantleMode 驱动，避免仅靠 role 绑定策略导致歧义
-        const spawnRet = room.SpawnMissionAdd('', bodys, -1, ROLES.dismantle, {
+        // 拆除策略由 creep.memory.dismantleMode 驱动，避免仅靠 unit 绑定策略导致歧义
+        const spawnRet = room.SpawnMissionAdd('', bodys, -1, UNITS.dismantle, {
             homeRoom: room.name,
             targetRoom,
             boostmap: boostable ? boostmap : {},
@@ -252,7 +252,7 @@ export default class WarSpawnFunction extends Flag {
         const spawnLoad = getFlagSpawnLoad(
             room,
             flagName,
-            ROLES.logistic,
+            UNITS.logistic,
             (memory) => memory.sourceRoom === sourceRoom && memory.targetRoom === targetRoom
         )
         if (spawnLoad.total >= 1) return true
@@ -264,7 +264,7 @@ export default class WarSpawnFunction extends Flag {
             return true
         }
 
-        const spawnRet = room.SpawnMissionAdd('', bodys, -1, ROLES.logistic, {
+        const spawnRet = room.SpawnMissionAdd('', bodys, -1, UNITS.logistic, {
             homeRoom: room.name,
             sourceRoom,
             targetRoom,

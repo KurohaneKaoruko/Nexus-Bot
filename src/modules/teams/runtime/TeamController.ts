@@ -34,7 +34,7 @@ export default class TeamController {
      * 驱动 Team creep 行为（boost 与归队）。
      *
      * @remarks
-     * - Team creep 判定：role 以 `team` 开头。\n
+     * - Team creep 判定：unit 以 `team` 开头。\n
      * - boost：若 creep.memory.boostmap 存在，则调用 creep.goBoost({ must: true })，直到完成。\n
      * - 归队：首次完成 boost 后，把 creep.id 推入 Memory.Nexus.TeamData[teamID].creeps。\n
      * - 若 TeamData 已被删除，则 creep 自杀，避免残留占用资源。
@@ -44,8 +44,8 @@ export default class TeamController {
         for (const creep of getTeamCreeps()) {
             if (!creep || creep.spawning) continue;
             // getTeamCreeps() 已筛选 team 角色，这里保留兜底判断避免脏内存导致异常
-            const role = creep.memory.role || '';
-            if (!role.startsWith('team')) continue;
+            const unit = creep.memory.unit || '';
+            if (!unit.startsWith('team')) continue;
 
             // 关闭 notify（只设置一次）
             if (!creep.memory.notified) {
@@ -179,7 +179,7 @@ export default class TeamController {
             team.save(teamData);
 
             // 将剩余的heal分配到其他不满员的队伍中
-            if (team.creeps.every(creep => creep.memory.role === 'team-heal')) {
+            if (team.creeps.every(creep => creep.memory.unit === 'team-heal')) {
                 // 如果一个队伍只剩heal, 标记为独立治疗者
                 soloHealers.push(...team.creeps);
             } else if (team.creeps.length < teamData.num) {

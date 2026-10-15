@@ -12,8 +12,8 @@ import { decompressBatch } from "@/utils/compress";
 import LayoutVisual from "@/modules/planner/layoutVisual";
 
 type UnitId = keyof typeof UNIT_CODES;
-const isUnitId = (role?: string): role is UnitId => !!role && role in UNIT_CODES;
-const ROLES = { carrier: "carrier", upgrader: "upgrader" } as const;
+const isUnitId = (unit?: string): unit is UnitId => !!unit && unit in UNIT_CODES;
+const UNITS = { carrier: "carrier", upgrader: "upgrader" } as const;
 
 /**
  * 建筑可视化：孵化中 spawn 的数据标注 + lab 产物标注 + 布局规划图。
@@ -25,13 +25,13 @@ export function drawSpawnInfo(spawns: StructureSpawn[]): void {
 		if (!spawn.spawning) continue;
 
 		const creepMemory = Memory.creeps[spawn.spawning.name];
-		const role = creepMemory?.role;
-		if (!isUnitId(role)) {
+		const unit = creepMemory?.unit;
+		if (!isUnitId(unit)) {
 			spawn.spawning.cancel();
 			continue;
 		}
 
-		const code = unitCode(role);
+		const code = unitCode(unit);
 		spawn.room.visual.text(`${code} 🕒${spawn.spawning.remainingTime}`, spawn.pos.x, spawn.pos.y, {
 			align: "center",
 			color: "red",
@@ -248,15 +248,15 @@ export function raceHudLines(room: Room): HudLine[] {
 		pointsToReach,
 	});
 
-	// ── 冲级状态采集（读本方 role 字段） ──
+	// ── 冲级状态采集（读本方 unit 字段） ──
 	let ocTotal = 0;
 	let uWork = 0;
 	const census: Record<string, number> = {};
 	for (const creep of Object.values(Game.creeps)) {
-		const role = creep.memory?.role ?? "?";
-		census[role] = (census[role] ?? 0) + 1;
-		if (role === ROLES.carrier) ocTotal++;
-		else if (role === ROLES.upgrader) uWork += creep.getActiveBodyparts(WORK);
+		const unit = creep.memory?.unit ?? "?";
+		census[unit] = (census[unit] ?? 0) + 1;
+		if (unit === UNITS.carrier) ocTotal++;
+		else if (unit === UNITS.upgrader) uWork += creep.getActiveBodyparts(WORK);
 	}
 	// cc 存量 (判废归因: 升级直供链路是否断货)
 	const ccStructure = room.find(FIND_STRUCTURES, {

@@ -339,9 +339,9 @@ export default {
             for (const mission of spawnmission) {
                 const data = mission.data as SpawnTask;
                 if (data.memory.targetRoom == targetRoom) {
-                    // 如果指定了类型，则需要进一步检查 role
-                    if (type === 'power' && !data.memory.role!.startsWith! ('power-')) continue;
-                    if (type === 'deposit' && !data.memory.role!.startsWith! ('deposit-')) continue;
+                    // 如果指定了类型，则需要进一步检查 unit
+                    if (type === 'power' && !data.memory.unit!.startsWith! ('power-')) continue;
+                    if (type === 'deposit' && !data.memory.unit!.startsWith! ('deposit-')) continue;
 
                     deleteMissionFromPool(room.name, MISSION_POOLS.spawn, mission.id);
                 }

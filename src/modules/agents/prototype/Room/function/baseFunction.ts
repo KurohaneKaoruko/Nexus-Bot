@@ -2,8 +2,8 @@
 
 import { addMissionToPool, updateMissionPool, deleteMissionFromPool, submitMission } from '@/modules/spawning/mission/pool/MissionPools';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES } from '@/constant/CreepConstant';
-import { RoleData, RoleLevelData } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
+import { UnitData, UnitLevelData } from '@/constant/CreepConstant';
 import { buildHaulerBodyConfig, RELAY_HAULER_CARRY_SIZE, DIRECT_HAULER_CARRY_SIZE } from '@/utils/remoteBody';
 import { getBuiltRoadCoverage } from '@/modules/external/externalRoad';
 import { inWhitelist } from '@/utils/whitelist';
@@ -13,24 +13,24 @@ import { getCreepNumByAssignedRoom } from '@/utils/creepTickIndex';
 const getMyCreepsByRoleByRoom = (() => {
     let cachedTick = -1;
     let cached: Record<string, Record<string, Creep[]>> = {};
-    return (room: Room, role: string) => {
+    return (room: Room, unit: string) => {
         if (cachedTick !== Game.time) {
             cachedTick = Game.time;
             cached = {};
         }
         if (!cached[room.name]) cached[room.name] = {};
-        const hit = cached[room.name][role]!;
+        const hit = cached[room.name][unit]!;
         if (hit) return hit;
         const creeps = room.find(FIND_MY_CREEPS, {
-            filter: (c: Creep) => c && (c.ticksToLive || 0) > 0 && c.memory.role === role
+            filter: (c: Creep) => c && (c.ticksToLive || 0) > 0 && c.memory.unit === unit
         }) as Creep[];
-        cached[room.name][role] = creeps;
+        cached[room.name][unit] = creeps;
         return creeps;
     };
 })();
 
-const LEGACY_SHARED_SOURCE_ROLE_SET = new Set<string>([ROLES.worker, ROLES.upgrader, ROLES.universal, ROLES['aid-upgrade']]);
-const STRICT_SOURCE_ROLE_SET = new Set<string>([ROLES.harvester]);
+const LEGACY_SHARED_SOURCE_ROLE_SET = new Set<string>([UNITS.worker, UNITS.upgrader, UNITS.universal, UNITS['aid-upgrade']]);
+const STRICT_SOURCE_ROLE_SET = new Set<string>([UNITS.harvester]);
 const SOURCE_PRIORITY_MAP = {
     harvester: 0,
     universal: 1,
@@ -47,13 +47,13 @@ type SourceCompetitor = {
     distance: number;
 };
 
-const getSourcePriority = (role?: string): number | null => {
-    if (!role) return null;
-    const priority = SOURCE_PRIORITY_MAP[role as SourcePriorityRole];
+const getSourcePriority = (unit?: string): number | null => {
+    if (!unit) return null;
+    const priority = SOURCE_PRIORITY_MAP[unit as SourcePriorityRole];
     return priority == null ? null : priority;
 };
 
-const isPrioritySourceRole = (role?: string): role is SourcePriorityRole => getSourcePriority(role) != null;
+const isPrioritySourceUnit = (unit?: string): unit is SourcePriorityRole => getSourcePriority(unit) != null;
 
 const getSourceReservationsByRoom = (() => {
     let cachedTick = -1;
@@ -96,7 +96,7 @@ const getPrioritySourceCreepsByRoom = (() => {
             filter: (c: Creep) =>
                 c &&
                 (c.ticksToLive || 0) > 1 &&
-                isPrioritySourceRole(c.memory.role)
+                isPrioritySourceUnit(c.memory.unit)
         }) as Creep[];
         cached[room.name] = creeps;
         return creeps;
@@ -177,7 +177,7 @@ const getSourceCompetitors = (room: Room, source: Source, candidate?: Creep) => 
     let hasCandidate = false;
 
     for (const creep of getPrioritySourceCreepsByRoom(room)) {
-        const priority = getSourcePriority(creep.memory.role);
+        const priority = getSourcePriority(creep.memory.unit);
         if (priority == null) continue;
 
         const isBound = creep.memory.targetSourceId === source.id;
@@ -194,10 +194,10 @@ const getSourceCompetitors = (room: Room, source: Source, candidate?: Creep) => 
         });
     }
 
-    if (candidate && isPrioritySourceRole(candidate.memory.role) && !hasCandidate) {
+    if (candidate && isPrioritySourceUnit(candidate.memory.unit) && !hasCandidate) {
         competitors.push({
             creep: candidate,
-            priority: getSourcePriority(candidate.memory.role)!,
+            priority: getSourcePriority(candidate.memory.unit)!,
             isAdjacent: candidate.pos.inRangeTo(source.pos, 1),
             isBound: candidate.memory.targetSourceId === source.id,
             distance: candidate.pos.getRangeTo(source.pos),
@@ -292,10 +292,10 @@ export default class BaseFunction extends Room {
         const capRef = Math.max(300, cap);
         const creepNum = this.getCreepNum();
         const logisticNum =
-            (creepNum[ROLES.carrier] || 0) +
-            (creepNum[ROLES.transporter] || 0) +
-            (creepNum[ROLES.manager] || 0) +
-            (creepNum[ROLES.universal] || 0);
+            (creepNum[UNITS.carrier] || 0) +
+            (creepNum[UNITS.transporter] || 0) +
+            (creepNum[UNITS.manager] || 0) +
+            (creepNum[UNITS.universal] || 0);
         const spawnNeedsEnergy = this.CheckSpawnAndTower();
         const energyRatio = capRef > 0 ? (avail / capRef) : 0;
         const hasStoredEnergy = totalEnergy >= capRef;
@@ -354,8 +354,8 @@ export default class BaseFunction extends Room {
 
     // 获取绑定最少的能量源
     override closestSource(creep: Creep) {
-        const role = creep.memory.role;
-        const isStrictRole = !!role && STRICT_SOURCE_ROLE_SET.has(role);
+        const unit = creep.memory.unit;
+        const isStrictRole = !!unit && STRICT_SOURCE_ROLE_SET.has(unit);
         const availableSources = (this.source || []).filter(
             source => source && (isStrictRole ? true : source.energy > 0)
         );
@@ -365,7 +365,7 @@ export default class BaseFunction extends Room {
             const currentSource = creep.getBoundSource?.() || null;
             if (currentSource) return currentSource;
 
-            const creeps = role ? getMyCreepsByRoleByRoom(this, role) : [];
+            const creeps = unit ? getMyCreepsByRoleByRoom(this, unit) : [];
             const boundCounts: Record<string, number> = {};
             const minTtlBySource: Record<string, number> = {};
             for (const c of creeps) {
@@ -408,7 +408,7 @@ export default class BaseFunction extends Room {
             return best;
         }
 
-        if (isPrioritySourceRole(role)) {
+        if (isPrioritySourceUnit(unit)) {
             const currentSource = creep.getBoundSource?.() || null;
             if (currentSource && currentSource.energy > 0 && getAllowedSourceCandidate(this, creep, currentSource).allowed) {
                 return currentSource;
@@ -435,15 +435,15 @@ export default class BaseFunction extends Room {
         let leastCrowdedSources: any = [];
 
         if(!this.memory.sourcePosCount) this.memory.sourcePosCount = {}
-        const useSharedCrowd = !!role && LEGACY_SHARED_SOURCE_ROLE_SET.has(role);
-        const creeps = role
-            ? (useSharedCrowd ? getMyLegacySourceBoundCreepsByRoom(this) : getMyCreepsByRoleByRoom(this, role)).filter(c => {
+        const useSharedCrowd = !!unit && LEGACY_SHARED_SOURCE_ROLE_SET.has(unit);
+        const creeps = unit
+            ? (useSharedCrowd ? getMyLegacySourceBoundCreepsByRoom(this) : getMyCreepsByRoleByRoom(this, unit)).filter(c => {
                 if (c.id === creep.id) return false;
-                const otherRole = c.memory.role;
-                if (!otherRole) return false;
-                if (!useSharedCrowd) return otherRole === role;
-                if (!LEGACY_SHARED_SOURCE_ROLE_SET.has(otherRole)) return false;
-                if (otherRole !== ROLES.universal && c.memory.working) return false;
+                const otherUnit = c.memory.unit;
+                if (!otherUnit) return false;
+                if (!useSharedCrowd) return otherUnit === unit;
+                if (!LEGACY_SHARED_SOURCE_ROLE_SET.has(otherUnit)) return false;
+                if (otherUnit !== UNITS.universal && c.memory.working) return false;
                 return true;
             })
             : [];
@@ -493,17 +493,17 @@ export default class BaseFunction extends Room {
     /* 动态生成角色体型 */
     override canUseSourceByPriority(creep: Creep, source: Source) {
         if (!source || source.room.name !== this.name) return false;
-        if (!isPrioritySourceRole(creep.memory.role)) return true;
+        if (!isPrioritySourceUnit(creep.memory.unit)) return true;
         return getAllowedSourceCandidate(this, creep, source).allowed;
     }
 
     override shouldYieldSourceByPriority(creep: Creep, source: Source) {
         if (!source || source.room.name !== this.name) return false;
-        if (!isPrioritySourceRole(creep.memory.role)) return false;
+        if (!isPrioritySourceUnit(creep.memory.unit)) return false;
         return !this.canUseSourceByPriority(creep, source);
     }
 
-    override GetRoleBodys(role: string, upbody?:boolean, energyBudget?: number, miniBody?: boolean) {
+    override GetUnitBodys(unit: string, upbody?:boolean, energyBudget?: number, miniBody?: boolean) {
         let lv = this.level;
         let body: any[];
         const budget = energyBudget ?? this.energyCapacityAvailable;
@@ -511,7 +511,7 @@ export default class BaseFunction extends Room {
         // carrier 走搬运工动态体型：接力期 maxCarry 4 小体型快周转，
         // lv7+ 直运期放开到 32；enoughRoad（外矿路程道路覆盖率 ≥ 1/3）才切 2:1 路面迭代，
         // 否则 1:1 越野——判据为外矿路程的非本房道路数量
-        if (role === ROLES.carrier) {
+        if (unit === UNITS.carrier) {
             const relay = this.level < 7;
             const forRoad = getBuiltRoadCoverage(this.name) >= 1 / 3;
             return buildHaulerBodyConfig(budget, {
@@ -520,19 +520,19 @@ export default class BaseFunction extends Room {
             });
         }
 
-        if (role === ROLES.manager && energyBudget !== undefined) {
-            const minConfig = RoleData[role]?.bodypart;
+        if (unit === UNITS.manager && energyBudget !== undefined) {
+            const minConfig = UnitData[unit]?.bodypart;
             if (minConfig) {
-                const minBody = this.GenerateBodys(minConfig, role);
+                const minBody = this.GenerateBodys(minConfig, unit);
                 const minCost = this.CalculateEnergy(minBody);
                 if (budget < minCost) return [];
             }
         }
 
-        if ((RoleLevelData as any) [role]) {
+        if ((UnitLevelData as any) [unit]) {
             while (lv >= 1) {
-                const bodyconfig = ((RoleLevelData as any) [role] as any) [lv];
-                if (!bodyconfig) return RoleData[role]?.bodypart || [];
+                const bodyconfig = ((UnitLevelData as any) [unit] as any) [lv];
+                if (!bodyconfig) return UnitData[unit]?.bodypart || [];
                 if (miniBody && bodyconfig.minipart) {
                     body = bodyconfig.minipart;
                 } else if (upbody && bodyconfig.upbodypart) {
@@ -545,15 +545,15 @@ export default class BaseFunction extends Room {
                 lv--;
             }
             if (lv === 0) return [];
-        } else return RoleData[role]?.bodypart || [];
+        } else return UnitData[unit]?.bodypart || [];
 
         if (lv !== 8) return [...body];
 
-        switch (role) {
-            case ROLES.harvester:
+        switch (unit) {
+            case UNITS.harvester:
                 if(this.source.some! (s => (s.effects||[])
                     .some(e => e.effect == PWR_REGEN_SOURCE))) {
-                    body = RoleLevelData[role][lv].upbodypart;
+                    body = UnitLevelData[unit][lv].upbodypart;
                 }
                 break;
             default:
@@ -563,7 +563,7 @@ export default class BaseFunction extends Room {
     }
 
     /* 生成指定体型 */
-    override GenerateBodys(bodypart: any[], role='') {
+    override GenerateBodys(bodypart: any[], unit='') {
         if (!Array.isArray(bodypart)) return []
         if (!bodypart.length) return []
 
@@ -584,14 +584,14 @@ export default class BaseFunction extends Room {
         let body_list: any = [];
         // 生成优先级，越往前越优先
         
-        switch (role) {
-        case ROLES['power-attack']:
+        switch (unit) {
+        case UNITS['power-attack']:
             if (tough) body_list = AddList(body_list, tough, TOUGH)
             if (move) body_list = AddList(body_list, move - 1, MOVE)
             if (attack) body_list = AddList(body_list, attack, ATTACK)
             if (move) body_list = AddList(body_list, 1, MOVE)
             break;
-        case ROLES['power-carry']:
+        case UNITS['power-carry']:
             if (tough) body_list = AddList(body_list, tough, TOUGH)
             while (carry > 0 || move > 0) {
                 if (carry) body_list = AddList(body_list, 1, CARRY)
@@ -599,7 +599,7 @@ export default class BaseFunction extends Room {
                 carry--; move--;
             }
             break;
-        case ROLES['out-defend']:
+        case UNITS['out-defend']:
             if (tough) body_list = AddList(body_list, tough, TOUGH)
             if (move) body_list = AddList(body_list, move - 2, MOVE)
             if (attack) body_list = AddList(body_list, attack, ATTACK)
@@ -608,14 +608,14 @@ export default class BaseFunction extends Room {
             if (move) body_list = AddList(body_list, 2, MOVE)
             if (heal) body_list = AddList(body_list, 1, HEAL)
             break;
-        case ROLES['out-attack']:
+        case UNITS['out-attack']:
             if (tough) body_list = AddList(body_list, tough, TOUGH)
             if (move) body_list = AddList(body_list, move-2, MOVE)
             if (attack) body_list = AddList(body_list, attack, ATTACK)
             if (heal) body_list = AddList(body_list, heal, HEAL)
             if (move) body_list = AddList(body_list, 2, MOVE)
             break;
-        case ROLES['out-ranged']:
+        case UNITS['out-ranged']:
             if (tough) body_list = AddList(body_list, tough, TOUGH)
             if (move) body_list = AddList(body_list, move - 2, MOVE)
             if (range_attack) body_list = AddList(body_list, range_attack, RANGED_ATTACK)

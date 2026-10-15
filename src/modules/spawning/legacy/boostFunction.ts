@@ -1,28 +1,28 @@
 
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { ensureMemoryCache } from '@/modules/agents/creepCache';
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 // ── 中央 boost 配置表（Tier 1 boost 管理统一）──────────────────
 // 角色 -> 部件 -> 候选 boost 资源（按优先级降级，前者不足自动用后者）。
 // 仅收「标准角色」；动态分档（power 的 boostLevel、defend-single 的 must 切换）
 // 仍由调用方显式传入。新增需要 boost 的角色：在这里加一行，角色里调 ensureBoosted()。
 export const ROLE_BOOST_CONFIGS: Record<string, Record<string, MineralBoostConstant[]>> = {
-    [ROLES.worker]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
-    [ROLES['up-repair']]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
-    [ROLES['up-upgrade']]: { [WORK]: ['XGH2O', 'GH2O', 'GH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [ROLES['aid-build']]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
-    [ROLES['aid-upgrade']]: { [WORK]: ['XGH2O', 'GH2O', 'GH'] },
-    [ROLES['aid-carry']]: { [CARRY]: ['XKH2O', 'KH2O', 'KH'] },
-    [ROLES.dismantle]: { [WORK]: ['XZH2O', 'ZH2O', 'ZH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [ROLES.aio]: { [TOUGH]: ['XGHO2'], [HEAL]: ['XLHO2'], [RANGED_ATTACK]: ['XKHO2'], [MOVE]: ['XZHO2'] },
-    [ROLES['one-ranged']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [ROLES['double-attack']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [ATTACK]: ['XUH2O', 'UH2O', 'UH'] },
-    [ROLES['double-heal']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'] },
-    [ROLES['double-dismantle']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [WORK]: ['XZH2O', 'ZH2O', 'ZH'] },
-    [ROLES['defend-attack']]: { [ATTACK]: ['XUH2O', 'UH2O', 'UH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [ROLES['defend-ranged']]: { [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [ROLES['defend-2attack']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [ATTACK]: ['XUH2O', 'UH2O', 'UH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [ROLES['defend-2heal']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS.worker]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
+    [UNITS['up-repair']]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
+    [UNITS['up-upgrade']]: { [WORK]: ['XGH2O', 'GH2O', 'GH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS['aid-build']]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
+    [UNITS['aid-upgrade']]: { [WORK]: ['XGH2O', 'GH2O', 'GH'] },
+    [UNITS['aid-carry']]: { [CARRY]: ['XKH2O', 'KH2O', 'KH'] },
+    [UNITS.dismantle]: { [WORK]: ['XZH2O', 'ZH2O', 'ZH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS.aio]: { [TOUGH]: ['XGHO2'], [HEAL]: ['XLHO2'], [RANGED_ATTACK]: ['XKHO2'], [MOVE]: ['XZHO2'] },
+    [UNITS['one-ranged']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS['double-attack']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [ATTACK]: ['XUH2O', 'UH2O', 'UH'] },
+    [UNITS['double-heal']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'] },
+    [UNITS['double-dismantle']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [WORK]: ['XZH2O', 'ZH2O', 'ZH'] },
+    [UNITS['defend-attack']]: { [ATTACK]: ['XUH2O', 'UH2O', 'UH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS['defend-ranged']]: { [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS['defend-2attack']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [ATTACK]: ['XUH2O', 'UH2O', 'UH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
+    [UNITS['defend-2heal']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
 };
 
 // boost 框架私有状态命名空间（cache.boost）：惰性创建，非 boost 角色零开销
@@ -35,7 +35,7 @@ export default class BoostFunction extends Creep {
     /**
      * 确保 creep 完成 boost 的唯一入口。
      *
-     * 解析优先级：显式传入 > memory.boostmap > ROLE_BOOST_CONFIGS[role]。
+     * 解析优先级：显式传入 > memory.boostmap > ROLE_BOOST_CONFIGS[unit]。
      * - 无任何配置 → 视为无需 boost，直接完成
      * - 非强制语义：boost 资源不足时等待 BoostMission 补料 80 tick 后自动放弃，
      *   退化为无 boost 工作（goBoost 内建）
@@ -46,7 +46,7 @@ export default class BoostFunction extends Creep {
     ): boolean {
         const boostCache = getBoostCache(this.memory);
         if (boostCache.boosted) return true;
-        const map = boostMap ?? (this.memory as any).boostmap ?? ROLE_BOOST_CONFIGS[this.memory.role as string] ?? {};
+        const map = boostMap ?? (this.memory as any).boostmap ?? ROLE_BOOST_CONFIGS[this.memory.unit as string] ?? {};
         if (!map || Object.keys(map).length === 0) {
             boostCache.boosted = true;
             return true;

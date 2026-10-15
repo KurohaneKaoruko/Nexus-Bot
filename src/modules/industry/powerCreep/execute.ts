@@ -1,5 +1,5 @@
 
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { runAssist } from '@/modules/industry/powerCreep/mode/assist';
 import { runOperate } from '@/modules/industry/powerCreep/mode/operate';
 
@@ -23,7 +23,7 @@ export default class PowerCreepExecute extends PowerCreep {
 
             const healerName = mem.healerName as string | undefined;
             const healer = healerName ? Game.creeps[healerName] : undefined;
-            const healerOk = !!healer && healer.memory.role === ROLES['pc-heal'] && healer.ticksToLive! > 250;
+            const healerOk = !!healer && healer.memory.unit === UNITS['pc-heal'] && healer.ticksToLive! > 250;
 
             if (this.room!.name !== idleRoom) {
                 if (healerOk) this.pcDoubleMoveToRoom(idleRoom, healer, '#ffffff', { plainCost: 1, swampCost: 5 } as any);

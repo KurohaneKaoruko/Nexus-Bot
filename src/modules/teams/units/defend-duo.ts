@@ -11,7 +11,7 @@ const runDefend2Attack = (creep: Creep) => {
     }
 
     const bindcreep = tryBindNearestPartner(creep, 'defend2_attack_candidates', (candidate) =>
-        candidate.memory.role === 'defend2-heal'
+        candidate.memory.unit === 'defend2-heal'
     );
 
     if (!bindcreep) return;
