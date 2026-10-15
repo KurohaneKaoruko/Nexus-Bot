@@ -85,7 +85,7 @@ export function planRemoteHarvest(
 						y: source.pos.y,
 						roomName: targetRoomName,
 					},
-					priority: priorityFor("harvest") - 10, // 低于本矿
+					priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
 					requiredCapabilities: ["work", "move"],
 				}, ctx.tick);
 			}
@@ -129,7 +129,7 @@ export function planRemoteHarvest(
 					y: source.pos.y,
 					roomName: neighborName,
 				},
-				priority: priorityFor("harvest") - 10, // 低于本矿
+				priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
 				requiredCapabilities: ["work", "move"],
 			}, ctx.tick);
 		}
@@ -149,4 +149,17 @@ export function activeRemoteHarvestCount(ctx: TickContext, board: TaskBoard): nu
 export function activeScoutCount(ctx: TickContext, board: TaskBoard): number {
 	const tasks = board.list({ kinds: ["scout"] });
 	return tasks.length > 0 ? 1 : 0;
+}
+
+/**
+ * 本矿登记在板的远程源数 (升级定编口径, bugs (十二)): kind=harvest 且目标房 ≠ 本矿。
+ * 直读 memory.tasks 原始记录 (升级定编每 tick 逐房调用, 不重复建板)。
+ */
+export function activeRemoteSourceCount(ctx: TickContext, roomName: string): number {
+	let n = 0;
+	for (const task of Object.values(ctx.memory.tasks)) {
+		if (task.kind !== "harvest" || task.roomName !== roomName) continue;
+		if (task.targetPos?.roomName && task.targetPos.roomName !== roomName) n += 1;
+	}
+	return n;
 }

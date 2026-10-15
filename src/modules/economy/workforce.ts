@@ -18,6 +18,7 @@ import { UNIT_CODES } from "@/constant/UnitConstant";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { buildBody } from "@/modules/spawning/bodyFactory";
 import { destinationQuotas } from "@/modules/economy/quota";
+import { activeRemoteSourceCount } from "@/modules/economy/remoteMining";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 
 const HARVEST_POWER = 2;
@@ -85,6 +86,18 @@ export function harvestIncomeOf(ctx: TickContext, room: RoomObservation): number
 		income += Math.min(capPerTick, (bound.get(source.id) ?? 0) * HARVEST_POWER);
 	}
 	return income;
+}
+
+/**
+ * 含外矿折算的采集收入 (升级定编口径, bugs (十二)): 本矿实测 + 活跃远程源数 ×
+ * 单源再生上限 (SOURCE_ENERGY_CAPACITY / ENERGY_REGEN_TIME)。远程源无本地绑定
+ * 数据 (跨房), 按满采上限折算——升级定编用它是保守上界, 不会因外矿断供而超编。
+ */
+export function harvestIncomeWithRemoteOf(ctx: TickContext, room: RoomObservation): number {
+	const remoteSources = activeRemoteSourceCount(ctx, room.roomName);
+	if (remoteSources <= 0) return harvestIncomeOf(ctx, room);
+	const sourceCap = 3000 / ENERGY_REGEN_TIME; // SOURCE_ENERGY_CAPACITY / ENERGY_REGEN_TIME (远程源满采上限折算)
+	return harvestIncomeOf(ctx, room) + remoteSources * sourceCap;
 }
 
 // ==================== 源饱和口径实测分解 ====================
@@ -300,7 +313,9 @@ export function upgradeWorkTargetOf(ctx: TickContext, room: RoomObservation): nu
 	const ttd = controller.ticksToDowngrade ?? Infinity;
 	const upgradeNeeded = ttd < config.neededTtd;
 	const level = energyLevelOf(room);
-	const income = harvestIncomeOf(ctx, room);
+	// 升级定编收入口径含外矿折算 (bugs (十二)): 外矿收入是冲级期升级火力的
+	// 直接供给, 不计则外矿起量后升级定编反被本地口径锁死
+	const income = harvestIncomeWithRemoteOf(ctx, room);
 
 	// RCL1: 固定小队起步 (保级窗口恒保底)
 	if (room.rcl < 2) {

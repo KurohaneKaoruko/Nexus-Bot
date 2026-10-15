@@ -129,8 +129,11 @@ export const SPAWN_CONFIG = {
 	/** 常驻编制缺口的请求优先级 (低于任务驱动, 只兜底) */
 	standingPriority: 55,
 	/** 按角色的常驻优先级覆盖: carrier 物流是骨干——涓流孵化队列里 55 会被
-	 *  任务驱动请求 (70) 永久压队, 没有搬运一切不流 (bugs/P1-14 根因③) */
-	standingPriorityByRole: { carrier: 72 } as Readonly<Record<string, number>>,
+	 *  任务驱动请求 (70) 永久压队, 没有搬运一切不流 (bugs/P1-14 根因③);
+	 *  scout 是外矿链路第一环 (1 MOVE 一次性点亮件, 50 能量), 必须压过孵化
+	 *  churn 满负荷期的 fill_spawn (95)——urgent 选择取队头, 95 之下 scout
+	 *  永远轮不到, 外矿视野丢失即收入振荡死锁 (bugs (十二) 实证) */
+	standingPriorityByRole: { carrier: 72, scout: 96 } as Readonly<Record<string, number>>,
 	/** bootstrap 空转治理 (bugs/P1-10): 失明态连续孵化超限后降频, 防能量被 universal churn 耗尽 */
 	bootstrap: {
 		/** 连续 bootstrap 超过该次数仍未恢复可见房 → 进入节流 */

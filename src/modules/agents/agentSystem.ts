@@ -947,9 +947,9 @@ function runRemoteHarvest(
 		return;
 	}
 
-	// 满载且在本矿 → 卸到 spawn/ext
+	// 满载且在本矿 → 卸到 cc (升级线优先) / spawn-ext
 	if (creep.carryEnergy > 0 && creep.roomName === task.roomName) {
-		const dest = room_energyStructures_findSpawn(ctx);
+		const dest = remoteDropoffFor(ctx, task.roomName);
 		if (dest) {
 			broker.submit({
 				id: `${creep.name}-del-${ctx.tick}`,
@@ -1024,6 +1024,24 @@ function room_energyStructures_findSpawn(ctx: TickContext) {
 		if (spawn) return spawn;
 	}
 	return undefined;
+}
+
+/**
+ * 远程采集件在本矿的卸货地: 优先 cc (升级线是外矿冲级收入的最终去处,
+ * 直灌孵化线会把 cc 抽干——bugs (十二) 实证 control −82%), spawn/ext 次之。
+ */
+function remoteDropoffFor(ctx: TickContext, roomName: string): { id: string } | undefined {
+	const room = ctx.world.current?.rooms[roomName];
+	if (!room) return room_energyStructures_findSpawn(ctx);
+	const buffer = room.controllerBuffer;
+	const bufferStore = buffer
+		? room.stores.find(
+				(s) => s.id === buffer.id && s.structureType === "container" && s.energy < s.energyCapacity,
+			)
+		: undefined;
+	if (bufferStore) return bufferStore;
+	const spawnish = room.energyStructures.find((s) => s.energy < s.energyCapacity);
+	return spawnish ?? room_energyStructures_findSpawn(ctx);
 }
 
 /**
