@@ -1,5 +1,4 @@
 
-import { getStatsMemory } from '@/core/store/accessor';
 /**
  * CPU 观测（Tier 0-4）。
  *

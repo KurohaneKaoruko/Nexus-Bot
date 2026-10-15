@@ -1,5 +1,4 @@
 
-import { getStatsMemory } from '@/core/store/accessor';
 import { evaluateSourceWorkTiles } from '@/modules/agents/creepSource';
 import { getProfilerReport } from '@/core/cpuProfiler';
 

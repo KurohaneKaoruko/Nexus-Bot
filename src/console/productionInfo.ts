@@ -1,5 +1,4 @@
 
-import { LAB_T1_PRIORITY, LabMap, RESOURCE_PRODUCTION, t1, t2, t3 } from '@/constant/ResourceConstant';
 import { resolveLabFromMem } from '@/modules/industry/labReservations';
 import { sanitizeMissionPoolMemory } from '@/core/store/accessor';
 
@@ -54,7 +53,6 @@ const peekStruct = (roomName: string): any => getBotMem()?.StructData?.[roomName
 const peekAutoLab = (roomName: string): Record<string, number> | undefined => getBotMem()?.AutoData?.AutoLabData?.[roomName];
 const peekAutoFactory = (roomName: string): Record<string, number> | undefined => getBotMem()?.AutoData?.AutoFactoryData?.[roomName];
 const peekMissionPools = (): any => getBotMem()?.MissionPools;
-const peekResourceManage = (roomName: string): any => getBotMem()?.ResourceManage?.[roomName];
 
 type Transfer = { from: string; to: string; res: string; amount: number; id?: string };
 

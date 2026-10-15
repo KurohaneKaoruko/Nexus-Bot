@@ -364,6 +364,14 @@ export const CARRIER_BEHAVIOR_CONFIG = {
 	overflowDrop: false,
 	/** 落堆规模上限 (能量): cc 位堆超过该值转持能待命 (防巨堆衰减浪费) */
 	overflowDropMaxPile: 400,
+	/**
+	 * 孵化线保底搬运工: 控制器专线 (cc 补货/升级工手填) 认领搬运工时,
+	 * 只要孵化线 (spawn/ext/受威胁塔, priority 1) 还有缺口, 就为通用线保留
+	 * 这么多只搬运工不被专线吸走。专线阶段先于通用阶段执行且认领者不参与
+	 * 通用阶段竞争——无保底时「每只升级工空仓请求」叠加可把全部搬运工划走,
+	 * 孵化线断供 → ext 翻不满 → RCL3 解锁死锁 (arena 40k 不进 L3 的实测根因)。
+	 */
+	spawnLineCarrierReserve: 1,
 } as const;
 
 /** Pixel 生成 (bucket 满额溢出 → GPL; 冲级/模拟环境恒关) */

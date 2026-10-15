@@ -2,6 +2,7 @@
 import { UNITS } from '@/constant/CreepConstant';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { getUpgradeWorkTarget, getUpgraderPathTime } from '@/modules/economy/roomWorkforce';
+import { CARRIER_BEHAVIOR_CONFIG } from '@/config/economy';
 
 const STANDARD_RESERVE_BY_LEVEL: Record<number, number> = {
     1: 10000,
@@ -241,6 +242,7 @@ const matchDedicatedPhase = (
     suppliers: Creep[],
     assigned: Map<string, FillRequest>,
     remaining: Map<string, number>,
+    spawnLineReserve: number,
 ): Set<string> => {
     const used = new Set<string>();
     const controller = room.controller;
@@ -248,7 +250,10 @@ const matchDedicatedPhase = (
 
     const quota = getControllerCarryQuota(room) + dedicatedRequests.filter(isUpgraderFillRequest).length;
     const sorted = [...suppliers].sort((a, b) => a.pos.getRangeTo(controller.pos) - b.pos.getRangeTo(controller.pos));
-    matchRequestsToSuppliers(dedicatedRequests, sorted.slice(0, quota), assigned, remaining);
+    // 孵化线保底: 专线认领者不参与通用阶段竞争, 配额必须为通用线留出保底搬运工,
+    // 否则升级侧空仓请求可吸走全部运力、孵化线断供 (specs/controller-supply-line)
+    const cap = Math.min(quota, Math.max(0, sorted.length - spawnLineReserve));
+    matchRequestsToSuppliers(dedicatedRequests, sorted.slice(0, cap), assigned, remaining);
     for (const id of assigned.keys()) used.add(id);
     return used;
 };
@@ -284,7 +289,9 @@ const matchRoom = (room: Room, suppliers: Creep[]): MatchResult => {
 
     const free = suppliers.filter(s => !claimed.has(s.id));
     const { dedicatedRequests, generalRequests } = splitRequestsByLine(room, allRequests);
-    const dedicatedUsed = matchDedicatedPhase(room, dedicatedRequests, free, assigned, remaining);
+    // 孵化线 (spawn/ext/受威胁塔) 尚有缺口时为通用线保底搬运工; 全满则全部运力可入专线
+    const lifeCriticalPending = allRequests.some(r => r.priority === FILL_PRIORITY.extension);
+    const dedicatedUsed = matchDedicatedPhase(room, dedicatedRequests, free, assigned, remaining, lifeCriticalPending ? CARRIER_BEHAVIOR_CONFIG.spawnLineCarrierReserve : 0);
     matchGeneralPhase(generalRequests.length ? generalRequests : allRequests, free, assigned, remaining, dedicatedUsed);
 
     return { assignment: assigned };

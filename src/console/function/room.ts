@@ -4,7 +4,7 @@ import { BASE_CONFIG } from "@/constant/BaseConstant";
 import { clearRoomRelatedMemory, ensureRoomData, getAutoData, getRoomData, getStructData } from "@/core/store/accessor";
 import { parseShardRoomName } from "@/utils/shardRoom";
 import { clearMemoryCache } from "@/modules/agents/creepCache";
-import { ROOM_NAME_SOURCE_TEXT, resolveRoomName } from "@/console/argUtils";
+import { resolveRoomName } from "@/console/argUtils";
 
 // 动态布局（无需布局中心）
 const DYNAMIC_LAYOUT_SET = new Set(['auto', '63auto', 'scorpior']);

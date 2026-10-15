@@ -1,5 +1,11 @@
 // remote-mine: 外矿同名-role 验证 (main 档 remoteMining 开闸)
 // 链路: 邻房不可见 → scout 任务 → 侦查 → 远程 harvest 任务 → 跨房采集 → 能量回流
+//
+// 2026-10-15 勘误: 本场景测的是任务板系外矿 (planRemoteHarvest 自动扫邻房, 无需预置);
+// 但 main 档下原型系 (outMine/ExternalMine) 的目标列表只认手动配置
+// (autoAddNearbyEnergyTargets 仅 rush 档调用, 「列表为空 = 不采」是刻意决策)——
+// 若未来启用原型系, 需按 OutMineData schema 预置目标列表, 且必须带合法
+// schemaVersion (否则 calibrateNexus 对无法识别版本的 Nexus 子树整体重建, 预置被清空)。
 import { defineSim } from 'screeps-sim'
 
 export default defineSim({

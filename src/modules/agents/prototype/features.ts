@@ -46,6 +46,12 @@ function runRoomFeatures(room: Room): void {
 	room.SpawnWork?.()
 	room.updateEnergyState?.(false)
 
+	// 外矿双体系勘误 (2026-10-15): 外矿由任务板系 planRemoteHarvest 独家驱动
+	// (economy/remoteMining, scout→远程采集任务)。原型系 outMine()/ExternalMine
+	// 全链 (cc 保活/外矿编制/跨房搬运) 保持休眠——两套并行会双份 scout/编制,
+	// 实测 CPU p95 14→51ms、arena 40k 不进 L3 (docs/bugs sim-audit-10-12 (七))。
+	// 若未来启用原型系, 必须同时关闭任务板侧的 remoteMining 开关。
+
 	if (tier !== 'normal') return
 }
 
@@ -62,7 +68,7 @@ export const RoomFeatures: TickModule = {
 	name: 'room-features',
 	phase: 'planning',
 	band: 'P2',
-	run(ctx: TickContext): void {
+	run(_ctx: TickContext): void {
 		ensureMounted()
 		updateBucketGovernor()
 		runFlagFeatures()

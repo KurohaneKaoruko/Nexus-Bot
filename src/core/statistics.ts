@@ -15,10 +15,6 @@ const STAT_INTERVAL = 20;           // 常规统计间隔 (ticks)
 const LONG_STAT_INTERVAL = 100;     // 长周期统计间隔 (ticks) - 用于升级速度、市场均价等
 const CPU_AVG_WINDOW = 1000;        // CPU 平均值统计窗口 (ticks)
 const MARKET_ORDER_LIMIT = 10;      // 市场订单统计数量 (top N)
-const HUD_INTERVAL_NORMAL = 1;       // HUD 正常刷新间隔
-const HUD_INTERVAL_CONSTRAINED = 5;  // HUD 在低桶/节流时的刷新间隔
-const HUD_INTERVAL_EMERGENCY = 10;   // HUD 在极低桶/紧急时的刷新间隔
-const HUD_MIN_BUCKET = 1200;         // HUD 极低桶阈值
 const TARGET_REFRESH_INTERVAL = 5;  // HUD 目标缓存刷新间隔 (ticks)
 
 let cachedStatTargets: string[] = [];
@@ -50,7 +46,7 @@ function updateCPUinfo() {
     getStatsMemory().cpu = used;   // 统计 CPU 总使用量
     // bucket 当前剩余量
     try { getStatsMemory().bucket = Game.cpu.bucket; }
-    catch (e) { getStatsMemory().bucket = 0; };
+    catch { getStatsMemory().bucket = 0; }
 
     if(!getStatsMemory().cpuUsed) getStatsMemory().cpuUsed = { total: 0,count: 0 };
 
@@ -127,8 +123,8 @@ function updateRoomStats() {
         }
 
         // 能量储备
-        const storageEnergy = room!.storage?.store[RESOURCE_ENERGY]! || 0;
-        const terminalEnergy = room!.terminal?.store[RESOURCE_ENERGY]! || 0;
+        const storageEnergy = room!.storage?.store[RESOURCE_ENERGY] || 0;
+        const terminalEnergy = room!.terminal?.store[RESOURCE_ENERGY] || 0;
         stats.energy[roomName] = storageEnergy + terminalEnergy;
         stats.energyRise[roomName] = stats.energy[roomName] - stats.energyHistory[roomName]! || 0;
         stats.SpawnEnergy[roomName] = room!.energyCapacityAvailable!;
@@ -323,10 +319,10 @@ function gatherRoomLive(room: Room) {
     if (outList.length > 0) {
         for (const name in Game.creeps) {
             const c = Game.creeps[name];
-            const unit = c!.memory?.unit!;
+            const unit = c!.memory?.unit;
             if (unit !== UNITS.harvester && unit !== UNITS.carrier) continue;
             if (c!.memory?.sourceRoom!== room.name) continue;
-            if (!outList.includes(c!.memory?.targetRoom! || '')) continue;
+            if (!outList.includes(c!.memory?.targetRoom || '')) continue;
             if (unit === UNITS.harvester) outHarvest += 1;
             else outCarry += 1;
         }
@@ -421,7 +417,6 @@ function renderStatsHUD(
     const gplLvl = stats.gplLevel || 0;
     const gplPct = stats.gpl || 0;
     const gclEta = typeof stats.gclUpTime === 'number' ? stats.gclUpTime : 0;
-    const gplEta = typeof stats.gplUpTime === 'number' ? stats.gplUpTime : 0;
     const credit = stats.credit || 0;
     const creditChange = stats.creditChanges || 0;
     const energy = stats.energy?.[roomName] || 0;

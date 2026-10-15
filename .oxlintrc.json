@@ -17,7 +17,16 @@
 		"src/modules/planner/legacy/",
 		"src/modules/movement/index.ts",
 		"src/modules/movement/moveMatch.ts",
-		"src/modules/visuals/RoomVisualExtension.ts"
+		"src/modules/visuals/RoomVisualExtension.ts",
+		"src/types/base.interface.ts",
+		"src/types/creep.interface.ts",
+		"src/types/flag.interface.ts",
+		"src/types/memory.interface.ts",
+		"src/types/mission.interface.ts",
+		"src/types/position.interface.ts",
+		"src/types/power.interface.ts",
+		"src/types/room.interface.ts",
+		"src/types/roomVisual.interface.ts"
 	],
 	"globals": {
 		"__dirname": "readonly"

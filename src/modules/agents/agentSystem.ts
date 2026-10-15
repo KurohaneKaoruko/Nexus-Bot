@@ -357,6 +357,10 @@ function deliverEnergy(
 	creep: CreepSummary,
 	task: NexusTask,
 ): void {
+	// 手填闭环勘误 (2026-10-15): 匹配结果 (energyLogistics.getAssignedEnergyTarget)
+	// 此前仅被退役的旧角色路径消费, 活路径投递只认结构。直接接活会让专线阶段
+	// 吸干孵化线运力 (arena 40k 不进 L3, docs/bugs sim-audit-10-12 (七))——
+	// 升级工供能修复需与匹配器两阶段结构同套设计, 单点接活已证伪, 保持关闭。
 	if (task.destId) {
 		const dest =
 			room.energyStructures.find((structure) => structure.id === task.destId) ??

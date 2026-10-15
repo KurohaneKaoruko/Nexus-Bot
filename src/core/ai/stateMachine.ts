@@ -15,7 +15,7 @@ export type Transition<S extends StateId, E extends EventId, G extends GuardId> 
 export type GuardMap<Ctx, G extends GuardId> = Record<G, (ctx: Ctx) => boolean>;
 
 // 单状态处理器：进入/退出/每 tick 处理
-export type StateHandler<Ctx, S extends StateId, E extends EventId> = {
+export type StateHandler<Ctx, _S extends StateId, E extends EventId> = {
     onEnter?: (ctx: Ctx, event?: E) => void;
     onExit?: (ctx: Ctx, event?: E) => void;
     onTick?: (ctx: Ctx) => E[] | void;

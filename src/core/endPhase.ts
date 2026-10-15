@@ -8,7 +8,6 @@
 import { ClearModule } from '@/core/store/clear'
 import { Statistics } from '@/core/statistics'
 import { FunnelModule } from '@/modules/economy/FunnelModule'
-import { ExpandModule } from '@/modules/external/expand/ExpandModule'
 import { InterShardModule } from '@/modules/intershard/InterShardModule'
 import { runEventPhase } from '@/core/event'
 import type { TickContext, TickModule } from '@/core'

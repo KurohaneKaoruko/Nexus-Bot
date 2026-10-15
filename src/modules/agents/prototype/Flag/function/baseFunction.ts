@@ -6,8 +6,9 @@ export default class FlagBaseFunction extends Flag {
         if (!this.memory['setPosition']) return false;
 
         let [x, y, roomName] = this.memory['setPosition'].split('/');
-        x = +x%50, y = +y%50;
-        if (!(x>=0&&x<=49&&y>=0&&y<=49)) { x=25, y=25; }
+        x = +x%50;
+        y = +y%50;
+        if (!(x>=0&&x<=49&&y>=0&&y<=49)) { x=25; y=25; }
         let reg = /^[EW]\d+[NS]\d+$/;
         if (!reg.test(roomName) || this.pos.roomName === roomName) {
             delete this.memory['setPosition'];

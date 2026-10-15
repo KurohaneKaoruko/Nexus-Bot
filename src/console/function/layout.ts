@@ -1,7 +1,7 @@
 /**
  * 布局控制台: 设置/构建/可视化/维护房间布局 (主线 planner schema 为唯一真相源)。
  */
-import { compress, compressBatch, decompressBatch } from '@/utils/compress';
+import { compress, decompressBatch } from '@/utils/compress';
 import LayoutVisual from '@/modules/planner/layoutVisual';
 import { LayoutPlanner } from '@/modules/planner/layoutPlanner';
 import { layoutRoot, ensureLayoutRecord } from '@/modules/planner/memory';
