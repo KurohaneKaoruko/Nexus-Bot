@@ -7,6 +7,7 @@ import { aliveNames } from "@/core/world";
 import { createTaskBoard } from "@/modules/tasks/board";
 import { assignBatch, profileOf } from "@/modules/tasks/allocator";
 import { maintainLedger } from "@/modules/economy";
+import { roomModeProfileFor } from "@/modules/strategy";
 
 export const Tasks: TickModule = {
 	name: "task-system",
@@ -36,11 +37,17 @@ export const Tasks: TickModule = {
 		const profiles = Object.values(world.rooms).flatMap((room) =>
 			room.creeps.filter((creep) => !creep.spawning).map(profileOf),
 		);
+		// 亲和排他分档 (bugs (十三)): 全场任一房启用 courier 投喂经济 (churn 期
+		// 升级体兼差孵化线是承重的) 即关; 全部无 courier 的 main 系才开
+		const affinityExclusive = !Object.values(world.rooms).some((room) =>
+			roomModeProfileFor(ctx, room.roomName).courierEnabled,
+		);
 		assignBatch({
 			now: ctx.tick,
 			tasks: board.list({ statuses: ["available"] }),
 			profiles,
 			world,
+			affinityExclusive,
 			currentTaskOf: (name) => Game.creeps[name]?.memory.taskId,
 			getTask: (id) => board.get(id),
 			claim: (id, name, now, leaseTicks) => {

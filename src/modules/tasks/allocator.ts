@@ -265,15 +265,38 @@ export interface AssignInput {
 	currentTaskOf: (creepName: string) => string | undefined;
 	getTask: (taskId: string) => NexusTask | undefined;
 	claim: (taskId: string, creepName: string, now: number, leaseTicks?: number) => boolean;
+	/**
+	 * 亲和排他开关 (bugs (十三)): 开 = 有专属角色在岗的 kind 禁止跨界认领。
+	 * main 系 (无 courier 投喂) 开——升级体钉死工位; rush/mini 关——churn 经济
+	 * 里升级体兼差 fill_spawn 是承重的 (全员顶孵化线), arena 实证排他即回退
+	 * (L3 18140→21684)。
+	 */
+	affinityExclusive?: boolean;
 }
 
 /**
  * 贪心分配: 任务按优先级降序, 每个任务取合格候选中的最高分;
  * 持有任务的 creep 参与分配时需过滞回阈值, 紧急任务可抢占。
+ *
+ * 亲和排他 (bugs (十三)): fill_spawn 等高优先物流任务按序先处理, 专属角色
+ * (carrier) 耗尽后会溢出捕获带 carry 的其他专属编制 (升级体被 fill_spawn
+ * 掏空 → upgrade 任务全 available 无人可领)。规则: kind 有专属角色在场
+ * (非孵化) 时, 非专属角色不得认领; 专属角色全灭/孵化中则放行跨界兜底
+ * (保 bootstrap: 无 harvester 时 universal 可采)。
  */
 export function assignBatch(input: AssignInput): readonly Assignment[] {
 	const assignments: Assignment[] = [];
 	const taken = new Set<string>();
+
+	// 本 tick 有在岗专属角色的 kind 集合
+	const affinityOwnedKinds = new Set<string>();
+	for (const profile of input.profiles) {
+		if (profile.spawning) continue;
+		for (const kind of UNIT_TASK_AFFINITY[profile.unitCode] ?? []) {
+			affinityOwnedKinds.add(kind);
+		}
+	}
+
 	const byPriority = [...input.tasks]
 		.filter((task) => task.status === "available")
 		.sort((a, b) => b.priority - a.priority || a.createdAt - b.createdAt);
@@ -285,6 +308,13 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 				continue;
 			}
 			if (!canExecute(profile, task)) {
+				continue;
+			}
+			if (
+				input.affinityExclusive &&
+				affinityOwnedKinds.has(task.kind) &&
+				!isAffine(profile.unitCode, task.kind)
+			) {
 				continue;
 			}
 			const travel = travelCostOf(profile, task, input.world);
