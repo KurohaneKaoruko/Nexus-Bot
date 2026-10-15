@@ -1,17 +1,16 @@
 
 /**
- * 房间运行模式（low / main / high / rush）统一参数表。
+ * 房间运行模式（low / main / high / rush / mini）统一参数表。
  *
- * 四种模式的职责边界：
+ * 模式的职责边界：
  * - low  低功耗：关闭非必要功能（lab / factory / powerSpawn / 市场 / 外矿 / 防御可视化 /
  *        资源排产），防御降频，只保留采集、升级（最低保障）与基础建造。
  * - main 主模式：主要功能全部开启，按标准节奏运行。
- * - high 全开：在 main 之上全面提频——升级吞吐 ×1.2、外矿扫描/重派间隔减半、
- *        运力与紧急 UNIV 上限用 high 档、控制器缓冲拉满。
- * - rush 高速冲级：冲级特化——升级吞吐 ×1.5、外矿预算全开且目标上限放开、
- *        建造/孵化调度最高频率，一切资源为控制器等级让路。
- * - mini 迷你房：常驻冲级 farm——spawn 贴控制器的小房，
- *        源旁 ext 直填 + 自爆拉能快递常驻运转（自爆拉能快递常驻），非必要设施全部关闭。
+ * - high 全开：在 main 之上全面提频——外矿扫描/重派间隔减半、调度最高频率。
+ * - rush 高速冲级：火力全开的最高效率冲级模式——调度最高频率、外矿预算放开，
+ *        部分功能给冲级让路（如刷墙推迟到 RCL7），一切资源为控制器等级让路。
+ * - mini 迷你房：常驻冲级 farm——spawn 贴控制器的小房，对应 mini 布局，
+ *        源旁 ext 直填 + 自爆拉能快递常驻运转，非必要设施全部关闭。
  *
  * 模式由 room.mode 指令手动设置；所有消费方统一通过 getRoomModeProfile 读参数，
  * 不再各自维护字符串比较与魔数。
@@ -42,8 +41,11 @@ export type RoomModeProfile = {
     spawnMissionInterval: number;
     /** 搬运任务调度周期（tick） */
     transportMissionInterval: number;
-    /** high 强度：紧急 UNIV 上限 / 任务调度间隔 / 运力 / 控制器缓冲 用 high 档（high、rush 为 true） */
+    /** high 强度：紧急 UNIV 上限 / 任务调度间隔 / 运力 / 控制器缓冲 用高强度档（仅 rush） */
     highIntensity: boolean;
+    /** 刷墙起建等级 (room.level ≥ 该值才派刷墙保底): rush 火力全开给冲级让路 → 推迟到 7 级;
+     *  缺省 = 无门槛 (main/low/high/mini)。紧急破口与 REPAIR 旗不受此门 */
+    wallWorkMinRcl?: number;
     /** 升级吞吐倍率（incomeWork × multiplier） */
     upgradeIncomeMultiplier: number;
     /** 外矿运力吞吐冗余系数（死亡率/绕路/沼泽损耗 */
@@ -123,6 +125,8 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         spawnMissionInterval: 5,
         transportMissionInterval: 10,
         highIntensity: true,
+        // rush 火力全开: 刷墙给冲级让路, 推迟到 RCL7 (紧急破口/REPAIR 旗仍然照刷)
+        wallWorkMinRcl: 7,
         // rush 升级定编 = 实测收入（不超额）：×1.5 之类会让升级任务永久欠账、
         // 持续抢占 spawn，把外矿搬运舰队饿垮再重建——外矿不稳的直接根源。
         // 定编对齐收入后，升级池满足即停发，spawn 自然轮到外矿补员与物流。
@@ -132,7 +136,8 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         remoteUnreservedIncomeFactor: 1.0,
         productionScheduling: true,
     },
-    // mini 迷你房：升级 farm 特化——lab/factory/市场/外矿全关，只留采集、建造与常驻冲级机制
+    // mini 迷你房: 常驻冲级 farm——spawn 贴控制器的小房, 自爆拉能快递常驻运转,
+    // 非必要设施全部关闭; 对应 mini 布局 (LayoutType 'mini', room.mode 切 mini 时跟随)
     mini: {
         name: 'mini',
         facilities: false,
@@ -185,9 +190,9 @@ export const getRoomModeProfile = (room: Room): RoomModeProfile => {
 export const isHighLikeMode = (mode: string): boolean => mode === 'high' || mode === 'rush' || mode === 'mini';
 
 /**
- * 特殊冲级机制是否生效（rush 特殊子模式 / mini 迷你房）。
+ * 特殊冲级机制是否生效（rush / mini 子模式）。
  * - rush：低等级(RCL≤3) + spawn 距控制器 ≤3 才进入特殊子模式；
- * - mini：机制常驻，但同样依赖 spawn 贴控制器；
+ * - mini：常驻农场机制, 同样依赖 spawn 贴控制器, 不受 RCL 限制；
  * - 房内有 link 后整体退位（正规供能链接接管）。
  *
  * 命中时生效的事：自爆拉能快递总闸打开（rush-courier 任务链驱动）。

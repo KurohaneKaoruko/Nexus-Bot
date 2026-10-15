@@ -15,7 +15,8 @@ export function maxHarvestWork(): number {
 	return Math.max(1, Math.floor(perTick / HARVEST_POWER));
 }
 
-/** harvester 最低孵化预算: [W1,M1] */
+/** harvester 最低孵化预算: [W1,M1] = 150 (W2 硬底线实验负收益已撤销——涓流期换代
+ *  等待断收入; 采集体型的正解是收入感知定档, 见 docs/bugs 校准实录) */
 export const RUSH_HARVESTER_MIN_BUDGET = BODYPART_COST[WORK] + BODYPART_COST[MOVE];
 /** upgrader 最低孵化预算: [W1,C1,M1] */
 export const RUSH_UPGRADER_MIN_BUDGET =

@@ -12,15 +12,16 @@
  *   建造配额之外的个体专职升级，避免「全员建造维修 → 升级饿死 → 能量堆积」。
  *
  * 本模块不依赖 CreepConstant（避免测试环境缺全局常量时模块加载失败），
- * 体型信息一律通过 room.GetRoleBodys / room.GenerateBodys 运行时获取。
+ * 体型信息一律通过 room.GetUnitBodys / room.GenerateBodys 运行时获取。
  */
 import { getEnergyLevel } from '@/modules/economy/energyLogistics';
 import { getRoomModeProfile, getRoomMode, isHighLikeMode } from '@/modules/strategy/roomModeAccess';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { decompress } from '@/utils/compress';
+import { CARRY_STAFFING_CONFIG } from '@/config/economy';
 import { clamp } from '@/utils/math';
 import { getOutMineData } from '@/core/store/accessor';
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
 
 /**
@@ -86,12 +87,12 @@ const LINK_THROUGHPUT_WORK_FLOOR = 4;
 
 // 估算 manager 体型载量（与 getGeneratedRoleWorkPartCount 同款探测式，桩环境返回兜底值）
 const getManagerCarryCapacity = (room: Room): number => {
-    if (typeof (room as any).GetRoleBodys !== 'function' ||
+    if (typeof (room as any).GetUnitBodys !== 'function' ||
         typeof (room as any).GenerateBodys !== 'function') {
         return LINK_MANAGER_CARRY_FALLBACK;
     }
-    const bodyConfig = (room as any).GetRoleBodys(ROLES.manager);
-    const body = (room as any).GenerateBodys(bodyConfig, ROLES.manager) as BodyPartConstant[];
+    const bodyConfig = (room as any).GetUnitBodys(UNITS.manager);
+    const body = (room as any).GenerateBodys(bodyConfig, UNITS.manager) as BodyPartConstant[];
     let carry = 0;
     for (const part of body || []) {
         if (part === CARRY) carry += 50;
@@ -182,7 +183,7 @@ export const registerUpgraderStarve = (room: Room): void => {
 const shrinkByStarved = (room: Room, demandWork: number): number => {
     const starved = getUpgradersStarved(room);
     if (starved <= 0) return demandWork;
-    const floorWork = Math.max(1, getGeneratedRoleWorkPartCount(room, ROLES.upgrader));
+    const floorWork = Math.max(1, getGeneratedRoleWorkPartCount(room, UNITS.upgrader));
     let shrunk = demandWork;
     if (starved > 0) shrunk = Math.round(shrunk * 0.75) - 1;
     if (starved > STARVED_SECOND_STAGE) shrunk = Math.round(shrunk * 0.75) - 1;
@@ -405,7 +406,7 @@ export const estimateRoomEnergyIncome = (room: Room): number => {
         const sources = (room as any).source as Source[] | undefined;
         if (sources && sources.length && typeof room.find === 'function') {
             const harvesters = room.find(FIND_MY_CREEPS, {
-                filter: (c: Creep) => !!(c && c.memory && c.memory.role === ROLES.harvester && c.memory.targetSourceId),
+                filter: (c: Creep) => !!(c && c.memory && c.memory.unit === UNITS.harvester && c.memory.targetSourceId),
             }) as Creep[];
             const perSourceCap = getSourceEnergyPerTick();
             for (const source of sources) {
@@ -425,7 +426,7 @@ export const estimateRoomEnergyIncome = (room: Room): number => {
             income += Math.max(0, remoteIncome);
         } else {
             const creepNum = (room as any).getCreepNum?.() || {};
-            income += Math.min(20, (creepNum[ROLES.harvester] || 0) * 5);
+            income += Math.min(20, (creepNum[UNITS.harvester] || 0) * 5);
         }
         return income;
     });
@@ -567,7 +568,7 @@ export const getUpgradeWorkTarget = (room: Room): number => {
         let loadedCarrier = false;
         for (const creep of Object.values(Game.creeps)) {
             if (creep.room.name !== room.name || creep.spawning) continue;
-            if (creep.memory?.role !== ROLES.carrier) continue;
+            if (creep.memory?.unit !== UNITS.carrier) continue;
             if ((creep.store[RESOURCE_ENERGY] || 0) > 0) { loadedCarrier = true; break; }
         }
         // 信号优先级：饥饿压过富余——升级工取能落空时即便搬运有货也先减码
@@ -596,20 +597,20 @@ export const getUpgradeWorkTarget = (room: Room): number => {
 // ==================== rush 搬运编制 ====================
 
 /**
- * rush carrier 人均 CARRY 部件数——与孵化侧**同一口径**（`GetRoleBodys` 的搬运动态体型特例：
+ * rush carrier 人均 CARRY 部件数——与孵化侧**同一口径**（`GetUnitBodys` 的搬运动态体型特例：
  * 接力期 `maxCarry 4`、lv7+ 直运 32、`forRoad` 按路网覆盖率）。
  *
  * @remarks
- * 用运行时探测（`room.GetRoleBodys` / `GenerateBodys`）而非直接 import 功能层模块，
+ * 用运行时探测（`room.GetUnitBodys` / `GenerateBodys`）而非直接 import 功能层模块，
  * 保持本模块零游戏依赖（桩环境 / 未初始化房间返回 0 → 调用方回退固定定编表）。
  */
 const getRushCarrierCarryParts = (room: Room): number => {
-    if (typeof (room as any).GetRoleBodys !== 'function' ||
+    if (typeof (room as any).GetUnitBodys !== 'function' ||
         typeof (room as any).GenerateBodys !== 'function') {
         return 0;
     }
-    const config = (room as any).GetRoleBodys(ROLES.carrier, undefined, room.energyCapacityAvailable || 0);
-    const body = (room as any).GenerateBodys(config, ROLES.carrier) as BodyPartConstant[];
+    const config = (room as any).GetUnitBodys(UNITS.carrier, undefined, room.energyCapacityAvailable || 0);
+    const body = (room as any).GenerateBodys(config, UNITS.carrier) as BodyPartConstant[];
     let carry = 0;
     for (const part of body || []) {
         if (part === CARRY) carry += 1;
@@ -627,20 +628,23 @@ const getRushCarrierCarryParts = (room: Room): number => {
 export const getRushCarrierTarget = (room: Room): number => {
     const timing = (room.memory as any).sourceTiming;
     if (!timing) return 0;
-    // carrier 体型与孵化侧同一口径（`GetRoleBodys` 的搬运动态体型特例）：
+    // carrier 体型与孵化侧同一口径（`GetUnitBodys` 的搬运动态体型特例）：
     // 接力期小体型快周转 → 人均 CARRY 变小、只数相应变多
     const carryPerCarrier = getRushCarrierCarryParts(room);
     if (carryPerCarrier <= 0) return 0;
     const perSourceCap = getSourceEnergyPerTick();
     const harvesters = typeof room.find === 'function'
         ? room.find(FIND_MY_CREEPS, {
-            filter: (c: Creep) => !!(c && c.memory && c.memory.role === ROLES.harvester && c.memory.targetSourceId),
+            filter: (c: Creep) => !!(c && c.memory && c.memory.unit === UNITS.harvester && c.memory.targetSourceId),
         }) as Creep[]
         : [];
     let carryParts = 0;
     for (const source of ((room as any).source as Source[] | undefined) || []) {
         const pathTime = timing[source.id]?.pathTime;
         if (typeof pathTime !== 'number' || pathTime <= 0) continue;
+        // 实测含换班排队/拥堵等待, 病理值会点燃「拥堵→实测更长→定编更多」正反馈;
+        // 钳制到合理单程上界, 定编另受 maxCarriers 硬上限兜底
+        const pathClamped = Math.min(pathTime, CARRY_STAFFING_CONFIG.pathTimeClamp);
         let work = 0;
         for (const harvester of harvesters) {
             if (harvester.memory.targetSourceId !== source.id) continue;
@@ -650,10 +654,13 @@ export const getRushCarrierTarget = (room: Room): number => {
         }
         const rate = Math.min(perSourceCap, work * 2);
         if (rate <= 0) continue;
-        carryParts += (rate * 2 * pathTime) / 50;
+        carryParts += (rate * 2 * pathClamped) / 50;
     }
     if (carryParts <= 0) return 0;
-    return Math.ceil(carryParts / carryPerCarrier);
+    return Math.min(
+        CARRY_STAFFING_CONFIG.maxCarriers,
+        Math.ceil(carryParts / carryPerCarrier),
+    );
 };
 
 // ==================== 升级孵化加急（富余能量快速消化） ====================
@@ -680,11 +687,11 @@ const LEVEL_WORKER_FIRST = 110;
 export const getActiveUpgradeWorkCount = (room: Room): number => {
     if (typeof room.find !== 'function') return 0;
     const family = getRoomMode(room) === 'rush'
-        ? [ROLES.upgrader]
-        : [ROLES.upgrader, ROLES.worker];
+        ? [UNITS.upgrader]
+        : [UNITS.upgrader, UNITS.worker];
     const familySet = new Set<string>(family);
     const creeps = room.find(FIND_MY_CREEPS, {
-        filter: (c: Creep) => !!(c && c.memory && familySet.has(c.memory.role || '')),
+        filter: (c: Creep) => !!(c && c.memory && familySet.has(c.memory.unit || '')),
     }) as Creep[];
     let work = 0;
     for (const creep of creeps) {
@@ -709,14 +716,14 @@ export const isUpgraderSpawnUrgent = (room: Room): boolean => {
 // ==================== worker 体型折算 ====================
 
 // 根据指定角色当前体型估算其 work 能力（每 tick 每房间缓存）
-export const getGeneratedRoleWorkPartCount = (room: Room, role: string): number => {
-    return getRoomTickCacheValue(room, `workforce_${role}_work_parts`, () => {
-        if (typeof (room as any).GetRoleBodys !== 'function' ||
+export const getGeneratedRoleWorkPartCount = (room: Room, unit: string): number => {
+    return getRoomTickCacheValue(room, `workforce_${unit}_work_parts`, () => {
+        if (typeof (room as any).GetUnitBodys !== 'function' ||
             typeof (room as any).GenerateBodys !== 'function') {
             return 1;
         }
-        const bodyConfig = (room as any).GetRoleBodys(role);
-        const body = (room as any).GenerateBodys(bodyConfig, role) as BodyPartConstant[];
+        const bodyConfig = (room as any).GetUnitBodys(unit);
+        const body = (room as any).GenerateBodys(bodyConfig, unit) as BodyPartConstant[];
         let work = 0;
         for (const part of body || []) {
             if (part === WORK) work++;
@@ -725,7 +732,7 @@ export const getGeneratedRoleWorkPartCount = (room: Room, role: string): number 
     });
 };
 
-const getWorkerWorkPartCount = (room: Room) => getGeneratedRoleWorkPartCount(room, ROLES.worker);
+const getWorkerWorkPartCount = (room: Room) => getGeneratedRoleWorkPartCount(room, UNITS.worker);
 
 // builder 目标数的 work 基线
 const WORKER_BUILD_REFERENCE_WORK = 3;
@@ -759,7 +766,7 @@ export const getWorkerPopulationCap = (room: Room): number =>
 
 // 与 WORKER_POP_CAP_BY_LEVEL 同源的坑：升级侧的预算是按 **work** 给的（30/90 work），
 // 人口要靠 work ÷ 每只 WORK 部件数折算。低 RCL 能量容量撑不起大体型（容量 400 时
-// GetRoleBodys 会一路退到 1 WORK 的体型），同一笔 work 预算就会折出几十只——
+// GetUnitBodys 会一路退到 1 WORK 的体型），同一笔 work 预算就会折出几十只——
 // 线上 RCL3 冲级房实测 38 只升级工，根因就是「40 work ÷ 1 work/只」。
 // 这里按 RCL 给硬上限；高 RCL 的体型本身就大（例如 15 WORK），
 // 折算结果 90÷15=6，正常落在上限之内，因此该上限只对低 RCL 生效，不会误伤正常编制。
@@ -930,7 +937,7 @@ export const getWorkerUpgradeSlot = (room: Room, creepName: string): RoomPositio
         const family = new Set<string>(UPGRADE_SLOT_ROLES);
         const roster = getRoomTickCacheValue(room, 'worker_family_roster', () =>
             ((room.find(FIND_MY_CREEPS, {
-                filter: (c: Creep) => !!(c && c.memory && family.has(c.memory.role || '')),
+                filter: (c: Creep) => !!(c && c.memory && family.has(c.memory.unit || '')),
             }) as Creep[]).slice())
                 .sort((a, b) => a.name.localeCompare(b.name))
         );
@@ -1038,6 +1045,10 @@ export const getWorkerWallTarget = (room: Room): number => {
         : THRESHOLDS.ENERGY.WALL_MIN * 2;
     if (((room as any)[RESOURCE_ENERGY] || 0) < minRepairEnergy) return 0;
 
+    // rush 火力全开: 刷墙给冲级让路, 推迟到档位门槛等级 (紧急破口/REPAIR 旗豁免)
+    const wallMinRcl = getRoomModeProfile(room).wallWorkMinRcl;
+    if (wallMinRcl !== undefined && room.level < wallMinRcl && !urgentWallTask) return 0;
+
     if (room.level < 8 || Game.flags[`${room.name}/REPAIR`] || urgentWallTask) {
         return 1;
     }
@@ -1075,9 +1086,9 @@ export const getUpgraderTarget = (room: Room): number => {
     const workTarget = getUpgradeWorkTarget(room);
     if (workTarget <= 0) return 0;
 
-    const workPerUpgrader = Math.max(1, getGeneratedRoleWorkPartCount(room, ROLES.upgrader));
+    const workPerUpgrader = Math.max(1, getGeneratedRoleWorkPartCount(room, UNITS.upgrader));
     // 人口上限：升级侧的预算是按 **work** 给的（30/90 work），折算只数时要除上每只的 WORK 部件数。
-    // 低 RCL 的能量容量撑不起大体型（例如容量 400 时 GetRoleBodys 会一路退到 1 WORK 的体型），
+    // 低 RCL 的能量容量撑不起大体型（例如容量 400 时 GetUnitBodys 会一路退到 1 WORK 的体型），
     // 于是同样一笔 work 预算会折出几十只——线上 RCL3 冲级房实测 38 只升级工，
     // 原因就是「40 work ÷ 1 work/只」。这里补一个按 RCL 的人口上限，
     // 与 worker 的 WORKER_POP_CAP_BY_LEVEL 同源问题同一套解法：
@@ -1163,7 +1174,7 @@ export const getUpgraderSuccessionNeeds = (room: Room): number => {
     const upgraders = getRoomTickCacheValue(room, 'succession_upgraders', () =>
         typeof room.find !== 'function' ? [] as Creep[] :
         ((room.find(FIND_MY_CREEPS, {
-            filter: (c: Creep) => !!(c && c.memory && c.memory.role === ROLES.upgrader),
+            filter: (c: Creep) => !!(c && c.memory && c.memory.unit === UNITS.upgrader),
         }) as Creep[]) || []).slice()
     );
     if (upgraders.length === 0) return 0;
@@ -1192,7 +1203,7 @@ export const getWorkerUpgradeTarget = (room: Room): number => {
     const workTarget = getUpgradeWorkTarget(room);
     if (workTarget <= 0) return 0;
 
-    const upgraderWork = getUpgraderTarget(room) * getGeneratedRoleWorkPartCount(room, ROLES.upgrader);
+    const upgraderWork = getUpgraderTarget(room) * getGeneratedRoleWorkPartCount(room, UNITS.upgrader);
     const remaining = workTarget - upgraderWork;
     if (remaining <= 0) return 0;
 
@@ -1227,10 +1238,10 @@ export const getWorkerConstructionQuota = (room: Room): number => {
 export const hasWorkerUpgradeDemand = (room: Room): boolean => getWorkerUpgradeTarget(room) > 0;
 
 /** worker 家族角色（共享 worker 执行器的定编个体） */
-export const WORKER_FAMILY_ROLES = [ROLES.worker] as const;
+export const WORKER_FAMILY_ROLES = [UNITS.worker] as const;
 
 /** 控制器升级工位的名册角色：worker 与 upgrader 共用一张名册，避免两族抢同一格 */
-export const UPGRADE_SLOT_ROLES = [ROLES.worker, ROLES.upgrader] as const;
+export const UPGRADE_SLOT_ROLES = [UNITS.worker, UNITS.upgrader] as const;
 
 // ==================== 房间净收入口径（verbatim 自 src/modules/rush/manageSource 迁移） ====================
 // 升级预算依赖此净收入口径

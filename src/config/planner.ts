@@ -17,6 +17,8 @@ export const PLANNER_CONFIG = {
 	maxSitesPerPass: 10,
 	/** rampart 起建 RCL (冲级姿态接入后可按房间模式推迟到 5) */
 	rampartMinRcl: 4,
+	/** 路网放量 RCL: 平地早期移动本就全速, RCL3 前产能优先投 extension 扩容 (容量复利) */
+	roadMinRcl: 3,
 	/** 布局存在前, 允许按驻点规划放 Source 容器 (开局经济兜底) */
 	bootstrapContainerEnabled: true,
 } as const;

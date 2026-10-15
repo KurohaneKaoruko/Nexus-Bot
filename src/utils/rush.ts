@@ -1,4 +1,4 @@
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
 
 /**
@@ -52,7 +52,7 @@ const maxHarvestWork = (): number => {
     return Math.max(1, Math.floor(perTick / 2));
 };
 
-/** harvester 最低孵化预算：[W1,M1] = 150 */
+/** harvester 最低孵化预算: [W1,M1] = 150 (W2 底线实验负收益已撤销, 见 docs/bugs 校准实录) */
 export const RUSH_HARVESTER_MIN_BUDGET = 150;
 
 /**
@@ -129,7 +129,7 @@ export const RUSH_CARRIER_MIN_BUDGET = CARRIER_GROUP_COST;
 const CARRIER_MAX_GROUPS = 12;
 
 /**
- * @deprecated 已被 `GetRoleBodys` 的搬运动态体型特例取代（接力期 `maxCarry 4` 小体型快周转、
+ * @deprecated 已被 `GetUnitBodys` 的搬运动态体型特例取代（接力期 `maxCarry 4` 小体型快周转、
  * lv7+ 直运放开 32、`forRoad` 按路网覆盖率）——rush 孵化落点与搬运编制公式均已收口到那条口径
  * （见 `spawnMission.buildRushSpawnBody` / `roomWorkforce.getRushCarrierCarryParts`）。
  * 本函数与 `buildRushBody` 的 carrier 分支仅作历史保留，待收官批次（B6）核对无消费者后删除。
@@ -265,21 +265,21 @@ export type RushBodyOptions = {
 };
 
 /** rush 各经济角色的容量现算体型统一入口（不在册角色返回 null 走原路径） */
-export const buildRushBody = (role: string, budget: number, options: RushBodyOptions = {}): RushBody | null => {
-    switch (role) {
-        case ROLES.harvester:
+export const buildRushBody = (unit: string, budget: number, options: RushBodyOptions = {}): RushBody | null => {
+    switch (unit) {
+        case UNITS.harvester:
             return buildRushHarvesterBody(budget, {
                 ...(options.maxWork !== undefined && { maxWork: options.maxWork }),
                 ...(options.needCarry !== undefined && { needCarry: options.needCarry }),
                 ...(options.speed !== undefined && { speed: options.speed }),
             });
-        case ROLES.carrier: return buildRushCarrierBody(budget);
-        case ROLES.upgrader:
+        case UNITS.carrier: return buildRushCarrierBody(budget);
+        case UNITS.upgrader:
             return buildRushUpgraderBody(budget, {
                 ...(options.maxWork !== undefined && { maxWork: options.maxWork }),
                 ...(options.carryRatio !== undefined && { carryRatio: options.carryRatio }),
             });
-        case ROLES.worker:
+        case UNITS.worker:
             return buildRushWorkerBody(budget, {
                 ...(options.maxWork !== undefined && { maxWork: options.maxWork }),
             });
@@ -402,14 +402,14 @@ export const buildFailSnapshot = (room: Room, segment: SegmentStatus): Record<st
     let upgradeWork = 0;
     for (const creep of Object.values(Game.creeps)) {
         if (creep.room.name !== room.name) continue;
-        const role = (creep.memory as any)?.role || '?';
-        census[role] = (census[role] || 0) + 1;
-        if (role === ROLES.upgrader) upgradeWork += creep.getActiveBodyparts(WORK);
+        const unit = (creep.memory as any)?.unit || '?';
+        census[unit] = (census[unit] || 0) + 1;
+        if (unit === UNITS.upgrader) upgradeWork += creep.getActiveBodyparts(WORK);
     }
     const spawnPool: Record<string, number> = {};
     for (const task of ((room as any).getAllMissionFromPool?.('spawn') ?? []) as any[]) {
-        const role = task?.data?.memory?.role || '?';
-        spawnPool[role] = (spawnPool[role] || 0) + 1;
+        const unit = task?.data?.memory?.unit || '?';
+        spawnPool[unit] = (spawnPool[unit] || 0) + 1;
     }
     const controller = room.controller;
     const cc = ((room as any).container || []).find((c: Structure) =>

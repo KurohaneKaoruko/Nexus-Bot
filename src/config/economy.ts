@@ -75,7 +75,7 @@ export const REPLACEMENT_CONFIG = {
 	setupMargin: 60,
 	/** 实测路程样本不足时的回退估算 (tick) */
 	travelFallback: 120,
-	/** 路程样本窗口上限 (每 role:room 保留的样本数) */
+	/** 路程样本窗口上限 (每 unit:room 保留的样本数) */
 	travelSampleWindow: 8,
 	/** 允许短暂在编重叠的关键岗位 */
 	keyRoles: ["harvester"] as readonly string[],
@@ -178,6 +178,9 @@ export const CARRY_STAFFING_CONFIG = {
 	minCarriers: 2,
 	/** 定编上限 */
 	maxCarriers: 8,
+	/** 实测单程路程的钳制上限: 换班实测含出生排队/拥堵等待, 病理值 (实测 345/407)
+	 *  会把运力定编吹成几十只小搬运形成拥堵正反馈; 按 50×50 平地最远单程兜底 */
+	pathTimeClamp: 50,
 	/** 上限随 RCL 分档的基准: 实际上限 = min(maxCarriers, carriersPerRcl × RCL);
 	 *  早期孵化槽紧张, 全量吞吐编制会挤死采集/升级 (sim 实证 RCL2 +1000t) */
 	carriersPerRcl: 2,
@@ -349,11 +352,11 @@ export const BODY_TERRAIN_CONFIG = {
 
 /** 建造任务的按结构加成 (docs/nexus-design/17 §17.9 建设协同: 扩容与路网优先) */
 export const BUILD_PRIORITY_BONUS: Readonly<Record<string, number>> = {
-	/** extension: 容量增长复利——750 能量换 550 容量与更大体型, 最高回报 */
-	extension: 25,
-	/** road: 沼泽房的物流命脉 (1 疲劳全速), 仅次于扩容与 cc */
-	road: 40,
-};
+	/** extension: 容量增长复利——750 能量换 550 容量与更大体型, 冲级窗口最高回报, 压过路网 */
+	extension: 40,
+	/** road: 平地全速移动, 早期收益低于扩容; 沼泽房由路网 RCL 门槛 (roadMinRcl) 之后的阶段承接 */
+	road: 25,
+} as const;
 
 /** 低频经济模型 (docs/nexus-design/06 §6.7/§6.8) */
 export const ECONOMY_MODEL_CONFIG = {

@@ -2,10 +2,11 @@
  * 房间运行模式档位 (specs/room-mode-profiles):
  * 每己方房一个模式, 消费方统一经 strategy/roomMode resolver 读参数表,
  * 禁止各自维护模式字符串比较与魔法数。
- * 模式集合: low 低功耗 / main 常规 / high 全开 / rush 冲级特化。
+ * 模式集合: low 低功耗 / main 常规 / high 全开 / rush 冲级特化 (火力全开, 功能给冲级让路) /
+ * mini 迷你房 (常驻冲级 farm, 对应 mini 布局)。
  */
 
-export type RoomModeName = "low" | "main" | "high" | "rush";
+export type RoomModeName = "low" | "main" | "high" | "rush" | "mini";
 
 export interface RoomModeProfile {
 	name: RoomModeName;
@@ -22,7 +23,7 @@ export interface RoomModeProfile {
 	 * 加 amount, 压过普通与 cc 工地 (地基建成后让位于扩容); 达到 belowRcl 后回落。
 	 */
 	upgradeBias?: { amount: number; belowRcl: number };
-	/** 外矿同名-role 采集闸: 开 = 侦查邻房并产出远程 harvest/scout 任务 (外矿设计定案) */
+	/** 外矿同名-unit 采集闸: 开 = 侦查邻房并产出远程 harvest/scout 任务 (外矿设计定案) */
 	remoteMining: boolean;
 }
 
@@ -39,6 +40,14 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		// 把孵化队列队头让给卡死的外矿单位, 控制冻结 (外矿设计定案)
 		remoteMining: false,
 		// 冲级底线 (bugs/P1-14): RCL4 前升级压过建造, 到 RCL4 后回落让 ext/路网扩容
+		upgradeBias: { amount: 55, belowRcl: 4 },
+	},
+	// mini 迷你房: 常驻冲级 farm (对应 mini 布局), 非必要设施全关、拉能快递常驻
+	mini: {
+		name: "mini",
+		upgradeIncomeMultiplier: 1.5,
+		courierEnabled: true,
+		remoteMining: false,
 		upgradeBias: { amount: 55, belowRcl: 4 },
 	},
 };
