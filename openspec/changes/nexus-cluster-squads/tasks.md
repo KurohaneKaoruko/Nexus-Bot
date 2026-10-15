@@ -45,12 +45,14 @@
 ## 7. 实战验证（阻塞中，不勾选）
 
 - [x] 7.1a **编队全链路集成测试（C1 的确定性替身）**：`tests/cluster/e2e.test.ts`（4 例）在真实 Tick 循环上串联 defense-planners(emergency) → cluster-squads(planning) → 任务认领，覆盖 C1 两条验收标准：① 高强度威胁建队后 slots 全部被认领（成员回填 = slots）；② 威胁衰减后编队解散且槽位任务全部 cancelled；另含低强度不建队、重载自愈两例对照。验证：`vitest run tests/cluster/e2e.test.ts` 全绿
-- [ ] 7.1b **sim 回归（docs/nexus-design/20 待办 C1）**：高强度威胁场景下编队建队 → 成员分配 → defend 执行；威胁衰减后编队解散且槽位任务 cancelled。验证：`nexus-sim` 跑场景 JSON + 回归记录。**阻塞**：`sim/` 的 `v8` crate 需 `librusty_v8.a`——GitHub Release 不可达（HTTP 000）、npmmirror 无镜像、源码构建需 clang（本机无）
+- [ ] 7.1b **sim 回归（docs/nexus-design/20 待办 C1）**：高强度威胁场景下编队建队 → 成员分配 → defend 执行；威胁衰减后编队解散且槽位任务 cancelled。验证：`nexus-sim` 跑场景 JSON + 回归记录。**阻塞**：~~`sim/` 的 `v8` crate 需 `librusty_v8.a`——GitHub Release 不可达（HTTP 000）、npmmirror 无镜像、源码构建需 clang（本机无）~~【2026-10-15 收口】该阻塞记录已过期：回归制现为 `npm run sim`（screeps-sim 包 + `.sim.ts` 用例驱动，见 fix-p1-14-rush-sprint §7.2）；本项改为与 P1-14 验收门的 sim 时序**排期冲突**，尚未安排，本轮不勾销。
 - [ ] 7.2 **私服落地验证（docs/nexus-design/20 待办 C2 / W5N8）**：落地新代码 → 轮询 Memory 观察 `Nexus.cluster()` 可查、编队生命周期无异常。验证：`submit.js 47.100.24.220@Nexus` + API 取证
-- [ ] 7.3 **编队收益指标（docs/nexus-design/20 待办 C6）**：协同前后战损/击杀对比入 telemetry，作为「智能」上线的证据。验证：指标可查询、有对照数据
+> **§7.3 编队收益指标（docs/nexus-design/20 待办 C6）已由 `harvest-income-and-squad-capabilities` §3.3 承接**（C6 的主责留档处为该族，其 delta spec 为 `squad-coordination-metrics`），本族不再留同门待办。验收标准原文保留：协同前后战损/击杀对比入 telemetry，作为「智能」上线的证据；验证为指标可查询、有对照数据。【2026-10-15 落地事实】`src/modules/cluster/benefit.ts` 按房定长记录协同窗口与基线窗口的 kills/losses/memberTicks 三对对照值（基线取编队建立前的等长窗口），经 `query.squadBenefit()` 与状态面板取证；协同总闸 `CLUSTER_CONFIG.benefit.enabled` 默认关闭，净收益达标方放行。
 
 ## 8. 后续扩展（本变更范围外，登记于 docs/nexus-design/20 §20.7.2）
 
-- [ ] 8.1 异构槽位（C3）：`SquadRecord.slots` 由数量升级为槽位定义数组，支持矿工+搬运+护卫混合编队
-- [ ] 8.2 编队内领队逻辑（C4）：集火/拉扯，编队级共享目标；不越过 ActionBroker，需指标证明收益
-- [ ] 8.3 外矿协作组（C5）：`SquadKind = "remote"`，schema v7 + 需求方接入
+> **2026-10-15 收口**：C3/C4/C5 的主责族为 `harvest-income-and-squad-capabilities`（delta spec `squad-heterogeneous-slots` / `squad-coordination-metrics`）。本族仅保留指针与验收标准原文，不再留重复待办；当前落地状态逐条列于下方，勾销与推进均在主责族内进行。
+
+- **§8.1 异构槽位（C3）**：`SquadRecord.slots` 由数量升级为槽位定义数组，支持矿工+搬运+护卫混合编队。【2026-10-15 状态】结构侧已落地于主责族（`CURRENT_SCHEMA_VERSION` 10→11、旧标量槽位按同质定义展开的幂等迁移、`cluster/model.ts` 数组口径 helper、`cluster/index.ts` 遍历与解散按命名空间取消、`statusPanel.ts` 展示适配）；混合编队的实例化随 C5 需求方接入（见下条），验收仍以主责族 §2.x 为准。
+- **§8.2 编队内领队逻辑（C4）**：集火/拉扯，编队级共享目标；不越过 ActionBroker，需指标证明收益。【2026-10-15 状态】未落地，主责项为 `harvest-income-and-squad-capabilities` §4.1（共享目标写入编队记录、只影响目标选择、编队层零游戏 API 调用、随解散清除）。
+- **§8.3 外矿协作组（C5）**：`SquadKind = "remote"`，schema v7 + 需求方接入。【2026-10-15 状态】schema 侧已落地于主责族（v10→v11，`SquadKind` 联合类型含 remote，旧编队记录随迁移清洗）；需求方接入与净收益为正的开启判据未落地，主责项为 `harvest-income-and-squad-capabilities` §4.2（开启判据挂 §3.3 的收益指标，指标为负或缺失时保持关闭）。

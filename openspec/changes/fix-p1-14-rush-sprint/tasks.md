@@ -22,7 +22,7 @@
 - [x] 3.2 cc 站点落位接通（Planner.run 主循环，布局前后两路径均调用）。验证：sim 确认 cc 工地出现且控制器圈无布局重复容器；layoutPlanner 控制器旁容器跳过分支未动（走查锁定）
 - [x] 3.3 cc 补货配额（quota 目的地新类型）。验证：typecheck 绿；floor/诊断偏移/committedTo/冲级提权代码路径对照 spec 三场景走查；cc 存量曲线受建造节奏限制（7.2 未过），观测留待校准后复测
 - [x] 3.4 升级工位（design D2 修订：名册机制升级为「每工位一条任务」——与 harvest-per-source 同构，租约即分配，稳定且免并行名册机制）。验证：boot 20k dump-memory 出现 6 条 `upgrade:W5N8:cc:x,y` 槽位任务；无 cc 阶段升级不中断（upgradeController 意图持续）
-- [ ] 3.5 sim 中程检查：rcl-sprint 20k 采样对比基线（采集利用率、升级速率、cc 存量曲线）。验证：报告 JSON 三项指标相对 2026-10-12 基线改善并留档。【2026-10-12 部分证据】升级速率 0.02/t→0.63/t（t20k-40k 稳定窗口，路网修复后不再衰减）、50k 升级总量 894→17658~19437（~20×）、采集 4.6-5.6/t、RCL2@1653 优于基线 1841；cc 存量决赛局近满 (1799) 但曲线受建造节奏支配——升级与采集达标，cc 曲线留待 7.2 通过后正式留档
+- [ ] 3.5 sim 中程检查：rcl-sprint 20k 采样对比基线（采集利用率、升级速率、cc 存量曲线）。验证：报告 JSON 三项指标相对 2026-10-12 基线改善并留档。【2026-10-12 部分证据】升级速率 0.02/t→0.63/t（t20k-40k 稳定窗口，路网修复后不再衰减）、50k 升级总量 894→17658~19437（~20×）、采集 4.6-5.6/t、RCL2@1653 优于基线 1841；cc 存量决赛局近满 (1799) 但曲线受建造节奏支配——升级与采集达标，cc 曲线留待 7.2 通过后正式留档。【2026-10-15 进展】采集与升级 WORK 密度成套提效后重跑四场景（remote-mine 30k：harvested 54492→133922（+145.8%）、controller control 244→290（+18.9%）、爬数 14→10、cpu p95 持平；boot L3@17371 较基线 19721 改善；arena L3 17684 较基线 16998 小幅劣化，判为随机流漂移，docs/bugs (四)）。**不勾销**：rcl-sprint 侧采集利用率/升级速率/cc 存量曲线三项基线对照仍未取证（RCL4 验收线未过，见 7.2）。【2026-10-15 收口】本项为本族 rcl-sprint 指标基线对照的唯一留档处，`workforce-logistics` §5.3 的同门项已指向此处
 
 ## 4. 地形感知体型（P1-14 根因②）
 
@@ -43,8 +43,10 @@
 
 ## 7. 集成回归与勾销
 
+> **本族为 P1-14 相关验收门的主责族**（2026-10-15 变更族收口）：`rcl-sprint` RCL4 验收（§7.2）、P1-14 文档勾销（§7.4）、私服冲级实测（§7.5）三门仅在本族留待办；`workforce-logistics` §5.2 / §5.4 / §5.5 的同门项已改为交叉引用，验收标准原文保留在该族内但不再并列为待办。
+
 - [x] 7.1 全量门禁。验证：typecheck 0 错误 + lint 0 错误（顺带修复遗留 3 处：autoPlanner new Array×2、model.ts 未用 import）+ sim 双场景 noErrors
-- [ ] 7.2 sim rcl-sprint 50k（P1-14 验收）：3/3 断言（`rclReachedBy 4 @40000`、`cpuP95Below 20`、`noErrors`）。验证：报告 JSON + ticks CSV 留档。【2026-10-12 最新】模拟器已迁移 screeps-sim npm 包（`npm run sim`，.sim.ts 用例驱动，见 sim/sprint.sim.ts）；最新一轮 50k：RCL2@1895、cpu p95 3.0ms ✓、noErrors ✓、RCL4 未达成 ✗（经济校准未到位，见 design 校准记录）
+- [ ] 7.2 sim rcl-sprint 50k（P1-14 验收，主责项）：3/3 断言（`rclReachedBy 4 @40000`、`cpuP95Below 20`、`noErrors`）。验证：报告 JSON + ticks CSV 留档。【2026-10-12 最新】模拟器已迁移 screeps-sim npm 包（`npm run sim`，.sim.ts 用例驱动，见 sim/sprint.sim.ts）；最新一轮 50k：RCL2@1895、cpu p95 3.0ms ✓、noErrors ✓、RCL4 未达成 ✗（经济校准未到位，见 design 校准记录）。【2026-10-15 进展】采集与升级 WORK 密度成套提效落地（升级体改 WORK 递减试装 `UPGRADER_BODY_CONFIG`、人口上限表降级为兜底护栏、采集定编单一来源与时间去向取证），remote-mine 30k 实测产能双升、cpu p95 持平（docs/bugs (四)）。**RCL4 仍未达成，不勾销**
 - [x] 7.3 防回退回归：boot-from-scratch（RCL2@5000 窗口、迁移执行）+ 9 房场景（跨房泄漏指标、移动执行率不回退）。验证：两场景报告逐项对照基线。【2026-10-12】新模拟器下 boot 3/3 通过（RCL2@913、cpu p95 4ms、noErrors）；rcl-sprint（9 房沼泽）noErrors ✓ / cpuP95 ✓，RCL4 断言未过归 7.2
-- [ ] 7.4 文档同步：docs/bugs P1-14 勾销附 sim 证据；docs/14 进度快照（Phase 2 沼泽项）；docs/21 进度标记；参数校准结论回写 config 注释。验证：文档与代码一致、无「待跑」遗留
-- [ ] 7.5 私服冲级实测（可选收尾）：`submit.js` 落地 W5N8，观察 mode/快递/判废面板与 RCL 时间线对齐 speedrun 榜口径。验证：控制台/API 取证记录。【2026-10-12 晚 复产观测】重置后 land.js 复产 + 部署直供链构建: 上一周期 (旧代码) 判废 segment 2 (RCL1@+1001t), 本周期已过 RCL2 (<+2324t); 实服 ~10t/s, 40k 窗口 ≈67 分钟; 早期斜率 0.27/t; 能量注入口径差实锤 (delivered EMA 19.7 vs produced 4.3)。新增 `scripts/eval.js` 非交互取证入口。RCL 时间线持续观察, 完整判据待 workforce 移植后闭环
+- [ ] 7.4 文档同步（主责项）：docs/bugs P1-14 勾销附 sim 证据；docs/14 进度快照（Phase 2 沼泽项）；docs/21 进度标记；参数校准结论回写 config 注释。验证：文档与代码一致、无「待跑」遗留。【2026-10-15】前置仍是 §7.2 的 RCL4 达成，未达成前 P1-14 不得在 docs/bugs 勾销；本项已归集本轮已落地事实（docs/bugs (四)），`workforce-logistics` §5.4 的同门项已并入本项
+- [ ] 7.5 私服冲级实测（可选收尾，主责项）：`submit.js` 落地 W5N8，观察 mode/快递/判废面板与 RCL 时间线对齐 speedrun 榜口径。验证：控制台/API 取证记录。【2026-10-12 晚 复产观测】重置后 land.js 复产 + 部署直供链构建: 上一周期 (旧代码) 判废 segment 2 (RCL1@+1001t), 本周期已过 RCL2 (<+2324t); 实服 ~10t/s, 40k 窗口 ≈67 分钟; 早期斜率 0.27/t; 能量注入口径差实锤 (delivered EMA 19.7 vs produced 4.3)。新增 `scripts/eval.js` 非交互取证入口。RCL 时间线持续观察, 完整判据待 workforce 移植后闭环。【2026-10-15 收口】本项为私服实测的唯一留档处，`workforce-logistics` §5.5 的取证项（定编/接力/专线）随本项落地一并回填

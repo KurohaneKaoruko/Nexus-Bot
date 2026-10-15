@@ -52,4 +52,4 @@
 ## 5. 集成验收
 
 - [ ] 5.1 sim 全场景回归（sprint / boot / remote-mine / arena）零未捕获异常、CPU 不劣化；验证：`npm run sim` 报告 —— boot/remote-mine 绿，cpu p95 持平，arena/sprint 存量失败未恶化（RCL4 验收线属 P1-14 范畴，本次未触及）
-- [ ] 5.2 变更族文档收口：更新 openspec/changes 下受影响既有变更族（fix-p1-14-rush-sprint / workforce-logistics）的重复待办勾销状态，避免同一验收门在两族重复留档；验证：openspec validate 全绿、无重复待办残留
+- [x] 5.2 变更族文档收口：更新 openspec/changes 下受影响既有变更族（fix-p1-14-rush-sprint / workforce-logistics）的重复待办勾销状态，避免同一验收门在两族重复留档；验证：openspec validate 全绿、无重复待办残留。【2026-10-15 收口】主责划分：P1-14 RCL4 验收（§7.2）、P1-14 文档勾销（§7.4）、私服冲级实测（§7.5）、rcl-sprint 指标基线对照（§3.5）留 `fix-p1-14-rush-sprint`；`workforce-logistics` §5.2/§5.4/§5.5 改为交叉引用、§5.3 收窄为 boot 回归与 TTL churn；C3/C4/C5/C6 归本族，`nexus-cluster-squads` §7.3 与 §8.1-§8.3 改为指针与状态说明。RCL4 未达成，相关门一律不勾销。验证：`openspec validate --all` 11 passed / 0 failed（`--strict` 全量下历史族 spec delta 的 RFC 2119 告警为既有项，收口前即存在，未新增）

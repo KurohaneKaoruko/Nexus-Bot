@@ -21,6 +21,8 @@ docs/nexus-design/19 定义了「智械连结」的分层智能（战略 → 指
 - 外矿协作组（`SquadKind = "remote"`）——待办 C5。
 - 任何未经 sim/私服验证的性能结论。
 
+> **2026-10-15 收口**：C3/C4/C5/C6 的主责族为 `harvest-income-and-squad-capabilities`（delta specs `squad-heterogeneous-slots` / `squad-coordination-metrics`），本族只保留指针与验收标准原文，不另留同门待办；各项落地状态见 tasks.md §7.3 与 §8。
+
 ## 范围
 
 | 类别 | 文件 |
