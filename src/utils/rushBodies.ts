@@ -1,3 +1,5 @@
+import { UPGRADER_BODY_CONFIG } from "@/config/economy";
+
 /**
  * rush 体型生成器: 按能量预算现算体型 (零依赖纯算法, 引擎常量为唯一触点)。
  * 契约: 任意预算下成本 ≤ 预算; 预算低于角色下限返回 null (调用方跳过, 不留死锁体型);
@@ -110,10 +112,16 @@ export function buildRushHarvesterBody(
 }
 
 /**
- * upgrader 体型:
- * 1W1C1M 起步 → CARRY 增长门为容量比 (CARRY_CAPACITY×carry)/work < carryRatio
- * (carryRatio=1 即长期维持 1 个 CARRY 缓冲) → MOVE 增长门 work/move ≥ 4 →
- * 其余预算全部转 WORK, WORK 达 maxWork (定编缺口) 即停。
+ * upgrader 体型 (WORK 密度优先):
+ * 以 maxWork (定编缺口) 为上限, 自高向低试装 WORK, 取能量容量装得下的最大 WORK 数。
+ *
+ * 配比按「升级体就近取能、移动占比低」设定: CARRY = ceil(work × carryEnergyPerWork /
+ * CARRY_CAPACITY) 保证随身缓冲够摊在几个 WORK 上, MOVE = ceil(work / workPerMove)
+ * 每 10 个 WORK 才配 1 个 MOVE —— 预算因此几乎全转成 WORK, 同能量下火力密度最大化。
+ * 试装失败即 work 减一重算 (CARRY/MOVE 随 work 收敛), 返回首个可行体型。
+ *
+ * 与旧「逐件加预算」路径的差异: 旧路径 MOVE 增长门为 work/move ≥ 4 (即 4 WORK 配 1 MOVE),
+ * 同预算下 WORK 密度显著更低, 火力被 MOVE 分走。
  */
 export function buildRushUpgraderBody(
 	budget: number,
@@ -124,53 +132,34 @@ export function buildRushUpgraderBody(
 		return null;
 	}
 
-	const maxParts = MAX_CREEP_SIZE;
-	let cost = BODYPART_COST[WORK] + BODYPART_COST[CARRY] + BODYPART_COST[MOVE];
-	let work = 1;
-	let move = 1;
-	let carry = 1;
-
-	while (budget > cost) {
-		if ((CARRY_CAPACITY * carry) / work < carryRatio && budget >= cost + BODYPART_COST[CARRY]) {
-			if (work + move + carry + 1 > maxParts) {
-				break;
-			}
-			carry += 1;
-			cost += BODYPART_COST[CARRY];
+	// 预算隐含的 WORK 上界 (先按最少配比粗估, 再由试装收敛)
+	const upperWork = maxWork ?? Math.min(MAX_CREEP_SIZE, Math.floor(budget / BODYPART_COST[WORK]));
+	for (let work = upperWork; work >= 1; work -= 1) {
+		// carryRatio ≥ 1 时维持至少 1 CARRY; carryEnergyPerWork 决定超过 1 时的增长
+		const carry = Math.max(
+			1,
+			Math.max(
+				Math.ceil((carryRatio * work) / CARRY_CAPACITY),
+				Math.ceil((UPGRADER_BODY_CONFIG.carryEnergyPerWork * work) / CARRY_CAPACITY),
+			),
+		);
+		const move = Math.max(UPGRADER_BODY_CONFIG.minMove, Math.ceil(work / UPGRADER_BODY_CONFIG.workPerMove));
+		if (work + carry + move > MAX_CREEP_SIZE) {
 			continue;
 		}
-
-		if ((move === 0 || work / move >= 4) && budget >= cost + BODYPART_COST[MOVE]) {
-			if (work + move + carry + 1 > maxParts) {
-				break;
-			}
-			move += 1;
-			cost += BODYPART_COST[MOVE];
+		const cost =
+			work * BODYPART_COST[WORK] + carry * BODYPART_COST[CARRY] + move * BODYPART_COST[MOVE];
+		if (cost > budget) {
 			continue;
 		}
-
-		if (maxWork && work >= maxWork) {
-			break;
-		}
-
-		if (budget >= cost + BODYPART_COST[WORK]) {
-			if (work + move + carry + 1 > maxParts) {
-				break;
-			}
-			work += 1;
-			cost += BODYPART_COST[WORK];
-			continue;
-		}
-
-		break;
+		const body: BodyPartConstant[] = [];
+		appendParts(body, WORK, work - 1);
+		appendParts(body, CARRY, carry);
+		appendParts(body, MOVE, move);
+		body.push(WORK);
+		return body;
 	}
-
-	const body: BodyPartConstant[] = [];
-	appendParts(body, WORK, work - 1);
-	appendParts(body, CARRY, carry);
-	appendParts(body, MOVE, move);
-	body.push(WORK);
-	return body;
+	return null;
 }
 
 /**

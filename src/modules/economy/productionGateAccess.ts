@@ -7,6 +7,15 @@ import { UNITS } from '@/constant/CreepConstant';
 import { getRoomMode } from '@/modules/strategy/roomModeAccess';
 import { buildRushBody } from '@/utils/rush';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
+import { harvestStaffingOf } from '@/modules/economy/productionGate';
+
+/**
+ * 采集编制目标 (legacy Room 口径): 与 perception 侧 `harvesterTargetTotal` 同一公式,
+ * 每源一个驻点采集位。specs harvest-supply-convergence 要求两条孵化路径消费同一来源,
+ * 故此处只做结构适配, 不复制公式。
+ */
+export const getHarvestStaffingTotal = (room: Room): number =>
+	harvestStaffingOf({ sources: room.source ?? [] });
 
 // 单矿最大采集 work 上限
 const HARVESTER_MAX_WORK_PER_SOURCE = Math.ceil(

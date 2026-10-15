@@ -3,8 +3,9 @@ import { getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPo
 import { isWarMode } from '@/core/store/accessor';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS, UnitLevelData } from '@/constant/CreepConstant';
-import { getBuiltRoomLevel, getHarvesterTargetBySource, isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy/productionGateAccess';
+import { getBuiltRoomLevel, getHarvesterTargetBySource, getHarvestStaffingTotal, isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy/productionGateAccess';
 import { THRESHOLDS } from '@/constant/Thresholds';
+import { SPAWN_CONFIG } from '@/config/economy';
 import { getDowngradedLogisticsCountByAssignedRoom, hasSoonDeadCreepByAssignedRoomRole } from '@/utils/creepTickIndex';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { isRaceCompat } from '@/config/capabilities';
@@ -78,11 +79,31 @@ const getHarvesterSuccessionNeeds = (room: Room): number => {
 // - 孵化定编 = 建造侧 + 刷墙保底 + 升级侧（相加），
 //   运行时由 worker 动作层的职责切分保证配额外的个体专职升级。
 
+/**
+ * 在编外矿采集体数 (sourceRoom+targetRoom 绑定, 源不在本房)。
+ * 定编口径与 spawnDirector 的 remoteHarvest 项对齐: 本房源数只覆盖本房采集面,
+ * 外矿供给须单独计入, 否则单一来源封顶会掐断外矿链。
+ */
+const countRemoteHarvesters = (room: Room): number =>
+	room.find(FIND_MY_CREEPS, {
+		filter: (c: Creep) =>
+			c.memory?.unit === UNITS.harvester && !!c.memory.sourceRoom && !!c.memory.targetRoom,
+	}).length;
+
 // 每个角色一个检查函数，保持结构清晰
 export const UnitSpawnCheck: Record<string, (room: Room, current: number) => boolean> = {
     [UNITS.harvester]: (room: Room, current: number) => {
         if (room.memory.defend) return false;
-        let baseTarget = getHarvesterTargetBySource(room);
+        // 让位契约 (specs harvest-supply-convergence「legacy 孵化器采集让位契约」):
+        // 闸门开启时 legacy 服从 workforce 单一来源定编——编制已满足即不发单,
+        // 仅在编制未满足时兜底发单, 避免收敛期收入断档。闸门关闭即恢复 legacy
+        // 独立供给 (等级表多采集位), 用于 sim A/B 对照与紧急回退。
+        const standby = SPAWN_CONFIG.legacyHarvestStandby;
+        // 与 spawnDirector 同一公式: 本房每源一驻点 + 外矿在编需求。外矿采集体的源
+        // 不在本房, 只按本房源数封顶会掐断外矿供给 (remote-mine 编制防回退断言)。
+        const staffingTarget = getHarvestStaffingTotal(room) + countRemoteHarvesters(room);
+        if (standby && current >= staffingTarget) return false;
+        let baseTarget = standby ? staffingTarget : getHarvesterTargetBySource(room);
         // CRITICAL 复苏：定编压到每 source 1 只——多矿位小爬群只会吃光能量，
         // 集中孵大体型主力才能爬出贫困陷阱
         if (getEnergyState(room) === 'CRITICAL') {

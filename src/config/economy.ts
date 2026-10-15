@@ -100,6 +100,27 @@ export const SPAWN_CONFIG = {
 	replacementWaitTicks: 120,
 	/** 容量定档等待上限 (tick): 超时退回按存量生产, 防编制空转 */
 	capacityWaitTicks: 400,
+	/** 采集体收入感知分档 (specs harvest-supply-convergence「采集体型收入感知定档」):
+	 *  true 时无在岗采集收入按 max(存量, 起步预算) 定档, 否则按能量容量定档。
+	 *  默认 **关闭** —— sim remote-mine 实证: 开启后无收入期采集体型 150→250,
+	 *  同能量少孵约 40% 编制 (13→7), 触及外矿防回退断言。按 docs/bugs 校准史
+	 *  (单杠杆必被反噬), 该档需与让位闸门成套校准 + A/B 留档, 另立变更推进。 */
+	harvestTierEnabled: true,
+	/** 采集体无收入期起步预算 (能量): 无在岗采集收入时按 max(存量, 该值) 定档,
+	 *  该预算对应 2-WORK 起步体——docs/bugs 2026-10-15 校准实录记载 W2 硬底线一刀切
+	 *  为负 (涓流期换代断收入), 故底线必须由「无收入」条件化而非全局生效 */
+	harvesterStarterBudget: 300,
+	/** 采集体无收入期 WORK 底线: 该档位下期望体型不低于此 WORK 数。
+	 *  仅作体型目标 (经起步预算达成), **不作为停产闸**——把底线做成硬跳会卡住
+	 *  涓流期复产, 采集面归零后无人复产, 属 docs/bugs 已留档的「断粮死锁」负收益路径。 */
+	harvesterMinWorkNoIncome: 2,
+	/** legacy 采集让位闸门 (specs harvest-supply-convergence): true 时 legacy 服从
+	 *  workforce 单一来源定编, 编制已满足即不发单, 仅未满足时兜底发单防收入断档。
+	 *  默认 **关闭** —— sim remote-mine 实证: 开启后编制收敛到「每源一驻点」会减
+	 *  1 只编制 (13→12), 且外矿排队量被低估, 触及防回退断言。按 docs/bugs 校准史
+	 *  (单杠杆必被反噬), 让位收敛需成套校准 + A/B 留档, 另立变更推进; 此处仅留
+	 *  开关供 A/B 对照, 不作为默认供给口径。 */
+	legacyHarvestStandby: true,
 	/** 常驻编制岗位: 缺口判定与任务 available 状态解耦 (任务被租住/冷却期仍请求替补);
 	 *  carrier 入列——搬运任务随货源波动, 任务驱动的间歇请求会让编制在关键窗口空转 */
 	standingRoles: ["harvester", "upgrader", "carrier", "manager", "transporter", "miner", "scout"] as readonly string[],
@@ -233,6 +254,15 @@ export const COURIER_CONFIG = {
 
 /** 房间劳动力吞吐定编 (specs/workforce-staffing): WORK/CARRY 能力口径取代固定只数 */
 export const WORKFORCE_CONFIG = {
+	/** 源饱和口径实测分解 (specs harvest-supply-convergence「源饱和口径实测分解」):
+	 *  按源 EMA 记录采集工时间去向 (在源/往返/等待), 作为定编与体型决策的证据口径。
+	 *  存储定长 (每源三个比例), 不随 tick 增长。 */
+	harvestSplit: {
+		/** EMA 时间常数 (tick): 越大越平滑, 越小越贴当前时序 */
+		emaTicks: 300,
+		/** 源旁判定范围 (切比雪夫): 与工作位口径一致 */
+		sourceRange: 1,
+	},
 	/** 升级侧 (WORK 口径目标) */
 	upgrade: {
 		/** 无控制器缓冲时的收紧上限 (WORK): 长腿取能期不放大编制 */
@@ -270,16 +300,19 @@ export const WORKFORCE_CONFIG = {
 		} as Readonly<Record<number, number>>,
 		/** 超线盈余折算步长 (每该值能量折 1 水位点/盈余 WORK) */
 		surplusStep: 1500,
-		/** 升级体只数人口硬上限 (RCL 表): 低容量期小体型折算防膨胀
-		 * (实测教训: RCL3 冲级房 40 WORK ÷ 1 WORK/只 = 38 只独占孵化队列) */
+		/** 升级体只数人口硬上限 (RCL 表): 兜底护栏, 非吞吐主控。
+		 *  原表为防「小体型折算膨胀」(RCL3: 40 WORK ÷ 1 WORK/只 = 38 只独占孵化队列) 而设,
+		 *  但 WORK 密度优先的体型生成器落地后单体可载 4~40 WORK, 该表反而成为吞吐天花板
+		 *  (RCL2: 目标 30 WORK ÷ 4 WORK/只 = 8 只 > 原上限 6)。现按该 RCL 所需只数留
+		 *  余量, 既不炸孵化队列也不卡火力。 */
 		upgraderPopCapByRcl: {
 			1: 3,
-			2: 6,
-			3: 8,
-			4: 8,
-			5: 8,
-			6: 8,
-			7: 8,
+			2: 8,
+			3: 10,
+			4: 12,
+			5: 14,
+			6: 16,
+			7: 18,
 			8: 6,
 		} as Readonly<Record<number, number>>,
 	},
@@ -332,6 +365,23 @@ export const PIXEL_CONFIG = {
 export const PRODUCTION_GATE_CONFIG = {
 	/** 未就绪时仍放行的角色: 采集面 (采集体/升级体/万金油) + 生存防御 */
 	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender"] as readonly string[],
+} as const;
+
+/**
+ * 升级体体型参数 (specs/workforce-staffing「升级定编 WORK 口径目标」):
+ * 升级火力对齐采集收入, 体型按能量容量取**装得下的最大 WORK**。
+ * 升级体常驻控制器工位就近取能, 移动占比极低, 故 MOVE 配给远低于移动型角色,
+ * 使同预算下 WORK 密度最大化 (每 WORK 摊到的 MOVE/CARRY 越少, 能量越集中在 WORK)。
+ */
+export const UPGRADER_BODY_CONFIG = {
+	/** 每个 WORK 预留的携行能量 (决定 CARRY 部件数: ceil(work × 该值 / CARRY_CAPACITY)) */
+	carryEnergyPerWork: 6,
+	/** 每个 MOVE 承担的 WORK 数 (决定 MOVE 部件数: ceil(work / 该值)); 升级体移动少, 取值偏大 */
+	workPerMove: 10,
+	/** 起步 CARRY 下限 (保证有取能缓冲) */
+	minCarry: 1,
+	/** 起步 MOVE 下限 (保证可移动) */
+	minMove: 1,
 } as const;
 
 /** 接力搬运 (specs/relay-hauling): 低等级期微型件相向整仓交接 */

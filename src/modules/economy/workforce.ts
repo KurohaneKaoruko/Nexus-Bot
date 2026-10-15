@@ -12,6 +12,7 @@
 import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
 import type { NexusTask } from "@/core/store/taskSchema";
+import type { HarvestSplitRecord } from "@/core/store/memorySchema";
 import { CARRY_STAFFING_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 import { roomModeProfileFor } from "@/modules/strategy";
@@ -84,6 +85,114 @@ export function harvestIncomeOf(ctx: TickContext, room: RoomObservation): number
 		income += Math.min(capPerTick, (bound.get(source.id) ?? 0) * HARVEST_POWER);
 	}
 	return income;
+}
+
+// ==================== 源饱和口径实测分解 ====================
+
+/**
+ * 按源记录采集工时间去向 (specs harvest-supply-convergence「源饱和口径实测分解」):
+ * 在源 / 往返 / 等待 三类占比的 EMA。收入未达饱和时, 该分解是定位「时间花在何处」
+ * 的证据口径 (docs/bugs P1-14 结论: 差距在采集工在源时间占比, 不在单体体型旋钮)。
+ *
+ * 定长存储: 每源三项, 随源增减而非随 tick 增长。
+ */
+export function harvestTimeSplitOf(
+	ctx: TickContext,
+	room: RoomObservation,
+): Map<string, HarvestSplitRecord> {
+	const cfg = WORKFORCE_CONFIG.harvestSplit;
+	const intel = ctx.memory.rooms[room.roomName];
+	const out = new Map<string, HarvestSplitRecord>();
+	if (!intel) {
+		return out;
+	}
+
+	// 源 → 在编采集体名 (租约优先, 无租约时回退驻点在位启发, 与收入口径同源)
+	const bound = harvesterBindingOf(ctx, room);
+	const bySource = new Map<string, string[]>();
+	for (const task of Object.values(ctx.memory.tasks) as NexusTask[]) {
+		if (task.kind !== "harvest" || task.roomName !== room.roomName || !task.targetId || !task.assignedTo) {
+			continue;
+		}
+		if (task.status !== "leased" && task.status !== "in_progress") {
+			continue;
+		}
+		const list = bySource.get(task.targetId);
+		if (list) {
+			list.push(task.assignedTo);
+		} else {
+			bySource.set(task.targetId, [task.assignedTo]);
+		}
+	}
+	const sites = intel.worksites;
+	if (sites) {
+		for (const creep of room.creeps) {
+			if (creep.spawning || creep.unitCode !== UNIT_CODES.harvester) {
+				continue;
+			}
+			if (bySource.get(creep.name)) {
+				continue;
+			}
+			for (const [sourceId, site] of Object.entries(sites)) {
+				if (creep.x === site.x && creep.y === site.y) {
+					const list = bySource.get(sourceId);
+					if (list) {
+						list.push(creep.name);
+					} else {
+						bySource.set(sourceId, [creep.name]);
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	const alpha = 1 - 2 ** (-1 / cfg.emaTicks);
+	const record = intel.harvestSplit ?? {};
+	for (const source of room.sources) {
+		// 无在编采集工时不写入 EMA: 缺失即「无人采集」, 避免零占比污染证据口径
+		if ((bound.get(source.id) ?? 0) <= 0) {
+			continue;
+		}
+		const names = bySource.get(source.id) ?? [];
+		let atSource = 0;
+		let waiting = 0;
+		for (const name of names) {
+			const creep = room.creeps.find((c) => c.name === name);
+			if (!creep) {
+				continue;
+			}
+			const near =
+				Math.max(Math.abs(creep.x - source.x), Math.abs(creep.y - source.y)) <= cfg.sourceRange;
+			if (near) {
+				// 源枯竭时在位不产出, 记为等待而非在源采集
+				if (source.energy > 0) {
+					atSource += 1;
+				} else {
+					waiting += 1;
+				}
+			}
+			// 其余计入往返 (不在源旁即在路上/在交付)
+		}
+		const total = Math.max(1, names.length);
+		const prev = record[source.id] ?? { atSource: 1, transit: 0, waiting: 0 };
+		const next: HarvestSplitRecord = {
+			atSource: prev.atSource + (atSource / total - prev.atSource) * alpha,
+			transit: prev.transit + ((total - atSource - waiting) / total - prev.transit) * alpha,
+			waiting: prev.waiting + (waiting / total - prev.waiting) * alpha,
+		};
+		record[source.id] = next;
+		out.set(source.id, next);
+	}
+
+	// 清理消失的源: 记录随源增减, 不随 tick 增长 (specs 存储有界)
+	for (const sourceId of Object.keys(record)) {
+		if (!room.sources.some((s) => s.id === sourceId)) {
+			delete record[sourceId];
+		}
+	}
+	intel.harvestSplit = record;
+	return out;
 }
 
 /** 储备水位 (storage+terminal 口径): 存量 < 标准线按百分比, 超线后每 surplusStep 折 1 点 */

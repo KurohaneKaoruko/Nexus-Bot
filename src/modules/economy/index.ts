@@ -39,6 +39,7 @@ export {
 export { maintainLedger, commit as commitReservation, release as releaseReservation, reserve } from "@/modules/economy/ledger";
 export {
 	harvestIncomeOf,
+	harvestTimeSplitOf,
 	upgradeWorkTargetOf,
 	upgraderCountTargetOf,
 	carrierCountTargetOf,
@@ -49,6 +50,7 @@ export {
 export {
 	isProductionSecured,
 	onDutySources,
+	harvestStaffingOf,
 	harvesterTargetTotal,
 	carrierGatePassed,
 } from "@/modules/economy/productionGate";

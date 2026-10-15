@@ -35,6 +35,9 @@ import {
 } from "@/config/economy";
 import {
 	carrierCountTargetOf,
+	harvesterTargetTotal,
+	harvestIncomeOf,
+	harvestTimeSplitOf,
 	upgraderCountTargetOf,
 	isProductionSecured,
 } from "@/modules/economy";
@@ -93,7 +96,9 @@ interface SpawnRequest {
 function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
 	const world = ctx.world.current;
 	const rooms = world ? Object.values(world.rooms) : [];
-	const sources = rooms.reduce((sum, room) => sum + room.sources.length, 0);
+	// 采集编制单一来源 (specs harvest-supply-convergence): 逐房走 workforce 口径求和,
+	// 不在本处自算「源数取 max(1, N)」——独立公式正是双孵化器分治的根因。
+	const harvestStaffing = rooms.reduce((sum, room) => sum + harvesterTargetTotal(room), 0);
 	const sites = rooms.reduce((sum, room) => sum + room.sites.length, 0);
 	// 外矿同名-unit 定编: 远程 harvest 任务每源 +1 harvester; scout 按活跃侦查任务
 	const board = createTaskBoard(ctx.memory.tasks);
@@ -102,12 +107,15 @@ function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
 	let upgraderNeed = 0;
 	let carrierNeed = 0;
 	for (const room of rooms) {
+		// 源饱和口径实测分解 (specs/harvest-supply-convergence): 逐房随定编同拍刷新,
+		// 使「在源/往返/等待」占比成为常驻可取证证据 (docs/bugs P1-14 定位口径)。
+		harvestTimeSplitOf(ctx, room);
 		upgraderNeed += upgraderCountTargetOf(ctx, room);
 		// 路程未实测 (开局) 回退每源 1 只保守基线, 不按猜测路程编队
 		carrierNeed += carrierCountTargetOf(ctx, room) ?? room.sources.length;
 	}
 	return {
-		harvester: Math.max(1, sources + remoteHarvest),
+		harvester: Math.max(1, harvestStaffing + remoteHarvest),
 		scout: scoutNeed,
 		universal: 1,
 		upgrader: Math.max(1, upgraderNeed),
@@ -414,6 +422,15 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		const capacity = spawn.room.energyCapacityAvailable;
 		const available = spawn.room.energyAvailable;
 		const idleSince = spawnIdleSince[spawn.id] ?? ctx.tick;
+		// 采集体收入感知定档 (specs harvest-supply-convergence「采集体型收入感知定档」):
+		// 有在岗采集收入 → 按能量容量定档 (攒能升体型); 无在岗收入 → 按 max(存量, 起步预算)
+		// 定档, 该预算对应 2-WORK 起步体。底线必须条件化于「无收入」——docs/bugs 2026-10-15
+		// 校准实录记载 W2 硬底线一刀切为负 (涓流期换代断收入), 全局生效即重蹈。
+		const harvestNoIncome = spawnRoom ? harvestIncomeOf(ctx, spawnRoom) <= 0 : true;
+		const bodyBudget = (unit: string, fallback: number): number =>
+			unit === "harvester" && SPAWN_CONFIG.harvestTierEnabled && harvestNoIncome
+				? Math.max(available, SPAWN_CONFIG.harvesterStarterBudget)
+				: fallback;
 		const urgent = gated.find(
 			(r) =>
 				r.priority >= SPAWN_CONFIG.immediatePriority &&
@@ -429,16 +446,21 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			request = urgent;
 			body = buildBody(urgent.unit, urgent.budget ?? available, hints);
 		} else {
-			request = gated.find((r) => buildBody(r.unit, r.budget ?? capacity, hints) !== null);
+			request = gated.find((r) => buildBody(r.unit, r.budget ?? bodyBudget(r.unit, capacity), hints) !== null);
 			if (request) {
-				const desired = buildBody(request.unit, request.budget ?? capacity, hints);
+				const desired = buildBody(request.unit, request.budget ?? bodyBudget(request.unit, capacity), hints);
 				if (desired && bodyCost(desired) > available) {
 					// 期望体型未攒够: 等待 (超时后退回按存量降档); 攒能角色用短窗——
 					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测);
-					// 替补用途的等待另受换代窗口钳制 (提前量量级), 老单位死前必出新人
+					// 替补用途的等待另受换代窗口钳制 (提前量量级), 老单位死前必出新人。
+					// 无收入期等的是 WORK 底线而非大体型, 长窗只会拖长断采 → 同样走短窗。
+					const awaitingWorkFloor =
+						request.unit === "harvester" &&
+						SPAWN_CONFIG.harvestTierEnabled &&
+						harvestNoIncome;
 					const waitLimit = request.purpose.startsWith("replacement:")
 						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.replacementWaitTicks)
-						: SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
+						: awaitingWorkFloor || SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
 							? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
 							: SPAWN_CONFIG.capacityWaitTicks;
 					if (ctx.tick - idleSince < waitLimit) {
@@ -508,22 +530,37 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
  * 一次性/指令式孵化语义, 不参与定编与预算竞争。
  * @returns spawnCreep 返回码 (OK=0 为成功)
  */
+/**
+ * 直接孵化接口: 绕过任务板/池, 按角色默认体型或显式体型立即下蛋。
+ * 用于编队 (TeamSpawner)/扩张 (ExpandController)/pc 陪护/控制台——
+ * 一次性/指令式孵化语义, 不参与定编与预算竞争。
+ * @param body 显式体型; 缺省按角色默认体型
+ * @param bodyNameOverride 体名覆盖 (如标注归属 pc), 缺省取 UnitConstant 体名词表
+ * @returns spawnCreep 返回码 (OK=0 为成功)
+ */
 export function directSpawn(
 	room: Room,
 	unit: string,
 	memory: Record<string, unknown>,
 	body?: BodyPartConstant[],
-	namePrefix?: string,
+	bodyNameOverride?: string,
 ): number {
 	const spawns = room.find(FIND_MY_SPAWNS);
 	const spawn = spawns.find((s) => !s.spawning);
 	if (!spawn) return ERR_BUSY;
-	const config = (UnitData as unknown as Record<string, { level: number; code?: string }>)[unit];
+	const config = (UnitData as unknown as Record<string, { level: number }>)[unit];
 	if (!config) {
 		return ERR_INVALID_ARGS;
 	}
 	const bodyFinal = body ?? (room as any).GenerateBodys?.((room as any).GetUnitBodys?.(unit, undefined, undefined), unit);
 	if (!bodyFinal?.length) return ERR_NOT_ENOUGH_RESOURCES;
 	const mem = { ...memory, unit, cache: {} } as CreepMemory;
-	return spawn.spawnCreep(bodyFinal, generateCreepName(String(namePrefix ?? config.code ?? unit), { random: Math.random, exists: (n) => n in Game.creeps }), { memory: mem });
+	// 命名入参必须是角色 id: 传代号会让 unitBodyName 回退成代号本身, 拼出 `H H-1A2B` 双段前缀。
+	// 体名覆盖只替换首段, 代号段恒由生成器产出——感知侧 unitCodeFromName 依赖该形态解析角色。
+	const name = generateCreepName(unit, {
+		random: Math.random,
+		exists: (n) => n in Game.creeps,
+		...(bodyNameOverride ? { bodyName: bodyNameOverride } : {}),
+	});
+	return spawn.spawnCreep(bodyFinal, name, { memory: mem });
 }

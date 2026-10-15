@@ -14,11 +14,20 @@ import type { RoomObservation } from "@/core/world";
 import { harvesterBindingOf } from "@/modules/economy/workforce";
 
 /**
- * 源采集定编合计 (只数口径): 主线每源 1 名驻点采集体。
- * 源饱和 (5 WORK) 由孵化侧攒能定档升体型承接, 不拆多采集位。
+ * 采集编制目标 (只数口径): 每源一个驻点采集位 (specs harvest-supply-convergence
+ * 「采集定编单一事实来源」的唯一公式)。
+ *
+ * 形态泛化到「只带源列表」的结构, 使 perception 侧快照与 legacy 侧 Room 共用同一公式
+ * ——两套编制并存正是 P1-14 采集供给双轨分治的根因, 此处只允许有一份实现。
+ * 饱和缺口由攒能定档升体型承接, 不在此处拆分多采集位。
  */
-export function harvesterTargetTotal(room: RoomObservation): number {
+export function harvestStaffingOf(room: { sources: readonly unknown[] }): number {
 	return room.sources.length;
+}
+
+/** 源采集定编合计 (只数口径): 主线每源 1 名驻点采集体 */
+export function harvesterTargetTotal(room: RoomObservation): number {
+	return harvestStaffingOf(room);
 }
 
 /** 在岗采集面: 绑定了活跃采集 WORK 的源数 (租约或驻点在位) */
