@@ -34,6 +34,14 @@ export interface BodyHints {
 	relayCarrier?: boolean;
 	/** 直运期大件上限 (RCL ≥ 等级门) */
 	directCarrier?: boolean;
+	/**
+	 * 本房暂无搬运工在场: 采集体必须自带 CARRY。
+	 *
+	 * 采集体默认不带 CARRY (能量全落地面成堆, 交搬运工收走), 这是有搬运工时的更优分工——
+	 * 采集体少带 CARRY 跑得更快。但开局只有一只爬 (能量只够一只) 时, 无人收堆,
+	 * 能量会烂在源边、控制器永远拿不到, RCL 无法起步。
+	 */
+	noCarrierOnSite?: boolean;
 }
 
 interface SegmentDef {
@@ -131,7 +139,10 @@ export function buildBody(
 ): BodyPartConstant[] | null {
 	switch (unit) {
 		case "harvester":
-			return buildRushHarvesterBody(budget, { speed: hints?.slowTerrain ? 1 : 0.5 });
+			return buildRushHarvesterBody(budget, {
+				speed: hints?.slowTerrain ? 1 : 0.5,
+				needCarry: hints?.noCarrierOnSite === true,
+			});
 		case "upgrader":
 			return buildRushUpgraderBody(budget);
 		case "worker":

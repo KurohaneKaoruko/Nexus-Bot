@@ -11,7 +11,7 @@ import { downgradeEmergency } from "@/core/world";
 import { STRATEGY_CONFIG } from "@/config/strategy";
 import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
-import { UnitData } from "@/constant/CreepConstant";
+import { UNITS, UnitData } from "@/constant/CreepConstant";
 import { generateCreepName } from "@/utils/naming";
 import { createTaskBoard } from "@/modules/tasks";
 import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy/remoteMining";
@@ -418,6 +418,13 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			// 接力期档 (specs/relay-hauling): RCL < 等级门用微型接力件, 达门大件直运
 			relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl,
 			directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl,
+			// 开局无搬运工在场 → 采集体自带 CARRY (否则地面堆无人收, 控制器拿不到能量)
+			noCarrierOnSite: !Object.values(Game.creeps).some(
+				(c) =>
+					c.room.name === spawn.room.name &&
+					!c.spawning &&
+					c.memory?.unit === UNITS.carrier,
+			),
 		};
 		const capacity = spawn.room.energyCapacityAvailable;
 		const available = spawn.room.energyAvailable;
