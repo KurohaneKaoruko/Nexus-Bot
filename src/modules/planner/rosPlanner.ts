@@ -1934,7 +1934,7 @@ const ManagerPlanner = {
 	}
 };
 
-export const autoPlanner = {
+export const rosPlanner = {
 	name: 'auto',
 	ManagerPlanner
 };

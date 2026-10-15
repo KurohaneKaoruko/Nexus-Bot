@@ -2,13 +2,13 @@
 /*
  * 布局计算与落盘核心:
  * - 静态布局: 模板平移 + rampart 外环 + 采集基建 (source/mineral/controller 容器、link、道路) + link 建造排序;
- * - 动态布局 (auto): autoPlanner 分块规划, spawn 锚定限幅降级阶梯, 全败退无锚兜底;
+ * - 动态布局 (auto): rosPlanner 分块规划, spawn 锚定限幅降级阶梯, 全败退无锚兜底;
  * - plannerCreateSite: 按布局 + RCL 结构上限逐级放工地 (自动建造的消费口);
  * - 缓存: 50t TTL 三级缓存 (参数精确 key / 动态最近一次 / 动态输入签名)。
  * 持久化经 memory.ts 适配层写 Memory.Nexus.layout; 结构快查用 room.find, 不依赖原型扩展。
  */
 import { compress, compressBatch, decompress } from '@/utils/compress';
-import { autoPlanner } from './autoPlanner';
+import { rosPlanner } from './rosPlanner';
 import { autoPlanner63 } from './dynamic/63Planner';
 import LayoutVisual from './layoutVisual';
 import * as StaticPlanner from './static';
@@ -1007,7 +1007,7 @@ function computeDynamic(roomName: string, layoutType: string): CachedLayout | nu
     const storagePos = Game.flags.storagePos;
     if (storagePos && storagePos.pos.roomName !== roomName) storagePos.remove();
 
-    const planner = layoutType === '63auto' ? autoPlanner63 : autoPlanner;
+    const planner = layoutType === '63auto' ? autoPlanner63 : rosPlanner;
     const computeManor = planner.ManagerPlanner.computeManor;
     // 锚定降级阶梯：紧凑 10 → 放宽 14 → 不限幅，逐级放宽仍保持 spawn 锚定；
     // 全部失败才退回无锚流程（布局远离 spawn 的最后兜底），杜绝「稍偏即崩」的二值脆弱性
@@ -1369,7 +1369,7 @@ function visualByFlags(layoutType: 'auto' | '63auto'): number {
     const storagePos = Game.flags.storagePos || Game.flags.centerPos;
     if (storagePos && storagePos.pos.roomName !== roomName) storagePos.remove();
 
-    const planner = layoutType === '63auto' ? autoPlanner63 : autoPlanner;
+    const planner = layoutType === '63auto' ? autoPlanner63 : rosPlanner;
     const computeManor = planner.ManagerPlanner.computeManor;
     const roomStructsData = computeManor(roomName, [pc, pm, pa, pb]);
     if (!roomStructsData) {
