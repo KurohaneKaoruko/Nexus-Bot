@@ -434,10 +434,13 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				const desired = buildBody(request.unit, request.budget ?? capacity, hints);
 				if (desired && bodyCost(desired) > available) {
 					// 期望体型未攒够: 等待 (超时后退回按存量降档); 攒能角色用短窗——
-					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测)
-					const waitLimit = SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
-						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
-						: SPAWN_CONFIG.capacityWaitTicks;
+					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测);
+					// 替补用途的等待另受换代窗口钳制 (提前量量级), 老单位死前必出新人
+					const waitLimit = request.purpose.startsWith("replacement:")
+						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.replacementWaitTicks)
+						: SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
+							? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
+							: SPAWN_CONFIG.capacityWaitTicks;
 					if (ctx.tick - idleSince < waitLimit) {
 						spawnIdleSince[spawn.id] = idleSince;
 						ctx.cpu.recordSkip("spawn-director", "budget");

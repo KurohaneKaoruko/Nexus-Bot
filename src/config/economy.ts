@@ -94,6 +94,10 @@ export const SPAWN_CONFIG = {
 	capacityWaitRoles: [] as readonly string[],
 	/** 攒能角色的短等待窗: 匹配 replacement 提前量, 换代断采 <8% 工作期 (50k 实测) */
 	capacityWaitTicksShort: 120,
+	/** 替补用途请求的等待上限: 换代提前量 (生产+路程+余量) 量级 ~80t, 原 400t 等待
+	 *  远超窗口 → 老单位死亡新人未出 (双重断采 300t+) → 收入跌 → 攒能更慢 → 降档 W1;
+	 *  钳到窗口内保证「大的等得起就等, 等不起时老人死前必出新 */
+	replacementWaitTicks: 120,
 	/** 容量定档等待上限 (tick): 超时退回按存量生产, 防编制空转 */
 	capacityWaitTicks: 400,
 	/** 常驻编制岗位: 缺口判定与任务 available 状态解耦 (任务被租住/冷却期仍请求替补);
