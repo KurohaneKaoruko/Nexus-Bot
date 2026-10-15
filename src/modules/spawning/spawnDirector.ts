@@ -237,6 +237,21 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			delete engineCreeps.creeps[dead];
 		}
 	}
+	// 重置对账 (实服 4wt 重开路径, sim 无法暴露): dead 名单由「上 tick 存在→本 tick
+	// 消失」推导, 但服务器重置清空 Game.creeps 而 Memory 保留——上 tick 视图已空,
+	// 陈旧 units 记录永不入 dead。逐 tick 快照对账兜底: 记录不在 Game.creeps 即清。
+	// 注意孵化中的单位在 Game.creeps 可见 (spawning 状态), 不会被误清。
+	for (const name of Object.keys(ctx.memory.units)) {
+		if (!(name in Game.creeps)) {
+			delete ctx.memory.units[name];
+			const engineCreeps = (typeof Memory !== "undefined" ? Memory : undefined) as
+				| { creeps?: Record<string, unknown> }
+				| undefined;
+			if (engineCreeps?.creeps) {
+				delete engineCreeps.creeps[name];
+			}
+		}
+	}
 
 	const spawns = Object.values(Game.spawns);
 	if (spawns.length === 0) {
