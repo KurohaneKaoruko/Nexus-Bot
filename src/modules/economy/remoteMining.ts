@@ -9,31 +9,39 @@ import type { TaskBoard } from "@/modules/tasks";
 import { priorityFor } from "@/core/store/taskSchema";
 import { roomModeProfileFor } from "@/modules/strategy";
 
-/** 邻房名计算 (正角 4 向 + 对角 4 向) */
+/** 邻房名计算 (正角 4 向 + 对角 4 向)。Screeps 世界坐标: E1=1, W1=0, W2=-1 … (W 数字从 0 镜像) */
 function neighborRooms(roomName: string): string[] {
 	const match = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
 	if (!match) return [];
-	const ex = match[2] ?? "0"; const ny = match[4] ?? "0";
-	const x = parseInt(ex, 10) || 0;
-	const y = parseInt(ny, 10) || 0;
+	const xDir = match[1] ?? "W";
+	const xDigits = match[2] ?? "0";
+	const yDir = match[3] ?? "N";
+	const yDigits = match[4] ?? "0";
+	// W 数字转世界坐标须按 0 点镜像: W1=0, W2=-1, W(n)=-(n-1); E 数字即本身
+	const toWorldX = (dir: string, digits: string) =>
+		dir === "E" ? parseInt(digits, 10) : -(parseInt(digits, 10) - 1);
+	const toWorldY = (dir: string, digits: string) =>
+		dir === "N" ? parseInt(digits, 10) : -(parseInt(digits, 10) - 1);
+	const x = toWorldX(xDir, xDigits);
+	const y = toWorldY(yDir, yDigits);
+	const toRoomX = (worldX: number) => (worldX >= 0 ? `E${worldX}` : `W${-worldX + 1}`);
+	const toRoomY = (worldY: number) => (worldY >= 0 ? `N${worldY}` : `S${-worldY + 1}`);
 	const rooms: string[] = [];
 	for (let dx = -1; dx <= 1; dx++) {
 		for (let dy = -1; dy <= 1; dy++) {
 			if (dx === 0 && dy === 0) continue;
-			const nx = x + dx;
-			const ny2 = y + dy;
-			const xDir = nx >= 0 ? "E" : "W";
-			const yDir = ny2 >= 0 ? "N" : "S";
-			rooms.push(`${xDir}${Math.abs(nx)}${yDir}${Math.abs(ny2)}`);
+			rooms.push(`${toRoomX(x + dx)}${toRoomY(y + dy)}`);
 		}
 	}
 	return rooms;
 }
 
 /**
- * 外矿任务产出:
- * - 邻房不可见 → scout 任务 (每房一个, 到达获视野后由采集任务自然接替);
- * - 邻房可见且非己方 → 每远程 source 一个采集任务 (roomName = 本源房, targetPos = 远程)。
+ * 外矿任务产出 (remoteMining 政策, 用户口径 2026-10-15):
+ * - "auto" (仅 rush): 自动扫描发展——邻房不可见派 scout, 可见无主即登记采集;
+ * - "manual" (main 系): 只挖 Memory.Nexus.economy.remoteTargets 显式登记的源,
+ *   未登记的邻房一概不碰 (侦查也不派);
+ * - "off": 不挖。
  */
 export function planRemoteHarvest(
 	ctx: TickContext,
@@ -41,12 +49,58 @@ export function planRemoteHarvest(
 	board: TaskBoard,
 ): void {
 	const profile = roomModeProfileFor(ctx, room.roomName);
-	if (!profile.remoteMining) return;
+	if (profile.remoteMining === "off") return;
+	// RCL3 起才开外矿 (含 auto 档): ① harvester 体型要到 RCL3 预算档 (≥650) 才带
+	// 1-CARRY 下限, 无 carry 的远程件只会在外矿 drop 堆积、永不返程 (sim 实证采集
+	// 167k→150k 净负); ② 低 RCL 孵化槽紧, 外矿件会掏空本地采集面。冲级收入靠
+	// RCL3 后的外矿增量 (L4 段), 不抢 L3 前的本地窗口。
 	if (room.rcl < 3) return;
 
+	if (profile.remoteMining === "manual") {
+		const targets = ctx.memory.economy.remoteTargets ?? [];
+		for (const targetRoomName of targets) {
+			const remoteRoom = Game.rooms[targetRoomName];
+			// 无视野: 对手动指定的房间定向侦查 (不扫列表外邻房)
+			if (!remoteRoom) {
+				board.upsert({
+					dedupeKey: `scout:${room.roomName}:${targetRoomName}`,
+					kind: "scout",
+					roomName: room.roomName,
+					targetPos: { x: 25, y: 25, roomName: targetRoomName },
+					priority: priorityFor("scout"),
+					requiredCapabilities: ["move"],
+				}, ctx.tick);
+				continue;
+			}
+			if (remoteRoom.controller?.my) continue;
+			if (remoteRoom.controller?.owner || remoteRoom.controller?.reservation) continue;
+			for (const source of remoteRoom.find(FIND_SOURCES)) {
+				board.upsert({
+					dedupeKey: `harvest:${room.roomName}:remote:${source.id}`,
+					kind: "harvest",
+					roomName: room.roomName,
+					targetId: source.id,
+					targetPos: {
+						x: source.pos.x,
+						y: source.pos.y,
+						roomName: targetRoomName,
+					},
+					priority: priorityFor("harvest") - 10, // 低于本矿
+					requiredCapabilities: ["work", "move"],
+				}, ctx.tick);
+			}
+		}
+		return;
+	}
+
+	// auto 档发展房上限: 按 neighborRooms 固定顺序确定性选取, 防止 8 邻房全开
+	// 抬高定编淹没孵化队列 (历史 rush 控制冻结机理)。产出任务 (scout/harvest)
+	// 的房才消耗配额; 有主/无源的房跳过不占坑。
+	let budget = profile.remoteAutoMaxRooms ?? Number.POSITIVE_INFINITY;
 	for (const neighborName of neighborRooms(room.roomName)) {
+		if (budget <= 0) break;
 		const neighbor = Game.rooms[neighborName];
-		// 无视野邻房: 派侦查 (RCL3 起经济余量才养侦查件)
+		// 无视野邻房: 派侦查 (到达获视野后由采集任务自然接替)
 		if (!neighbor) {
 			board.upsert({
 				dedupeKey: `scout:${room.roomName}:${neighborName}`,
@@ -56,11 +110,14 @@ export function planRemoteHarvest(
 				priority: priorityFor("scout"),
 				requiredCapabilities: ["move"],
 			}, ctx.tick);
+			budget -= 1;
 			continue;
 		}
 		if (neighbor.controller?.my) continue; // 己方房跳过
 		if (neighbor.controller?.owner || neighbor.controller?.reservation) continue; // 有主之地不开矿
 		const sources = neighbor.find(FIND_SOURCES);
+		if (sources.length === 0) continue; // 无源房不占发展配额
+		budget -= 1;
 		for (const source of sources) {
 			board.upsert({
 				dedupeKey: `harvest:${room.roomName}:remote:${source.id}`,

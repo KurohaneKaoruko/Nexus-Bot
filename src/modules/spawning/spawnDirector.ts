@@ -72,6 +72,8 @@ function unitForTaskKind(kind: string): SpawnUnit | undefined {
 			return "carrier";
 		case "defend":
 			return "defender";
+		case "scout":
+			return "scout";
 		default:
 			return undefined;
 	}

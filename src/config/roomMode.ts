@@ -22,7 +22,7 @@ export interface RoomModeProfile {
 	 * 升级体断粮直采 (bugs/P1-14 cc 断粮, (十) 正解方向2): 开 = cc 空且工位旁
 	 * 无 pile 时升级体退化为长腿自取 (fetchEnergy 去最近货源), cc 有货自动回归
 	 * 直供。仅无 courier 投喂经济的档位启用——rush 档的墓碑投喂闭环依赖钉工位
-	 * (九) 断粮回退实验实锤 arena −16%), 分档启用绕开冲突。
+	 * ((九) 断粮回退实验实锤 arena −16%), 分档启用绕开冲突。
 	 */
 	upgraderForageOnStarve: boolean;
 	/**
@@ -30,8 +30,18 @@ export interface RoomModeProfile {
 	 * 加 amount, 压过普通与 cc 工地 (地基建成后让位于扩容); 达到 belowRcl 后回落。
 	 */
 	upgradeBias?: { amount: number; belowRcl: number };
-	/** 外矿同名-unit 采集闸: 开 = 侦查邻房并产出远程 harvest/scout 任务 (外矿设计定案) */
-	remoteMining: boolean;
+	/**
+	 * 外矿政策 (用户口径 2026-10-15): "auto" = 自动扫描发展邻房 (仅冲级档——
+	 * 外矿收入直接喂升级进度); "manual" = 只挖显式登记的远程源 (main 系常态,
+	 * 目标列表见 Memory.Nexus.economy.remoteTargets); "off" = 不挖。
+	 */
+	remoteMining: "auto" | "manual" | "off";
+	/**
+	 * auto 档同时在发展的外矿房上限 (缺省 = 无限制)。定编是任务数驱动的
+	 * (每远程源 +1 harvester), 不设上限时 8 邻房全开会瞬间抬高定编、淹没孵化
+	 * 队列, 把本矿采集饿死——历史「rush 控制冻结」事故的机理。
+	 */
+	remoteAutoMaxRooms?: number;
 }
 
 /** 档位参数表: 后续参数扩展 (外矿/工业/low 降档) 的新消费参数一律入表, 不散落分支 */
@@ -41,21 +51,21 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		upgradeIncomeMultiplier: 1,
 		courierEnabled: false,
 		upgraderForageOnStarve: true,
-		remoteMining: false,
+		remoteMining: "manual",
 	},
 	main: {
 		name: "main",
 		upgradeIncomeMultiplier: 1,
 		courierEnabled: false,
 		upgraderForageOnStarve: true,
-		remoteMining: true,
+		remoteMining: "manual",
 	},
 	high: {
 		name: "high",
 		upgradeIncomeMultiplier: 1,
 		courierEnabled: false,
 		upgraderForageOnStarve: true,
-		remoteMining: true,
+		remoteMining: "manual",
 	},
 	rush: {
 		name: "rush",
@@ -63,9 +73,10 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		courierEnabled: true,
 		// rush 有 courier 墓碑投喂闭环, 直采会破坏钉工位 ((九) arena 实测 −16%)
 		upgraderForageOnStarve: false,
-		// 冲级档不开外矿: rush 自动扩图会在本矿 0 采集时
-		// 把孵化队列队头让给卡死的外矿单位, 控制冻结 (外矿设计定案)
-		remoteMining: false,
+		// 冲级档自动发展外矿: 外矿收入直接喂升级进度 (用户口径 2026-10-15)
+		remoteMining: "auto",
+		// 同时在发展的外矿房上限: 定编任务数驱动, 不设限会淹没孵化队列 (控制冻结机理)
+		remoteAutoMaxRooms: 2,
 		// 冲级底线 (bugs/P1-14): RCL4 前升级压过建造, 到 RCL4 后回落让 ext/路网扩容
 		upgradeBias: { amount: 55, belowRcl: 4 },
 	},
@@ -75,7 +86,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		upgradeIncomeMultiplier: 1.5,
 		courierEnabled: true,
 		upgraderForageOnStarve: false,
-		remoteMining: false,
+		remoteMining: "manual",
 		upgradeBias: { amount: 55, belowRcl: 4 },
 	},
 };

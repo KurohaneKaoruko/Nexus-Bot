@@ -27,8 +27,8 @@ export type RoomModeProfile = {
     facilities: boolean;
     /** 自动市场交易（low 关闭） */
     market: boolean;
-    /** 外矿采集：能量矿 + 中央九房（low 关闭） */
-    remoteMining: boolean;
+    /** 外矿采集：能量矿 + 中央九房（low 关闭）。语义同 config/roomMode: auto/manual/off */
+    remoteMining: 'auto' | 'manual' | 'off';
     /** 防御 cost 矩阵可视化（low 关闭） */
     defenseCostMatrix: boolean;
     /** 主动防御执行周期（tick，low 降频） */
@@ -63,7 +63,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         name: 'low',
         facilities: false,
         market: false,
-        remoteMining: false,
+        remoteMining: 'manual',
         defenseCostMatrix: false,
         defenseInterval: 15,
         remoteEnergyInterval: { normal: 20, constrained: 40 },
@@ -81,7 +81,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         name: 'main',
         facilities: true,
         market: true,
-        remoteMining: true,
+        remoteMining: 'manual',
         defenseCostMatrix: true,
         defenseInterval: 1,
         remoteEnergyInterval: { normal: 20, constrained: 40 },
@@ -99,7 +99,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         name: 'high',
         facilities: true,
         market: true,
-        remoteMining: true,
+        remoteMining: 'manual',
         defenseCostMatrix: true,
         defenseInterval: 1,
         remoteEnergyInterval: { normal: 10, constrained: 20 },
@@ -117,7 +117,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         name: 'rush',
         facilities: true,
         market: true,
-        remoteMining: true,
+        remoteMining: 'auto',
         defenseCostMatrix: true,
         defenseInterval: 1,
         remoteEnergyInterval: { normal: 5, constrained: 10 },
@@ -142,7 +142,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         name: 'mini',
         facilities: false,
         market: false,
-        remoteMining: false,
+        remoteMining: 'manual',
         defenseCostMatrix: false,
         defenseInterval: 5,
         remoteEnergyInterval: { normal: 20, constrained: 40 },

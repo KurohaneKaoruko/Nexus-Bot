@@ -19,6 +19,10 @@ const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9
 	(name) => ({
 		name,
 		terrain: { kind: 'flat' } as const,
+		// 外矿是冲级核心收入 (rush 档 remoteMining: "auto" 自动扫邻房):
+		// L3 门需 15/t (占单房天花板 75%), L4+ 必须外矿补收入 (2026-10-15 勘误:
+		// 原配置为无源空房, L3~L6 门全部物理不可达)
+		sources: { count: 2, energy: 3000 },
 		alwaysVisible: false,
 		objects: [] as unknown[],
 	}),

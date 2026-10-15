@@ -183,6 +183,14 @@ export interface EconomyMemory {
 	};
 	/** unit:room → 实测路程样本 (bornAt→首次到岗), 固定窗口 */
 	travel: Record<string, { samples: number[]; p95: number }>;
+	/**
+	 * 手动外矿目标列表 (remoteMining: "manual" 档的消费源, 用户口径 2026-10-15):
+	 * 显式登记的外矿房名; 空表 = 不挖。真实服写入口 = 控制台
+	 * `Memory.Nexus.economy.remoteTargets = ["W5N9", ...]`;
+	 * sim 预置见 remote-mine 场景 (memory 字段, 须带合法 schemaVersion 与完整 economy 结构)。
+	 * auto 档 (rush) 不读此表。
+	 */
+	remoteTargets?: string[];
 }
 
 /** 全局战略政策 (docs/nexus-design/04 §4.2): 随姿态转移更新, 值域见 config/strategy */

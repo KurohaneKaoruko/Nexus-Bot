@@ -382,8 +382,12 @@ export const PIXEL_CONFIG = {
 
 /** 产出就绪闸 (specs/production-readiness-gate): 未就绪房间的孵化面约束 */
 export const PRODUCTION_GATE_CONFIG = {
-	/** 未就绪时仍放行的角色: 采集面 (采集体/升级体/万金油) + 生存防御 */
-	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender"] as readonly string[],
+	/**
+	 * 未就绪时仍放行的角色: 采集面 (采集体/升级体/万金油) + 生存防御 + 侦查件
+	 * (scout 是 1 MOVE 廉价件, 是外矿链路第一环——被此闸卡死则 auto 档
+	 * remoteMining 永远无法点亮邻房, sim 实证 scout 任务恒 available 无人孵化)
+	 */
+	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender", "scout"] as readonly string[],
 } as const;
 
 /**

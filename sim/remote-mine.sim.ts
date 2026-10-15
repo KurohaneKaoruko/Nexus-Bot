@@ -1,19 +1,46 @@
-// remote-mine: 外矿同名-role 验证 (main 档 remoteMining 开闸)
-// 链路: 邻房不可见 → scout 任务 → 侦查 → 远程 harvest 任务 → 跨房采集 → 能量回流
+// remote-mine: 外矿手动目标列表验证 (main 档 remoteMining: "manual", 2026-10-15 政策)
+// 链路: 预置 remoteTargets → 定向 scout 点亮 → 远程 harvest 任务 → 跨房采集 → 能量回流
 //
-// 2026-10-15 勘误: 本场景测的是任务板系外矿 (planRemoteHarvest 自动扫邻房, 无需预置);
-// 但 main 档下原型系 (outMine/ExternalMine) 的目标列表只认手动配置
-// (autoAddNearbyEnergyTargets 仅 rush 档调用, 「列表为空 = 不采」是刻意决策)——
-// 若未来启用原型系, 需按 OutMineData schema 预置目标列表, 且必须带合法
-// schemaVersion (否则 calibrateNexus 对无法识别版本的 Nexus 子树整体重建, 预置被清空)。
+// 政策口径 (用户 2026-10-15): rush 自动扫邻房发展外矿; high 及以下只挖手动登记的目标。
+// 本场景验证 manual 路径: Memory 预置 ["W5N9", "W4N8"], 未登记邻房一概不碰。
+//
+// Memory 预置口径 (calibration 约束): 必须带合法 schemaVersion 与完整 economy 子结构,
+// 否则 calibrateNexus 对无法识别版本的 Nexus 子树整体重建, 预置被清空。
 import { defineSim } from 'screeps-sim'
+
+const presetMemory = JSON.stringify({
+	Nexus: {
+		schemaVersion: 11,
+		economy: {
+			accumulators: {
+				spawnIdleTicks: 0,
+				starvationTicks: 0,
+				haulBusyTicks: 0,
+				haulIdleTicks: 0,
+				energyStockDelta: 0,
+			},
+			lastStockTotal: 0,
+			lastStockTick: 0,
+			diagnosis: {
+				bottleneck: 'none',
+				carrierMultiplier: 1,
+				upgraderBonus: 0,
+				quotaFloorBias: 0,
+				updatedAt: 0,
+			},
+			travel: {},
+			remoteTargets: ['W5N9', 'W4N8'],
+		},
+	},
+})
 
 export default defineSim({
 	name: 'remote-mine',
-	description: '外矿同名-role: main 档侦查邻房 + 远程采集, 邻房 flat 双源保通关性',
+	description: '外矿手动列表: main 档定向侦查 + 远程采集, 预置 W5N9/W4N8 双目标',
 	seed: 7,
 	ticks: 30000,
-	cpu: { limit: 20, bucket: 10000 }, // <100 → main 档 → remoteMining 开
+	memory: presetMemory,
+	cpu: { limit: 20, bucket: 10000 }, // <100 → main 档 → remoteMining: "manual"
 	deterministicRandom: true,
 	rooms: [
 		{
