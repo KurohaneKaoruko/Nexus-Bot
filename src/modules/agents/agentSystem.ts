@@ -19,6 +19,7 @@ import { atWorksite } from "@/modules/world";
 import { clearBlocked, congestionAction } from "@/modules/movement/trafficMonitor";
 import { ccUpgradeReserveOf, hasHungryUpgrader, recordTravelSample, registerUpgraderStarve } from "@/modules/economy";
 import { destinationQuotas } from "@/modules/economy/quota";
+import { roomModeProfileFor } from "@/modules/strategy";
 import { relayHandoffAllowed, type RelayCreepView } from "@/utils/haulRelay";
 import { CARRIER_BEHAVIOR_CONFIG, RELAY_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { COMBAT_CONFIG, RETREAT_CONFIG } from "@/config/defense";
@@ -587,8 +588,17 @@ function runCreep(
 					return;
 				}
 				// 取能落空且缓冲全空: 饥饿记账 (specs/workforce-staffing 负反馈,
-				// 保级窗口由 registerUpgraderStarve 内部豁免), 原地待命保租约
+				// 保级窗口由 registerUpgraderStarve 内部豁免), 原地待命保租约。
+				// 分档直采 (bugs/P1-14 cc 断粮, (十) 方向2): 无 courier 投喂经济的
+				// 档位退化为长腿自取 (fetchEnergy 最近货源), cc 有货自动回归直供;
+				// rush/mini 靠墓碑投喂闭环, 保持钉工位
 				registerUpgraderStarve(ctx, room);
+				if (roomModeProfileFor(ctx, room.roomName).upgraderForageOnStarve) {
+					fetchEnergy(ctx, broker, room, creep, task, undefined, {
+						x: buffer.x,
+						y: buffer.y,
+					});
+				}
 				return;
 			}
 			// 满载迟滞: 拿满才升级; 源枯竭时带余量升级

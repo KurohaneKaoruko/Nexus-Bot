@@ -19,6 +19,13 @@ export interface RoomModeProfile {
 	/** 拉能快递总闸 (specs/rush-courier): 仅冲级类档位开启 */
 	courierEnabled: boolean;
 	/**
+	 * 升级体断粮直采 (bugs/P1-14 cc 断粮, (十) 正解方向2): 开 = cc 空且工位旁
+	 * 无 pile 时升级体退化为长腿自取 (fetchEnergy 去最近货源), cc 有货自动回归
+	 * 直供。仅无 courier 投喂经济的档位启用——rush 档的墓碑投喂闭环依赖钉工位
+	 * (九) 断粮回退实验实锤 arena −16%), 分档启用绕开冲突。
+	 */
+	upgraderForageOnStarve: boolean;
+	/**
 	 * 升级任务提权 (冲级期建造/升级能量之争): rcl ≤ belowRcl 时 upgrade 任务优先级
 	 * 加 amount, 压过普通与 cc 工地 (地基建成后让位于扩容); 达到 belowRcl 后回落。
 	 */
@@ -29,13 +36,33 @@ export interface RoomModeProfile {
 
 /** 档位参数表: 后续参数扩展 (外矿/工业/low 降档) 的新消费参数一律入表, 不散落分支 */
 export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
-	low: { name: "low", upgradeIncomeMultiplier: 1, courierEnabled: false, remoteMining: false },
-	main: { name: "main", upgradeIncomeMultiplier: 1, courierEnabled: false, remoteMining: true },
-	high: { name: "high", upgradeIncomeMultiplier: 1, courierEnabled: false, remoteMining: true },
+	low: {
+		name: "low",
+		upgradeIncomeMultiplier: 1,
+		courierEnabled: false,
+		upgraderForageOnStarve: true,
+		remoteMining: false,
+	},
+	main: {
+		name: "main",
+		upgradeIncomeMultiplier: 1,
+		courierEnabled: false,
+		upgraderForageOnStarve: true,
+		remoteMining: true,
+	},
+	high: {
+		name: "high",
+		upgradeIncomeMultiplier: 1,
+		courierEnabled: false,
+		upgraderForageOnStarve: true,
+		remoteMining: true,
+	},
 	rush: {
 		name: "rush",
 		upgradeIncomeMultiplier: 1,
 		courierEnabled: true,
+		// rush 有 courier 墓碑投喂闭环, 直采会破坏钉工位 ((九) arena 实测 −16%)
+		upgraderForageOnStarve: false,
 		// 冲级档不开外矿: rush 自动扩图会在本矿 0 采集时
 		// 把孵化队列队头让给卡死的外矿单位, 控制冻结 (外矿设计定案)
 		remoteMining: false,
@@ -47,6 +74,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		name: "mini",
 		upgradeIncomeMultiplier: 1.5,
 		courierEnabled: true,
+		upgraderForageOnStarve: false,
 		remoteMining: false,
 		upgradeBias: { amount: 55, belowRcl: 4 },
 	},
