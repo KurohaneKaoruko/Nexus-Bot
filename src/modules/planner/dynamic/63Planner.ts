@@ -118,7 +118,7 @@ const ManagerPlanner = {
 	 * 计算区块的最大性能指标 ，性能消耗的大头！
 	 * 优化不动了
 	 */
-	getBlockPutAbleCnt(roomWalkable: any, visited: any, queMin: any, unionFind: any, tarRoot: any, putAbleCacheMap: any, AllCacheMap: any) {
+	getBlockPutAbleCnt(walkableBuf: any, visitedBuf: any, queMinBuf: any, unionFindBuf: any, tarRoot: any, putAbleCacheMap: any, AllCacheMap: any) {
         ensurePlannerState();
 		if (putAbleCacheMap[tarRoot]) return [putAbleCacheMap[tarRoot], AllCacheMap[tarRoot]];
 		// let t = Game.cpu.getUsed() //这很吃性能，但是是必须的
@@ -126,7 +126,7 @@ const ManagerPlanner = {
 		if (!roomManor) return;
 		roomManor.init();
 		roomManor.forEach((x: any, y: any) => {
-			if (tarRoot == unionFind.find(x * 50 + y)) {
+			if (tarRoot == unionFindBuf.find(x * 50 + y)) {
 				roomManor.set(x, y, 1);
 			}
 		});
@@ -137,7 +137,7 @@ const ManagerPlanner = {
 				roomManor.for4Direction(
 					(x1: any, y1: any, val1: any) => {
 						if (val1) manorCnt += 1;
-						if (!roomWalkable.get(x1, y1)) wallCnt += 1;
+						if (!walkableBuf.get(x1, y1)) wallCnt += 1;
 					},
 					x,
 					y
@@ -146,13 +146,13 @@ const ManagerPlanner = {
 			}
 		});
 		const dfsMoreManor = function (x: any, y: any, val: any) {
-			if (!val && roomWalkable.get(x, y)) {
+			if (!val && walkableBuf.get(x, y)) {
 				let manorCnt = 0;
 				let wallCnt = 0;
 				roomManor.for4Direction(
 					(x1: any, y1: any, val1: any) => {
 						if (val1) manorCnt += 1;
-						if (!roomWalkable.get(x1, y1)) wallCnt += 1;
+						if (!walkableBuf.get(x1, y1)) wallCnt += 1;
 					},
 					x,
 					y
@@ -172,11 +172,11 @@ const ManagerPlanner = {
 		roomManor.forEach((x: any, y: any, val: any) => {
 			dfsMoreManor(x, y, val);
 		});
-		roomWalkable.forBorder((x: any, y: any, val: any) => {
+		walkableBuf.forBorder((x: any, y: any, val: any) => {
 			if (val) {
 				roomManor.forNear(
-					(x: any, y: any) => {
-						roomManor.set(x, y, 0);
+					(nx: any, ny: any) => {
+						roomManor.set(nx, ny, 0);
 					},
 					x,
 					y
@@ -188,22 +188,22 @@ const ManagerPlanner = {
 		const innerPutAbleList: any = [];
 		const AllCacheList: any = [];
 
-		visited.init();
+		visitedBuf.init();
 
-		roomWalkable.forEach((x: any, y: any, val: any) => {
+		walkableBuf.forEach((x: any, y: any, val: any) => {
 			if (!roomManor.get(x, y)) {
-				queMin.push(NewNode(val ? -4 : -1, x, y));
-				// visited.set(x,y,1) 这里不能设置visited 因为 -4 和-1 优先级不同 如果 -4距离和-1比较，-1会抢走-4 导致 rangeAttack打得到
+				queMinBuf.push(NewNode(val ? -4 : -1, x, y));
+				// visitedBuf.set(x,y,1) 这里不能设置visited 因为 -4 和-1 优先级不同 如果 -4距离和-1比较，-1会抢走-4 导致 rangeAttack打得到
 			}
 		});
 
 		// let t = Game.cpu.getUsed() //这很吃性能，真的优化不动了
 
-		queMin.whileNoEmpty((nd: any) => {
+		queMinBuf.whileNoEmpty((nd: any) => {
 			const func = function (x: any, y: any, val: any) {
 				const item = NewNode(nd.k + 2, x, y);
-				if (!visited.exec(x, y, 1)) {
-					queMin.push(NewNode(nd.k + 1, x, y));
+				if (!visitedBuf.exec(x, y, 1)) {
+					queMinBuf.push(NewNode(nd.k + 1, x, y));
 					if (roomManor.get(x, y)) {
 						if (nd.k + 1 >= 0 && val) {
 							innerPutAbleList.push(item);
@@ -213,9 +213,9 @@ const ManagerPlanner = {
 					}
 				}
 			};
-			visited.set(nd.x, nd.y, 1);
-			if (nd.k >= -1) roomWalkable.for4Direction(func, nd.x, nd.y);
-			else roomWalkable.forNear(func, nd.x, nd.y);
+			visitedBuf.set(nd.x, nd.y, 1);
+			if (nd.k >= -1) walkableBuf.for4Direction(func, nd.x, nd.y);
+			else walkableBuf.forNear(func, nd.x, nd.y);
 		});
 
 		// console.log(Game.cpu.getUsed()-t)
@@ -233,20 +233,20 @@ const ManagerPlanner = {
 		ManagerPlanner.createObjects();
 		const visual = new RoomVisual(roomName);
 
-		roomWalkable.initRoomTerrainWalkAble(roomName);
+		walkableBuf.initRoomTerrainWalkAble(roomName);
 
 		//计算距离山体要多远
-		roomWalkable.forEach((x: any, y: any, val: any) => {
+		walkableBuf.forEach((x: any, y: any, val: any) => {
 			if (!val) {
-				queMin.push(NewNode(0, x, y));
-				visited.set(x, y, 1);
+				queMinBuf.push(NewNode(0, x, y));
+				visitedBuf.set(x, y, 1);
 			}
 		});
-		queMin.whileNoEmpty((nd: any) => {
-			roomWalkable.for4Direction(
+		queMinBuf.whileNoEmpty((nd: any) => {
+			walkableBuf.for4Direction(
 				(x: any, y: any, val: any) => {
-					if (!visited.exec(x, y, 1) && val) {
-						queMin.push(NewNode(nd.k + 1, x, y));
+					if (!visitedBuf.exec(x, y, 1) && val) {
+						queMinBuf.push(NewNode(nd.k + 1, x, y));
 					}
 				},
 				nd.x,
@@ -256,15 +256,15 @@ const ManagerPlanner = {
 		});
 
 		//距离出口一格不能放墙
-		roomWalkable.forBorder((x: any, y: any, val: any) => {
+		walkableBuf.forBorder((x: any, y: any, val: any) => {
 			if (val) {
 				roomWalkable.forNear(
-					(x: any, y: any, val: any) => {
-						if (val) {
-							// roomWalkable.set(x,y,0);
-							nearWall.set(x, y, 50);
-							queMin.push(NewNode(0, x, y));
-							// visited.set(x,y,1)
+					(nx: any, ny: any, nval: any) => {
+						if (nval) {
+							// roomWalkable.set(nx,ny,0);
+							nearWall.set(nx, ny, 50);
+							queMin.push(NewNode(0, nx, ny));
+							// visited.set(nx,ny,1)
 						}
 					},
 					x,
@@ -282,9 +282,9 @@ const ManagerPlanner = {
 		roomWalkable.forBorder((x: any, y: any, val: any) => {
 			if (val) {
 				roomWalkable.forNear(
-					(x: any, y: any, val: any) => {
-						if (val) {
-							roomPutAble.set(x, y, 0);
+					(nx: any, ny: any, nval: any) => {
+						if (nval) {
+							roomPutAble.set(nx, ny, 0);
 						}
 					},
 					x,
@@ -299,10 +299,10 @@ const ManagerPlanner = {
 			let finalX = 0;
 			let finalY = 0;
 			roomPutAble.for4Direction(
-				(x: any, y: any, val: any) => {
-					if (val && !put && !roomObjectCache.get(x, y)) {
-						finalX = x;
-						finalY = y;
+				(nx: any, ny: any, nval: any) => {
+					if (nval && !put && !roomObjectCache.get(nx, ny)) {
+						finalX = nx;
+						finalY = ny;
 						put = true;
 					}
 				},
@@ -310,10 +310,10 @@ const ManagerPlanner = {
 				y
 			);
 			roomPutAble.forNear(
-				(x: any, y: any, val: any) => {
-					if (val && !put && !roomObjectCache.get(x, y)) {
-						finalX = x;
-						finalY = y;
+				(nx: any, ny: any, val: any) => {
+					if (val && !put && !roomObjectCache.get(nx, ny)) {
+						finalX = nx;
+						finalY = ny;
 						put = true;
 					}
 				},
@@ -345,8 +345,8 @@ const ManagerPlanner = {
 		nearWall.forEach((x: any, y: any, val: any) => {
 			let value = -4 * val;
 			nearWall.for4Direction(
-				(x: any, y: any, val: any) => {
-					value += val;
+				(nx: any, ny: any, nval: any) => {
+					value += nval;
 				},
 				x,
 				y
@@ -367,9 +367,9 @@ const ManagerPlanner = {
 		routeDistance.init();
 		queMin.whileNoEmpty((nd: any) => {
 			roomWalkable.forNear(
-				(x: any, y: any, val: any) => {
-					if (!visited.exec(x, y, 1) && val) {
-						queMin.push(NewNode(nd.k + 1, x, y));
+				(nx: any, ny: any, val: any) => {
+					if (!visited.exec(nx, ny, 1) && val) {
+						queMin.push(NewNode(nd.k + 1, nx, ny));
 					}
 				},
 				nd.x,
@@ -465,9 +465,9 @@ const ManagerPlanner = {
 		roomWalkable.forBorder((x: any, y: any, val: any) => {
 			if (val) {
 				roomWalkable.forNear(
-					(x: any, y: any, val: any) => {
-						if (val) {
-							const pos = unionFind.find(x * 50 + y);
+					(nx: any, ny: any, nval: any) => {
+						if (nval) {
+							const pos = unionFind.find(nx * 50 + ny);
 							if ((sizeMap as any) [pos]) delete (sizeMap as any) [pos];
 						}
 					},
@@ -497,12 +497,12 @@ const ManagerPlanner = {
 				const y = e % 50;
 				const x = (e - y) / 50; //Math.round
 				roomWalkable.forNear(
-					(x: any, y: any, val: any) => {
-						if (val && !visited.exec(x, y, 1)) {
-							const currentPos = unionFind.find(x * 50 + y);
+					(nx: any, ny: any, val: any) => {
+						if (val && !visited.exec(nx, ny, 1)) {
+							const currentPos = unionFind.find(nx * 50 + ny);
 							if (currentPos == pos) return;
 							// if(i==104)
-							// visual.text(parseInt(1*10)/10, x,y+0.25, {color: "cyan",opacity:0.99,font: 7})
+							// visual.text(parseInt(1*10)/10, nx,ny+0.25, {color: "cyan",opacity:0.99,font: 7})
 							const currentSize = (sizeMap as any) [currentPos];
 							if (currentSize < 300) {
 								(nearCntMap as any) [currentPos] = ((nearCntMap as any) [currentPos] || 0) + 1;
@@ -607,11 +607,11 @@ const ManagerPlanner = {
 		}
 		// const visual = new RoomVisual(roomName);
 		const blockArray = ManagerPlanner.computeBlock(roomName, blocked);
-		const unionFind = blockArray[0];
+		const blkUnionFind = blockArray[0];
 		const sizeMap = blockArray[1];
 		const wallMap = {};
-		const roomWalkable = blockArray[2];
-		const nearWall = blockArray[3];
+		const blkWalkable = blockArray[2];
+		const blkNearWall = blockArray[3];
 		const putAbleCacheMap = blockArray[4];
 		const allCacheMap = blockArray[5];
 
@@ -622,7 +622,7 @@ const ManagerPlanner = {
 		roomStructs.init();
 
 		// let closeToWall = new RoomArray()
-		nearWall.init();
+		blkNearWall.init();
 
 		// let queMin = new PriorityQueue(true)
 		queMin.clear();
@@ -643,7 +643,7 @@ const ManagerPlanner = {
 		_.keys(sizeMap).forEach((pos) => {
 			// if(sizeMap[pos]<150)return
 
-			ManagerPlanner.getBlockPutAbleCnt(roomWalkable, visited, queMin, unionFind, pos, putAbleCacheMap, allCacheMap);
+			ManagerPlanner.getBlockPutAbleCnt(blkWalkable, visited, queMin, blkUnionFind, pos, putAbleCacheMap, allCacheMap);
 			const currentPutAbleList = putAbleCacheMap[pos];
 			const allList = allCacheMap[pos];
 			if (currentPutAbleList.length < minPlaneCnt) return;
@@ -656,14 +656,14 @@ const ManagerPlanner = {
 			(wallMap as any) [pos] = [];
 
 			visited.init();
-			roomWalkable.forBorder((x: any, y: any, val: any) => {
+			blkWalkable.forBorder((x: any, y: any, val: any) => {
 				if (val) {
 					queMin.push(NewNode(0, x, y));
 					visited.set(x, y, 1);
 				}
 			});
 
-			const roomManor = routeDistance; //当前的Manor
+
 			roomManor.init();
 			allList.forEach((e: any) => {
 				roomManor.set(e.x, e.y, 1);
@@ -672,13 +672,13 @@ const ManagerPlanner = {
 
 			queMin.whileNoEmpty((nd: any) => {
 				if (!roomManor.get(nd.x, nd.y))
-					roomWalkable.forNear(
-						(x: any, y: any, val: any) => {
-							if (!visited.exec(x, y, 1) && val) {
-								if (!roomManor.get(x, y)) queMin.push(NewNode(nd.k + 1, x, y));
+					blkWalkable.forNear(
+						(nx: any, ny: any, val: any) => {
+							if (!visited.exec(nx, ny, 1) && val) {
+								if (!roomManor.get(nx, ny)) queMin.push(NewNode(nd.k + 1, nx, ny));
 								else {
-									wallMap[pos].push(NewNode(0, x, y));
-									// visual.text('X', x,y+0.25, {color: 'red',opacity:0.99,font: 7})
+									wallMap[pos].push(NewNode(0, nx, ny));
+									// visual.text('nx', nx,ny+0.25, {color: 'red',opacity:0.99,font: 7})
 								}
 							}
 						},
@@ -745,7 +745,7 @@ const ManagerPlanner = {
 		});
 
 		// visited.init()
-		// roomWalkable.forEach((x: number, y: number, val: number | string)=>{if(!roomManor.get(x,y)){queMin.push(NewNode(val?-3:-1,x,y));visited.set(x,y,1)}})
+		// blkWalkable.forEach((x: number, y: number, val: number | string)=>{if(!roomManor.get(x,y)){queMin.push(NewNode(val?-3:-1,x,y));visited.set(x,y,1)}})
 
 		let storageX = 0;
 		let storageY = 0;
@@ -797,8 +797,8 @@ const ManagerPlanner = {
 				const distance = Math.sqrt(Math.pow(storageX - x - 1.5, 2) + Math.pow(storageY - y - 1.5, 2));
 				if (labDistance <= distance) return;
 				let checkCnt = 0;
-				const check = function (x: any, y: any) {
-					if ((roomManor.get(x, y)) > 0 && Math.abs(x - storageX) + Math.abs(y - storageY) > 2) {
+				const check = function (cx: any, cy: any) {
+					if ((roomManor.get(cx, cy)) > 0 && Math.abs(cx - storageX) + Math.abs(cy - storageY) > 2) {
 						checkCnt += 1;
 					}
 				};
@@ -848,7 +848,7 @@ const ManagerPlanner = {
 		//     "factory": {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 1, 8: 1}
 		// }
 
-		// nearWall.forEach((x: number, y: number, val: number | string)=>{if(val>2&&finalPos==unionFind.find(x*50+y))visual.text(nearWall.get(x,y),x, y+0.5, {color: "red",opacity:0.99,font: 7})})
+		// blkNearWall.forEach((x: number, y: number, val: number | string)=>{if(val>2&&finalPos==blkUnionFind.find(x*50+y))visual.text(blkNearWall.get(x,y),x, y+0.5, {color: "red",opacity:0.99,font: 7})})
 
 		/**
 		 * 这里开始计算布局！
@@ -956,9 +956,9 @@ const ManagerPlanner = {
 		costRoad.init();
 		queMin.whileNoEmpty((nd: any) => {
 			roomStructs.forNear(
-				(x: any, y: any, val: any) => {
-					if (!visited.exec(x, y, 1) && val > 0) {
-						queMin.push(NewNode(nd.k + val, x, y));
+				(nx: any, ny: any, val: any) => {
+					if (!visited.exec(nx, ny, 1) && val > 0) {
+						queMin.push(NewNode(nd.k + val, nx, ny));
 					}
 				},
 				nd.x,
@@ -976,9 +976,9 @@ const ManagerPlanner = {
 			// let finalX = 0;
 			// let finalY = 0;
 			costRoad.forNear(
-				(x1: any, y1: any, val: any) => {
-					if (minVal > val && val > 0) {
-						minVal = val;
+				(x1: any, y1: any, nv: any) => {
+					if (minVal > nv && nv > 0) {
+						minVal = nv;
 						// finalX = x1
 						// finalY = y1
 					}
@@ -988,8 +988,8 @@ const ManagerPlanner = {
 			);
 			// 方案2 没那么密集
 			costRoad.forNear(
-				(x1: any, y1: any, val: any) => {
-					if (minVal == val && val > 0) {
+				(x1: any, y1: any, nv: any) => {
+					if (minVal == nv && nv > 0) {
 						// structMap["road"].push([x1,y1])
 						roomStructs.set(x1, y1, 'road');
 					}
@@ -1008,8 +1008,8 @@ const ManagerPlanner = {
 			if (val > 0) {
 				let dist = 100;
 				costRoad.forNear(
-					(x: any, y: any, val: any) => {
-						if (val) dist = Math.min(dist, val);
+					(nx: any, ny: any, nv: any) => {
+						if (nv) dist = Math.min(dist, nv);
 					},
 					x,
 					y
@@ -1095,9 +1095,9 @@ const ManagerPlanner = {
 			// visual.text(val,x, y+0.25, {color: "pink",opacity:0.99,font: 7})
 			let minVal = 50;
 			costRoad.forNear(
-				(x1: any, y1: any, val: any) => {
-					if (minVal > val && val > 0) {
-						minVal = val;
+				(x1: any, y1: any, nv: any) => {
+					if (minVal > nv && nv > 0) {
+						minVal = nv;
 					}
 				},
 				x,
@@ -1105,8 +1105,8 @@ const ManagerPlanner = {
 			);
 			// 方案2 没那么密集
 			costRoad.forNear(
-				(x1: any, y1: any, val: any) => {
-					if (minVal == val && val > 0) {
+				(x1: any, y1: any, nv: any) => {
+					if (minVal == nv && nv > 0) {
 						// 找到建筑最近的那个road
 						if (!visited.exec(x1, y1, 1)) structMap['road'].push([x1, y1]);
 					}
@@ -1170,3 +1170,14 @@ export const autoPlanner63 = {
 	name: '63auto',
 	ManagerPlanner: ManagerPlanner
 };
+
+
+
+
+
+
+
+
+
+
+

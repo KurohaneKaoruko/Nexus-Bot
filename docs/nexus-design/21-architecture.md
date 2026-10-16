@@ -29,7 +29,7 @@ src/
 │   ├── economy/       #   [经济+物流] 任务源/诊断/账本/配额/外矿
 │   ├── spawning/      #   [孵化]     排程+替补+directSpawn, 体型编译
 │   ├── agents/        #   [L6+L7 行动] 执行器/意图网关/共享 Broker
-│   │   └── prototype/ #    原型运行时 (方法挂载+特性链驱动, 角色行为库现行 API)
+│   ├── prototype/     #   [原型拓展] 方法挂载+特性链驱动 (角色行为库现行 API)
 │   ├── movement/      #   [交通]     BetterMove + trafficMonitor
 │   ├── planner/       #   [基建]     布局规划
 │   ├── defense/       #   [安全]     威胁/塔控/应急
@@ -46,7 +46,7 @@ src/
 - 全部功能域已按 Nexus TickModule 架构挂载 (Teams/PowerCreeps/Industry/EventBus/Nukes/
   InterShard/Expansion 正式域模块), 五变体入口统一装配
 - 孵化链主线化: 编队/扩张/pc 陪护走 directSpawn; 角色族定编判定保留在
-  spawning mission 孵化主链 (agents/prototype 提供原型方法挂载驱动)
+  spawning mission 孵化主链 (modules/prototype 提供原型方法挂载驱动)
 - 外矿同名-role / 扩张 claim 已按任务板主线化 (kind scout/claim)
 - 类型债: nocheck 152 → 33 件 (-78%), 错误 4109 → ~660 (-84%)
 - 开发历程详见 git log
