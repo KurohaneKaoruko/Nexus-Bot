@@ -1,4 +1,0 @@
-# pnpm 构建脚本许可: 仅允许项目实际依赖的原生可选模块执行安装期构建
-allowBuilds:
-  bufferutil: true
-  utf-8-validate: true
