@@ -1,8 +1,8 @@
 
 import { UNITS } from '@/constant/CreepConstant';
 import { writeMoveWorkTileCandidates } from '@/utils/moveWork';
-import { WORK_EVENTS, type WorkEvent } from '@/modules/agents/workLayer';
-import { runWorkLayer } from '@/modules/agents/workLayer';
+import { WORK_EVENTS, type WorkEvent } from '@/modules/agents';
+import { runWorkLayer } from '@/modules/agents';
 import { getWorkerUpgradeSlot, hasControllerEnergyBuffer, registerUpgraderStarve } from '@/modules/economy/roomWorkforce';
 
 /**

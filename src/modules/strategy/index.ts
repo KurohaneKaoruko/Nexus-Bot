@@ -8,3 +8,13 @@ export {
 	roomModeFor,
 	roomModeProfileFor,
 } from "@/modules/strategy/roomMode";
+
+export {
+	getRoomMode,
+	getRoomModeProfile,
+	isHighLikeMode,
+	isSpecialRushActive,
+	ROOM_MODE_PROFILES,
+	type RoomModeName,
+	type RoomModeProfile,
+} from "@/modules/strategy/roomModeAccess";

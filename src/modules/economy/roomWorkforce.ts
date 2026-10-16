@@ -15,7 +15,7 @@
  * 体型信息一律通过 room.GetUnitBodys / room.GenerateBodys 运行时获取。
  */
 import { getEnergyLevel } from '@/modules/economy/energyLogistics';
-import { getRoomModeProfile, getRoomMode, isHighLikeMode } from '@/modules/strategy/roomModeAccess';
+import { getRoomModeProfile, getRoomMode, isHighLikeMode } from '@/modules/strategy';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { decompress } from '@/utils/compress';
 import { CARRY_STAFFING_CONFIG } from '@/config/economy';
@@ -195,7 +195,7 @@ const shrinkByStarved = (room: Room, demandWork: number): number => {
 export const getRoomEnergyState = (room: Room): string =>
     (room.memory as any).energyState || (room as any).updateEnergyState?.(false) || 'NORMAL';
 
-export { getRoomMode, isHighLikeMode } from '@/modules/strategy/roomModeAccess';
+export { getRoomMode, isHighLikeMode } from '@/modules/strategy';
 
 // 以 room.getEnergyProfile 为准，否则退化为 room[RESOURCE_ENERGY] 统计
 export const getTotalEnergy = (room: Room): number =>

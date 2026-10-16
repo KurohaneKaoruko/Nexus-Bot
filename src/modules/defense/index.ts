@@ -15,6 +15,10 @@ import { planDefenseRoom } from "@/modules/defense/planners";
 import { assignTowers } from "@/modules/defense/towerControl";
 import { foldTowerSpend, updateRoomThreat } from "@/modules/defense/threatModel";
 
+// ── 公共面: 防御角色单位 (原型角色注册表消费) ──
+export { defendAttack, defendRanged } from "@/modules/defense/units/defendSingle";
+export { defend2Attack } from "@/modules/defense/units/defendDuo";
+
 /** 塔行动 → broker 提案 (结构 actor: actorName = 塔 id, 无任务租约) */
 function submitTowerActions(ctx: TickContext, broker: ReturnType<typeof ensureBroker>): void {
 	const world = ctx.world.current;

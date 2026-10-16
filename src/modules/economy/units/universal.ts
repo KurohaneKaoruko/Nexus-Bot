@@ -1,6 +1,6 @@
 
 import { THRESHOLDS } from '@/constant/Thresholds';
-import { ensureMemoryCache } from '@/modules/agents/creepCache';
+import { ensureMemoryCache } from '@/modules/prototype';
 
 type UniversalTargetKind = 'spawn_ext' | 'tower' | 'controller_buffer' | 'power_spawn';
 

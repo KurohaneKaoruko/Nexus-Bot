@@ -21,7 +21,7 @@ import { priorityFor } from "@/core/store/taskSchema";
 import { requestSquad } from "@/core/store/runtime";
 import type { TaskBoard } from "@/modules/tasks";
 import { rankHostiles, threatTierOf } from "@/modules/defense/threatModel";
-import type { ActionBroker } from "@/modules/agents/actionBroker";
+import type { ActionBroker } from "@/modules/agents";
 
 /** 威胁期间保持存活的任务族 (cancel 判定用) */
 const DEFENSE_KINDS = ["defend", "retreat"] as const;

@@ -4,7 +4,7 @@
  * 需要「开局」能力，但开局流程属 console（人机指令层）——此处只定义接口与注册点，
  * 实现由组合根的 console 扩展注册，消除 core→console 反向依赖。
  */
-import type { RoomModeName } from '@/modules/strategy/roomModeAccess';
+import type { RoomModeName } from '@/modules/strategy';
 
 export type RoomAutoStartConfig = {
     layout?: string;

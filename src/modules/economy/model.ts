@@ -10,7 +10,7 @@ import type { TickContext } from "@/core";
 import type { WorldView } from "@/core/world";
 import { decayHotspots } from "@/modules/movement/trafficMonitor";
 import { foldRates, recordDelivery, recordProduction } from "@/modules/economy/ledger";
-import type { ActionResult } from "@/modules/agents/actionBroker";
+import type { ActionResult } from "@/modules/agents";
 
 /* ── 实测路程样本 (替补窗口) ── */
 

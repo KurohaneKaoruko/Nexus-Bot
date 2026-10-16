@@ -4,13 +4,10 @@
 // 捡散落并等待，不四处找货），满载按能量中枢的请求配送（spawn/ext/tower/cc/断供升级工，
 // 两阶段匹配 + 专线回流）。无请求时持能原地待命——搬运工永远在两点之间，不自主游荡。
 import { UNITS } from '@/constant/CreepConstant';
-import { THRESHOLDS } from '@/constant/Thresholds';
 import { getAssignedEnergyTarget } from '@/modules/economy/energyLogistics';
 import { createPendingLedger, evaluateHeadOnSwap, expectedOutputDelta, selectCarryDeposit } from '@/utils/haulerStrategy';
-import { ExternalMineAnalysis, type ExternalMineSourceStat } from '@/modules/external/externalMine';
-import { RoadMemory } from '@/modules/external/externalRoad';
-import { ensureMemoryCache } from '@/modules/agents/creepCache';
-import { isArrivedInRoom } from '@/modules/movement/arrival';
+import { ExternalMineAnalysis, RoadMemory, type ExternalMineSourceStat } from '@/modules/external';
+import { ensureMemoryCache } from '@/modules/prototype';
 
 // 源旁掉落捡取的最低数量：避免为个位数能量反复蹲点
 const SOURCE_DROP_PICKUP_MIN = 30;
@@ -183,7 +180,6 @@ export const clearDeliveryTarget = (creep: Creep): void => {
 
 /** 源线取货（导出供测试）：返回 true = 已满转送货 */
 export const runCarrierFetch = (creep: Creep): boolean => {
-    const mem = creep.memory as any;
     // 空载起手释放交付占领（卸干净才重认领）；取货线锁由 lockedSourceLine 按干涸与否自行释放，
     // 不在此清除——否则空车每 tick 换线白走
     if ((creep.store[RESOURCE_ENERGY] || 0) === 0) clearDeliveryTarget(creep);

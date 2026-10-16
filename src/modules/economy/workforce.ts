@@ -16,7 +16,7 @@ import type { HarvestSplitRecord } from "@/core/store/memorySchema";
 import { CARRY_STAFFING_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 import { roomModeProfileFor } from "@/modules/strategy";
-import { buildBody } from "@/modules/spawning/bodyFactory";
+import { buildBody } from "@/modules/spawning";
 import { destinationQuotas } from "@/modules/economy/quota";
 import { activeRemoteSourceCount } from "@/modules/economy/remoteMining";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";

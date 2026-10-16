@@ -1,9 +1,9 @@
 
 import { writeMoveWorkTileCandidates } from '@/utils/moveWork';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
-import { ensureMemoryCache } from '@/modules/agents/creepCache';
+import { ensureMemoryCache } from '@/modules/prototype';
 import { isArrivedInRoom } from '@/modules/movement/arrival';
-import { runWorkLayer, WORK_EVENTS, type WorkEvent } from '@/modules/agents/workLayer';
+import { runWorkLayer, WORK_EVENTS, type WorkEvent } from '@/modules/agents';
 import { UNITS } from '@/constant/CreepConstant';
 
 const NEAR_RANGE = 2;

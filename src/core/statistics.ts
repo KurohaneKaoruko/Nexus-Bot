@@ -1,6 +1,6 @@
 
 /** 统计模块 */
-import { getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
+import { getAllMissionFromPool } from '@/modules/spawning';
 import { getStatsMemory } from '@/core/store/accessor';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';

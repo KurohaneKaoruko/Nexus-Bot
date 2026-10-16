@@ -1,6 +1,6 @@
 
 import { addMissionToPool, getAllMissionFromPool, checkSameMissionInPool, updateMissionPool, deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
-import { observeRoom } from '@/modules/industry/controls/observeControl';
+import { observeRoom } from '@/modules/industry';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';
 import { OUTMINE_CONFIG } from '@/constant/BaseConstant';

@@ -1,5 +1,5 @@
 
-import { updateMissionPool, deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
+import { updateMissionPool, deleteMissionFromPool } from '@/modules/spawning';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { log } from '@/utils/log';
 import { THRESHOLDS } from "@/constant/Thresholds";

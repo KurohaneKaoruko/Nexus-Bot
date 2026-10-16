@@ -1,5 +1,5 @@
 
-import { evaluateSourceWorkTiles } from '@/modules/agents/creepSource';
+import { evaluateSourceWorkTiles } from '@/modules/prototype';
 import { getProfilerReport } from '@/core/cpuProfiler';
 
 /**

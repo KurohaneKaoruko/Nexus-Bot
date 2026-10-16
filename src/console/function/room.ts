@@ -3,7 +3,7 @@ import { resolveFirstRoomMode } from "@/console/roomAutoStart";
 import { BASE_CONFIG } from "@/constant/BaseConstant";
 import { clearRoomRelatedMemory, ensureRoomData, getAutoData, getRoomData, getStructData } from "@/core/store/accessor";
 import { parseShardRoomName } from "@/utils/shardRoom";
-import { clearMemoryCache } from "@/modules/agents/creepCache";
+import { clearMemoryCache } from "@/modules/prototype";
 import { resolveRoomName } from "@/console/argUtils";
 
 // 动态布局（无需布局中心）
@@ -85,7 +85,7 @@ export default {
             if (!opts?.quiet) globalThis.log(`已设置 ${target} 的布局中心为 (${x},${y})。`);
         } else {
             let PosFlag = Game.flags.storagePos || Game.flags.centerPos;
-            if (PosFlag && PosFlag.room!.name! === target) {
+            if (PosFlag && PosFlag.room?.name === target) {
                 roomMem['center'] = { x: PosFlag.pos.x, y: PosFlag.pos.y };
                 if (!opts?.quiet) globalThis.log(`已设置 ${target} 的布局中心为 (${PosFlag.pos.x},${PosFlag.pos.y})。`);
             }

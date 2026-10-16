@@ -1,7 +1,7 @@
 
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { runWorkLayer } from '@/modules/agents/workLayer';
-import { WORK_EVENTS, type WorkEvent } from '@/modules/agents/workLayer';
+import { runWorkLayer } from '@/modules/agents';
+import { WORK_EVENTS, type WorkEvent } from '@/modules/agents';
 
 const TRANSPORT_SOURCE_MOVE_OPTS: MoveToOpts = {
     visualizePathStyle: { stroke: '#ffaa00' },

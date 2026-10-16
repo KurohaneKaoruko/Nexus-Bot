@@ -3,10 +3,10 @@ import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { compress, decompress } from '@/utils/compress';
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { getRoomData } from '@/core/store/accessor';
-import { runWorkLayer } from '@/modules/agents/workLayer';
+import { runWorkLayer } from '@/modules/agents';
 import { type MoveWorkTileCandidate, writeMoveWorkTileCandidates } from '@/utils/moveWork';
-import { WORK_EVENTS, type WorkEvent } from '@/modules/agents/workLayer';
-import { ensureMemoryCache } from '@/modules/agents/creepCache';
+import { WORK_EVENTS, type WorkEvent } from '@/modules/agents';
+import { ensureMemoryCache } from '@/modules/prototype';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { WORKER_FAMILY_ROLES, getWorkerConstructionQuota, getWorkerUpgradeSlot, hasWorkerUpgradeDemand } from '@/modules/economy/roomWorkforce';
 import type { CreepCacheTarget } from '@/types/creep-cache.interface';
@@ -187,14 +187,14 @@ const BuildRepairWork = function (creep: Creep, candidates: MoveWorkTileCandidat
 
         const taskdata = task.data as WorkerTaskData;
         if (taskdata && taskdata.target) {
-            const target = Game.getObjectById(taskdata.target as Id<Structure|ConstructionSite>);
+            const taskTarget = Game.getObjectById(taskdata.target as Id<Structure|ConstructionSite>);
             const taskPoolName = resolvedTaskType;
-            if (resolvedTaskType === 'build' && target?.structureType == 'rampart') {
+            if (resolvedTaskType === 'build' && taskTarget?.structureType == 'rampart') {
                 cache.buildRampart = true;
                 cache.posInfo = taskdata.pos ?? 0;
             }
             const repairTaskHits = getRepairTaskHits(taskdata);
-            if (!target || (resolvedTaskType === 'repair' && 'hits' in target && repairTaskHits != null && target.hits >= repairTaskHits)){
+            if (!taskTarget || (resolvedTaskType === 'repair' && 'hits' in taskTarget && repairTaskHits != null && taskTarget.hits >= repairTaskHits)){
                 creep.room.deleteMissionFromPool(taskPoolName, task.id);
                 delete cache.task;
                 delete cache.taskid;

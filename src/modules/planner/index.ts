@@ -18,6 +18,8 @@ import { roomModeFor } from "@/modules/strategy";
 export { LayoutPlanner } from "./layoutPlanner";
 export { pickControllerBufferSpot } from "./controllerBuffer";
 export { pickSourceExtensionSpots } from "./sourceExtensions";
+export { default as LayoutVisual } from "./layoutVisual";
+export { layoutRoot, ensureLayoutRecord } from "./memory";
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));

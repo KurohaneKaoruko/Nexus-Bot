@@ -146,36 +146,36 @@ export default {
                     const dealAmount = order!.amount!;
                     const transferEnergyCost = calcTransactionCostSafe(dealAmount, roomName, order!.roomName!);
                     const dealCredit = dealAmount * order!.price!;
-                    let price = 0;  // 综合单价
+                    let unitPrice = 0;  // 综合单价
                     if(resType === RESOURCE_ENERGY) {
                         if(orderType === ORDER_SELL) {
                             // 购买能量：交易金额 ÷ (交易数量 - 传输消耗) = 实际综合单价
                             const net = dealAmount - transferEnergyCost;
                             if (net <= 0) continue;
-                            price = dealCredit / net;
+                            unitPrice = dealCredit / net;
                         } else {
                             // 出售能量：交易金额 ÷ (交易数量 + 传输消耗) = 实际综合单价
-                            price = dealCredit / (dealAmount + transferEnergyCost);
+                            unitPrice = dealCredit / (dealAmount + transferEnergyCost);
                         }
                     } else {
                         if(orderType === ORDER_SELL) {
                             // 购买资源：(交易金额 + 能量估算成本) ÷ 实际到账数量 = 实际综合单价
-                            price = (dealCredit + transferEnergyCost * ENERGY_COST) / dealAmount;  
+                            unitPrice = (dealCredit + transferEnergyCost * ENERGY_COST) / dealAmount;  
                         } else {
                             // 出售资源：(交易金额 - 能量估算成本) ÷ 实际消耗数量 = 实际综合单价
-                            price = (dealCredit - transferEnergyCost * ENERGY_COST) / dealAmount;
+                            unitPrice = (dealCredit - transferEnergyCost * ENERGY_COST) / dealAmount;
                         }
                     }
-                    if ((orderType === ORDER_SELL && price < bestPrice) ||
-                        (orderType === ORDER_BUY && price > bestPrice)) {
+                    if ((orderType === ORDER_SELL && unitPrice < bestPrice) ||
+                        (orderType === ORDER_BUY && unitPrice > bestPrice)) {
                         bestOrder = order;
-                        bestPrice = price;
+                        bestPrice = unitPrice;
                         bestDealCredit = dealCredit;
                         bestDealAmount = dealAmount;
                         bestTransferCost = transferEnergyCost;
                     }
                     console.log(`订单：${order!.id!} 交易数量：${dealAmount} 交易金额：${dealCredit.toFixed(4)} ` +
-                            `交易能量成本：${transferEnergyCost} 单价：${order!.price!} 综合单价：${price.toFixed(4)} ` +
+                            `交易能量成本：${transferEnergyCost} 单价：${order!.price!} 综合单价：${unitPrice.toFixed(4)} ` +
                             `订单余量：${order!.amount!} 目标房间：${order!.roomName!}`);
                 }
                 if (!bestOrder) {
@@ -504,38 +504,38 @@ function handleMarketTransaction(roomName: string, type: any, amount: number, or
         // 能量估算单价
         const ENERGY_COST = eCost;
 
-        let price = 0;  // 综合单价
+        let unitPrice = 0;  // 综合单价
         if(type === RESOURCE_ENERGY) {
             if(orderType === ORDER_SELL) {
                 // 购买能量：交易金额 ÷ (交易数量 - 传输消耗) = 实际综合单价
                 const net = dealAmount - transferEnergyCost;
                 if (net <= 0) continue;
-                price = dealCredit / net;
+                unitPrice = dealCredit / net;
             } else {
                 // 出售能量：交易金额 ÷ (交易数量 + 传输消耗) = 实际综合单价
-                price = dealCredit / (dealAmount + transferEnergyCost);
+                unitPrice = dealCredit / (dealAmount + transferEnergyCost);
             }
         } else {
             if(orderType === ORDER_SELL) {
                 // 购买资源：(交易金额 + 能量估算成本) ÷ 实际到账数量 = 实际综合单价
-                price = (dealCredit + transferEnergyCost * ENERGY_COST) / dealAmount;  
+                unitPrice = (dealCredit + transferEnergyCost * ENERGY_COST) / dealAmount;  
             } else {
                 // 出售资源：(交易金额 - 能量估算成本) ÷ 实际消耗数量 = 实际综合单价
-                price = (dealCredit - transferEnergyCost * ENERGY_COST) / dealAmount;
+                unitPrice = (dealCredit - transferEnergyCost * ENERGY_COST) / dealAmount;
             }
         }
 
-        if ((orderType === ORDER_SELL && price < bestPrice) ||
-            (orderType === ORDER_BUY && price > bestPrice)) {
+        if ((orderType === ORDER_SELL && unitPrice < bestPrice) ||
+            (orderType === ORDER_BUY && unitPrice > bestPrice)) {
             bestOrder = order;
-            bestPrice = price;
+            bestPrice = unitPrice;
             bestDealCredit = dealCredit;
             bestDealAmount = dealAmount;
             bestTransferCost = transferEnergyCost;
         }
 
         console.log(`订单：${order!.id!} 交易数量：${dealAmount} 交易金额：${dealCredit.toFixed(4)}` +
-                `交易能量成本：${transferEnergyCost} 单价：${order!.price!} 综合单价：${price.toFixed(4)}` +
+                `交易能量成本：${transferEnergyCost} 单价：${order!.price!} 综合单价：${unitPrice.toFixed(4)}` +
                 `订单余量：${order!.amount!} 目标房间：${order!.roomName!}`);
     }
 
@@ -573,11 +573,11 @@ function interShardMarket(type: any, amount: number, order: string, price: numbe
     const orderType = order == 'buy' ? ORDER_SELL : ORDER_BUY;
     let orders = Game.market.getAllOrders({type: orderType, resourceType: type});
     if (price > 0) {
-        orders = orders.filter((order: any) => {
+        orders = orders.filter((o: any) => {
             if (orderType === ORDER_SELL) {
-                return order.price <= price;
+                return o.price <= price;
             } else {
-                return order.price >= price;
+                return o.price >= price;
             }
         });
     }
@@ -588,14 +588,14 @@ function interShardMarket(type: any, amount: number, order: string, price: numbe
 
     const maxOrders = Math.min(orders.length, 50);
     for(let i = 0; i < maxOrders; i++){
-        const order = orders[i];
-        console.log(`订单：${order!.id!} 单价${order!.price!} 订单余量：${order!.amount!}`);
-        
-        if (!bestOrder || (orderType === ORDER_SELL && order!.price! < bestPrice) ||
-            (orderType === ORDER_BUY && order!.price! > bestPrice)){
-            bestOrder = order;
-            bestDealAmount = Math.min(amount, order!.amount!);
-            bestPrice = order!.price!;
+        const o = orders[i];
+        console.log(`订单：${o!.id!} 单价${o!.price!} 订单余量：${o!.amount!}`);
+
+        if (!bestOrder || (orderType === ORDER_SELL && o!.price! < bestPrice) ||
+            (orderType === ORDER_BUY && o!.price! > bestPrice)){
+            bestOrder = o;
+            bestDealAmount = Math.min(amount, o!.amount!);
+            bestPrice = o!.price!;
         }
     }
 

@@ -10,7 +10,7 @@ import type { TickContext } from "@/core";
 import type { HostileCreepSummary, RoomObservation } from "@/core/world";
 import type { NexusMemory, ThreatCategory } from "@/core/store/memorySchema";
 import { markUrgentReeval } from "@/core/store/runtime";
-import type { ActionResult } from "@/modules/agents/actionBroker";
+import type { ActionResult } from "@/modules/agents";
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));

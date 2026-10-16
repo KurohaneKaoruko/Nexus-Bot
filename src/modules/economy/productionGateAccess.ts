@@ -4,7 +4,7 @@
  * 开局序列：先矿工孵化到位、产出稳住，之后才放行升级/搬运扩张/外矿。
  */
 import { UNITS } from '@/constant/CreepConstant';
-import { getRoomMode } from '@/modules/strategy/roomModeAccess';
+import { getRoomMode } from '@/modules/strategy';
 import { buildRushBody } from '@/utils/rush';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { harvestStaffingOf } from '@/modules/economy/productionGate';

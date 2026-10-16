@@ -15,6 +15,7 @@ import { runAutoLab } from '@/modules/industry/autoLab'
 import { runAutoFactory } from '@/modules/industry/autoFactory'
 import { runAutoMarket } from '@/modules/industry/autoMarket'
 import { runAutoPower } from '@/modules/industry/autoPowerSpawn'
+import { NukeModule } from '@/modules/industry/nukeSync'
 import type { TickContext, TickModule } from '@/core'
 
 function runIndustry(room: Room): void {
@@ -38,6 +39,16 @@ function runIndustry(room: Room): void {
 	runAutoPower(room)
 }
 
+// 核弹请求→旗标同步 (QoS 门控独立于房间循环)
+export const Nukes: TickModule = {
+	name: 'nukes',
+	phase: 'planning',
+	band: 'P2',
+	run(_ctx: TickContext): void {
+		NukeModule.tick?.()
+	},
+}
+
 export const Industry: TickModule = {
 	name: 'industry',
 	phase: 'planning',
@@ -49,3 +60,20 @@ export const Industry: TickModule = {
 		}
 	},
 }
+
+// ── 公共面: 控制台命令族 (console 宿主装配) ──
+export { default as factory } from '@/modules/industry/console/factory'
+export { default as lab } from '@/modules/industry/console/lab'
+export { default as nuker } from '@/modules/industry/console/nuker'
+export { default as powerSpawn } from '@/modules/industry/console/powerspawn'
+export { default as spawn } from '@/modules/industry/console/spawn'
+export { default as terminal } from '@/modules/industry/console/terminal'
+
+// ── 公共面: 实验室预定 / 观测队列 ──
+export {
+	ensureBoostLabs,
+	getLabAB,
+	resolveLabFromMem,
+	type BoostLabsMemory,
+} from '@/modules/industry/labReservations'
+export { observeRoom } from '@/modules/industry/controls/observeControl'

@@ -16,3 +16,20 @@ export const InterShard: TickModule = {
 		InterShardModule.start?.();
 	},
 };
+
+// ── 公共面: 跨 shard 内存/指令/扩张计划读写 ──
+export {
+	ackCreepTransfer,
+	cleanupCreepTransfers,
+	cleanupOutboxAgainstRemoteAcks,
+	getKnownShardNames,
+	publishExpandCreepCounts,
+	publishExpandPlanSummary,
+	publishExpandStatus,
+	pullIncomingCommands,
+	pushInterShardCommand,
+	readInterShardLocalRoot,
+	readInterShardRemoteRoot,
+	removePublishedExpandPlan,
+	upsertCreepTransfer,
+} from "@/modules/intershard/interShard";

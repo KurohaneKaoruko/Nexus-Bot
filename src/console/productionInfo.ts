@@ -1,5 +1,5 @@
 
-import { resolveLabFromMem } from '@/modules/industry/labReservations';
+import { resolveLabFromMem } from '@/modules/industry';
 import { sanitizeMissionPoolMemory } from '@/core/store/accessor';
 
 const COLORS = {

@@ -14,17 +14,17 @@ import { Tasks } from "@/modules/tasks";
 import { Spawning } from "@/modules/spawning";
 import { Agents, Broker } from "@/modules/agents";
 import { Planner } from "@/modules/planner";
-import { RoomFeatures } from "@/modules/agents/prototype/features";
+import { RoomFeatures } from "@/modules/prototype/features";
 import { Teams } from "@/modules/teams";
 import { Industry } from "@/modules/industry";
-import { PowerCreeps } from "@/modules/industry/powerCreep";
+import { PowerCreeps } from "@/modules/prototype/PowerCreep";
 import { EventBus } from "@/core/event";
-import { Nukes } from "@/modules/teams";
+import { Nukes } from "@/modules/industry";
 import { InterShard } from "@/modules/intershard";
-import { Expansion } from "@/modules/external/expand";
+import { Expansion } from "@/modules/external";
 import { EndPhase } from "@/core/endPhase";
 import { Visuals } from "@/modules/visuals";
-import { Pixel } from "@/modules/economy/pixel";
+import { Pixel } from "@/modules/economy";
 
 const nexus = createNexus(STRONGHOLD_PROFILE);
 

@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import { getMissionNumInPool } from '@/modules/spawning/mission/pool/MissionPools';
+import { getMissionNumInPool } from '@/modules/spawning';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { getStructData } from '@/core/store/accessor';
 

@@ -2,14 +2,14 @@
 import { deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { log } from '@/utils/log';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { isUnitId, UNITS, UnitData, type UnitId } from '@/constant/CreepConstant';
+import { isUnitId, UNITS, type UnitId } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { generateCreepName } from '@/utils/naming';
 import { decompressBodyConfig } from '@/utils/compress';
-import { getRoomMode, getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
+import { getRoomMode, getRoomModeProfile } from '@/modules/strategy';
 import { isEnergyCheckEnabled } from '@/config/capabilities';
 import { isRoomTickAligned } from '@/utils/roomPhase';
-import { drawSpawnInfo } from '@/modules/visuals/roomPanels';
+import { drawSpawnInfo } from '@/modules/visuals';
 // 模式判定统一走 roomModeAccess (托管配置缺 mode 时按订阅档位兜底);
 // 此前的本地残缺版缺 cpuLimit 兜底, 冲级局整条 legacy 链以 main 跑,
 // 与主线模式分治 (sim 实证降档链全程不受 rush 政策约束)

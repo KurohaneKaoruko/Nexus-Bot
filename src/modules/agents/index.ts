@@ -8,7 +8,7 @@ import type { TickContext, TickModule } from "@/core";
 import { createTaskBoard } from "@/modules/tasks";
 import { ensureBroker } from "@/modules/agents/sharedBroker";
 import { runAgents } from "@/modules/agents/agentSystem";
-import { betterMoveApi } from "@/modules/movement/index";
+import { betterMoveApi } from "@/modules/movement";
 import { noteMoveIntent, updateCongestion } from "@/modules/movement/trafficMonitor";
 import { recordActionRates } from "@/modules/economy";
 import { recordTowerSpend } from "@/modules/defense";
@@ -73,3 +73,7 @@ export const Broker: TickModule = {
 		}
 	},
 };
+
+// ── 公共面: 行动结果类型 / 工作层 (经济角色单位消费) ──
+export type { ActionBroker, ActionResult } from "@/modules/agents/actionBroker";
+export { WORK_EVENTS, runWorkLayer, type WorkEvent } from "@/modules/agents/workLayer";
