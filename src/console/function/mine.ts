@@ -1,8 +1,8 @@
 
-import { addMissionToPool, checkSameMissionInPool, deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
+import { addMissionToPool, checkSameMissionInPool, deleteMissionFromPool } from '@/modules/spawning';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { CostMatrixCache, RoadMemory, RoadBuilder, PathPlanner, RoadVisual } from '@/modules/external/externalRoad';
-import { HighwayMineVisual } from '@/modules/visuals/highwayMine';
+import { CostMatrixCache, RoadMemory, RoadBuilder, PathPlanner, RoadVisual } from '@/modules/external';
+import { HighwayMineVisual } from '@/modules/visuals';
 import { getOutMineData, getRoomData } from '@/core/store/accessor';
 
 const CENTER_ROOM_REGEX = /^[EW]\d*[456][NS]\d*[456]$/;

@@ -1,8 +1,8 @@
 
 import { qos } from '@/core/qos';
 import { ExternalMine, ExternalMineAnalysis, type ExternalMineTiming } from '@/modules/external/externalMine';
-import { getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
-import { registerRemoteIncomeProvider } from '@/modules/economy/roomWorkforce';
+import { getRoomModeProfile } from '@/modules/strategy';
+import { registerRemoteIncomeProvider } from '@/modules/economy';
 
 // 外矿真实收入富口径注册：升级定编（estimateRoomEnergyIncome）由此读到
 // 「净收入 × min(采集比, 搬运比)」的瓶颈口径——采集断档/运力不足时，
@@ -15,7 +15,7 @@ export const registerOutMineIncomeProvider = (): void => {
     registerRemoteIncomeProvider((room) => ExternalMineAnalysis.getRoomRemoteIncome(room));
 };
 
-/** 外矿采集模块 */
+/** 外矿采集模块（休眠态：外矿活链是 economy/remoteMining 任务板的 planRemoteHarvest） */
 export default class OutMine extends Room {
     override outMine() {
         const qosLevel = ExternalMine.prepareRoom(this);
