@@ -8,8 +8,8 @@ const ENABLE_TEAM_MOVE_VISUAL = true
 /**
  * 战斗绘制
  */
-export default class TeamVisual {
-    private static shouldDraw(): boolean {
+const TeamVisual = {
+    shouldDraw(): boolean {
         const qosLevel =
             (globalThis as any).qos?.getQoS?.()?.level ||
             (globalThis as any).QoS?.level ||
@@ -20,12 +20,12 @@ export default class TeamVisual {
             return Game.time % 2 === 0
         }
         return true
-    }
+    },
 
     /**
      * 绘制房间所有点位数据
      */
-    public static drawRoomArray(roomName: string, roomArray: CostMatrix | RoomArray, color?: string) {
+    drawRoomArray(roomName: string, roomArray: CostMatrix | RoomArray, color?: string) {
         if (!this.shouldDraw()) return
         const visual = new RoomVisual(roomName)
         for (let x = 0; x < 50; x++) {
@@ -34,21 +34,21 @@ export default class TeamVisual {
                 visual.text(value.toString(), x, y, { font: 0.35, color: color ?? 'white' })
             }
         }
-    }
+    },
 
     /**
      * 绘制塔伤分布图
      */
-    public static drawTowerDamageMap(roomName: string) {
+    drawTowerDamageMap(roomName: string) {
         if (!this.shouldDraw()) return
         const damageMap = TeamCache.getTowerDamageMap(roomName)
         this.drawRoomArray(roomName, damageMap, '#ff0000')
-    }
+    },
 
     /**
      * 绘制小队状态
      */
-    public static drawTeamStatus(team: Team) {
+    drawTeamStatus(team: Team) {
         if (!this.shouldDraw()) return
         const colors: { [status in Exclude<typeof team.status, undefined>]: string } = {
             // 攻击绿色
@@ -72,12 +72,12 @@ export default class TeamVisual {
                 creep.room.visual.text('BR', creep.pos.x, creep.pos.y - 0.6, { font: 0.4, color: '#00ffff' })
             }
         })
-    }
+    },
 
     /**
      * 绘制小队每个爬需要的治疗量
      */
-    public static drawCreepHealNeed(team: Team) {
+    drawCreepHealNeed(team: Team) {
         if (!this.shouldDraw()) return
         team.creeps.forEach((creep: any) => {
             if (!creep['_heal_need']) {
@@ -90,34 +90,34 @@ export default class TeamVisual {
                 color: '#00ff00',
             })
         })
-    }
+    },
 
     /**
      * 绘制目标位置
      */
-    public static drawTargets(team: Team) {
+    drawTargets(team: Team) {
         if (!this.shouldDraw()) return
         (team as any)['_targets']?.forEach((target: any) => {
             if (!target?.pos) return
             target.room?.visual.circle(target.pos.x, target.pos.y, { fill: '#6141cc', radius: 0.5 })
         })
-    }
+    },
 
     /**
      * 绘制需要避让的位置
      */
-    public static drawAvoidObjs(team: Team) {
+    drawAvoidObjs(team: Team) {
         if (!this.shouldDraw()) return
         (team as any)['_avoidObjs']?.forEach(({ pos }: any) => {
             const visual = new RoomVisual(pos.roomName)
             visual.circle(pos.x, pos.y, { fill: '#ff0000', radius: 0.5 })
         })
-    }
+    },
 
     /**
      * 绘制推进目标点（targetPos）
      */
-    public static drawTargetPos(team: Team) {
+    drawTargetPos(team: Team) {
         if (!this.shouldDraw()) return
         const tp = team.cache?.targetPos
         if (!tp) return
@@ -125,7 +125,7 @@ export default class TeamVisual {
         const visual = new RoomVisual(pos.roomName)
         visual.circle(pos.x, pos.y, { stroke: '#00ffff', radius: 0.7, fill: 'transparent' })
         visual.text(team.name, pos.x, pos.y - 0.6, { font: 0.4, color: '#00ffff' })
-    }
+    },
 
     /**
      * 绘制队伍本 tick 的移动方向（含跨房穿边的 Hold 状态）。
@@ -136,7 +136,7 @@ export default class TeamVisual {
      * - 若 lastMoveHold 为 true：表示本 tick 选择停 1 tick 等待边界传送，以保持 quad 阵型。\n
      * - 为了在跨房边界也能看清方向，箭头绘制为“短箭头”（不跨房连线）。
      */
-    public static drawMoveDirection(team: Team) {
+    drawMoveDirection(team: Team) {
         if (!this.shouldDraw()) return
         if (!ENABLE_TEAM_MOVE_VISUAL) return
 
@@ -188,5 +188,7 @@ export default class TeamVisual {
             const visual = new RoomVisual(pos.roomName)
             visual.text(`HOLD ${dd.arrow}`, pos.x, pos.y - 1.2, { font: 0.5, color, stroke: '#1b1b1b', strokeWidth: 0.05 })
         }
-    }
-}
+    },
+};
+
+export default TeamVisual;

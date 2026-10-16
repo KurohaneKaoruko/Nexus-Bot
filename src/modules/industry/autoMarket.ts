@@ -136,7 +136,7 @@ function AutoBuy(roomName: string, item: any) {
     if (!terminal) return;
 
     const terminalAmount = ((terminal.store as any) [resourceType] || 0);
-    const storageAmount = ((room!.storage?.store! as any) [resourceType]! || 0);
+    const storageAmount = (((room!.storage ?? storage).store as any) [resourceType] || 0);
 
     // 资源存量
     let totalAmount = 0;
@@ -179,21 +179,6 @@ function AutoBuy(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))} | ${kv('建议价', fmtPrice(suggested))} | ${kv('限价', priceLimit === Infinity ? 'INFINITY' : fmtPrice(priceLimit))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_OWNER:
-                        ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                        break;
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('BUY', LOG_COLORS.good, true)} ${c('调价失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('目标价', fmtPrice(nextPrice))} | ${kv('当前价', fmtPrice(existingOrder.price))}`,
@@ -212,18 +197,6 @@ function AutoBuy(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('BUY', LOG_COLORS.good, true)} ${c('扩单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('扩单量', String(needExtend))} | ${kv('最小扩单', String(minOrderAmount))}`,
@@ -252,24 +225,6 @@ function AutoBuy(roomName: string, item: any) {
             `${kv('限价', priceLimit === Infinity ? 'INFINITY' : fmtPrice(priceLimit))} | ${kv('阈值', `${totalAmount}/${amount} (${orderAmount}>=${minOrderAmount})`)}`,
         ]);
     } else {
-        let ErrorDescription: string;
-        switch (result) {
-            case ERR_NOT_OWNER:
-                ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                break;
-            case ERR_NOT_ENOUGH_RESOURCES:
-                ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                break;
-            case ERR_FULL:
-                ErrorDescription = '您不能创建超过 300 个订单';
-                break;
-            case ERR_INVALID_ARGS:
-                ErrorDescription = '提供了无效的参数';
-                break;
-            default:
-                ErrorDescription = '未知错误';
-                break;
-        }
         logAuto([
             `${c('BUY', LOG_COLORS.good, true)} ${c('创建订单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
             `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(result))} | ${kv('数量', String(orderAmount))} | ${kv('价格', fmtPrice(price))}`,
@@ -293,7 +248,7 @@ function AutoSell(roomName: string, item: any) {
     if (!terminal) return;
 
     const terminalAmount = ((terminal.store as any) [resourceType] || 0);
-    const storageAmount = ((storage?.store as any) [resourceType] || 0);
+    const storageAmount = ((storage.store as any) [resourceType] || 0);
     const totalAmount = (!storage || !terminal.pos.inRangeTo(storage, 2)) ? terminalAmount : (terminalAmount + storageAmount);
     
     if (totalAmount < amount) return;
@@ -349,21 +304,6 @@ function AutoSell(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))} | ${kv('建议价', fmtPrice(suggested))} | ${kv('限价', fmtPrice(priceLimit))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_OWNER:
-                        ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                        break;
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('SELL', LOG_COLORS.warning, true)} ${c('调价失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('目标价', fmtPrice(nextPrice))} | ${kv('当前价', fmtPrice(existingOrder.price))}`,
@@ -382,18 +322,6 @@ function AutoSell(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('SELL', LOG_COLORS.warning, true)} ${c('扩单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('扩单量', String(needExtend))} | ${kv('最小扩单', String(minOrderAmount))}`,
@@ -422,24 +350,6 @@ function AutoSell(roomName: string, item: any) {
             `${kv('限价', fmtPrice(priceLimit))} | ${kv('阈值', `${totalAmount}/${amount} (${orderAmount}>=${minOrderAmount})`)}`,
         ]);
     } else {
-        let ErrorDescription: string;
-        switch (result) {
-            case ERR_NOT_OWNER:
-                ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                break;
-            case ERR_NOT_ENOUGH_RESOURCES:
-                ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                break;
-            case ERR_FULL:
-                ErrorDescription = '您不能创建超过 300 个订单';
-                break;
-            case ERR_INVALID_ARGS:
-                ErrorDescription = '提供了无效的参数';
-                break;
-            default:
-                ErrorDescription = '未知错误';
-                break;
-        }
         logAuto([
             `${c('SELL', LOG_COLORS.warning, true)} ${c('创建订单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
             `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(result))} | ${kv('数量', String(orderAmount))} | ${kv('价格', fmtPrice(price))}`,
@@ -489,7 +399,7 @@ function AutoDealSell(roomName: string, item: any) {
     const terminal = room!.terminal!;
     if (!terminal || terminal.cooldown > 0) return;
     const terminalAmount = (terminal.store as any) [resourceType] || 0;
-    const storageAmount = (room!.storage?.store! as any) [resourceType]! || 0;
+    const storageAmount = (room!.storage!.store as any) [resourceType] || 0;
     const totalAmount = terminalAmount + storageAmount;
     
     if (totalAmount <= amount) return;
@@ -642,15 +552,15 @@ function AutoDeal(
     const r2 = bestOrder.roomName;
 
     if (result === OK) {
-        const amount = TotalDealAmount;
-        const price = TotalPrice.toFixed(3);
+        const dealAmount = TotalDealAmount;
+        const totalPrice = TotalPrice.toFixed(3);
         const energyCost = TransferEnergyCost.toFixed(3);
         const unitPrice = bestCost.toFixed(3);
         const linearDistance = Game.map.getRoomLinearDistance(r1!, r2!);
         logAuto([
             `${c('DEAL', LOG_COLORS.theme, true)} ${c('成功', LOG_COLORS.good, true)} ${c(r1, LOG_COLORS.theme, true)} ${c(direction, LOG_COLORS.neutral)} ${c(r2!, LOG_COLORS.theme, true)} ${c(action, orderType === ORDER_SELL ? LOG_COLORS.good : LOG_COLORS.warning, true)}`,
-            `${kv('资源', resTag(res))} | ${kv('数量', String(amount))} | ${kv('订单', mono(bestOrder.id, LOG_COLORS.neutral))}`,
-            `${kv('挂单价', fmtPrice(bestOrder.price))} | ${kv('总金额', price)} | ${kv('能量成本', energyCost)}`,
+            `${kv('资源', resTag(res))} | ${kv('数量', String(dealAmount))} | ${kv('订单', mono(bestOrder.id, LOG_COLORS.neutral))}`,
+            `${kv('挂单价', fmtPrice(bestOrder.price))} | ${kv('总金额', totalPrice)} | ${kv('能量成本', energyCost)}`,
             `${kv('综合单价', unitPrice)} | ${kv('距离', String(linearDistance))} | ${kv('credits', Game.market.credits.toFixed(0))}`,
         ]);
     } else {

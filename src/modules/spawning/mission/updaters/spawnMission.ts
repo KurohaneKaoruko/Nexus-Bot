@@ -1,19 +1,18 @@
 
 import { addMissionToPool, getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { isUnitId, UNITS, UnitData, UnitLevelData, type UnitId } from '@/constant/CreepConstant';
-import { decompress, decompressBodyConfig } from '@/utils/compress';
+import { isUnitId, UNITS, UnitData, type UnitId } from '@/constant/CreepConstant';
+import { decompressBodyConfig } from '@/utils/compress';
 import { THRESHOLDS } from '@/constant/Thresholds';
-import { getRoomData } from '@/core/store/accessor';
-import { estimateRoomEnergyIncome, getUpgradeWorkTarget, getRoomMode, isUpgraderSpawnUrgent, UPGRADE_URGENT_SPAWN_LEVEL, UPGRADE_NEEDED_TTD } from '@/modules/economy/roomWorkforce';
+import { estimateRoomEnergyIncome, getUpgradeWorkTarget, isUpgraderSpawnUrgent, UPGRADE_URGENT_SPAWN_LEVEL, UPGRADE_NEEDED_TTD } from '@/modules/economy';
+import { getRoomMode } from '@/modules/strategy';
 import { buildRushBody } from '@/utils/rush';
-import { isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy/productionGateAccess';
+import { isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy';
 import { isEnergyCheckEnabled, isRaceCompat } from '@/config/capabilities';
 
 /** rush 期走容量现算体型的角色集合（其余角色维持动态取表路径） */
 const RUSH_BODY_ROLES = new Set<string>([UNITS.harvester, UNITS.carrier, UNITS.upgrader, UNITS.worker]);
 import { buildUpgraderBodyConfig } from '@/utils/upgradeBody';
-import { getDowngradedLogisticsCountByAssignedRoom, hasSoonDeadCreepByAssignedRoomRole } from '@/utils/creepTickIndex';
 import {
     pruneDelayedUpgraderSpawnMissions,
     pruneRushRemoteMissions,

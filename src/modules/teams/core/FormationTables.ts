@@ -14,8 +14,9 @@ export const TOWARD_STEPS: Record<TowardName, number> = {
     '↑': 0, '↗': 1, '→': 2, '↘': 3, '↓': 4, '↙': 5, '←': 6, '↖': 7,
 };
 const TOWARD_ORDER: TowardName[] = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
-const COS = [1, 0.707, 0, -0.707, -1, -0.707, 0, 0.707];
-const SIN = [0, 0.707, 1, 0.707, 0, -0.707, -1, -0.707];
+const SQRT1_2 = Math.SQRT1_2;
+const COS = [1, SQRT1_2, 0, -SQRT1_2, -1, -SQRT1_2, 0, SQRT1_2];
+const SIN = [0, SQRT1_2, 1, SQRT1_2, 0, -SQRT1_2, -1, -SQRT1_2];
 
 export type TemplateSlot = {
     x: number;

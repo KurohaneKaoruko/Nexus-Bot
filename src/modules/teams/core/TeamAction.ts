@@ -7,15 +7,6 @@ import TeamVisual from '@/modules/teams/core/TeamVisual';
 import RoomArray from '@/modules/teams/core/RoomArray'
 import { formationTemplate, sectorToward, shapeOfCount, type TowardName } from '@/modules/teams/core/FormationTables';
 
-/** 引擎对无视野房间的格子会抛访问异常：无法判定的格子按可通行放行，不阻断队伍处理 */
-const safeWalkable = (pos: RoomPosition): boolean => {
-    try {
-        return pos.walkable(true);
-    } catch {
-        return true;
-    }
-};
-
 const emptyCostMatrix = new PathFinder.CostMatrix()
 const tempRoomArray = new RoomArray()
 const QUAD_ASSIGN_PATTERNS_4 = TeamUtils.kPermutations([0, 1, 2, 3], 4)
@@ -24,21 +15,21 @@ const QUAD_ASSIGN_PATTERNS_3 = TeamUtils.kPermutations([0, 1, 2, 3], 3)
 /**
  * 小队行动
  */
-export default class TeamAction {
+const TeamAction = {
     /**
      * 位置掩码映射
      */
-    public static POS_MARK_MAP = {
+    POS_MARK_MAP : {
         ['↖']: [0, 0],
         ['↗']: [1, 0],
         ['↙']: [0, 1],
         ['↘']: [1, 1],
-    }
+    },
 
     /**
      * 低于多少血量的建筑视为可以通行
      */
-    public static structHitLimit = 10e3;
+    structHitLimit : 10e3,
 
 
     // 调整朝向
@@ -53,7 +44,7 @@ export default class TeamAction {
      * - 仅做角位的微调（move 1 步），不负责集结成矩阵；队形打散时应由 Gather 负责重组。\n
      * - 返回值用于 TeamClass.moved 标记：避免在不满足条件时“空转占用本 tick 的移动机会”。
      */
-    public static AdjustToward(team: Team): boolean {
+    AdjustToward(team: Team): boolean {
         if (team.creeps.length < 3) return false;
         if (!TeamUtils.isQuad(team)) return false;
         if (!TeamUtils.inSameRoom(team)) return false;
@@ -110,7 +101,7 @@ export default class TeamAction {
         }
         // 这里不需要精确判断每个 creep 是否真的动了：只要满足前置，说明本 tick 尝试纠偏
         return true;
-    }
+    },
 
     // 成员集结
     /**
@@ -124,7 +115,7 @@ export default class TeamAction {
      * - quad：计算左上角集结点，检查 2x2 周围地形/建筑/creep，满足条件则各自 moveTo 对应角位。\n
      * - 靠边/空间不足时会返回 false，避免硬集结导致堵边或撞墙。
      */
-    public static Gather(team: Team): boolean {
+    Gather(team: Team): boolean {
         // 0/1 人队伍不需要集结
         if (team.creeps.length <= 1) return false
         // 线性队形（或人数不足以构成 quad）走 line 集结逻辑
@@ -134,7 +125,7 @@ export default class TeamAction {
         
         // 其他队形不处理
         return false;
-    }
+    },
 
     /**
      * line 队形集结/归位（包含 2/3/4 人“跟随队首”的统一处理）。
@@ -144,7 +135,7 @@ export default class TeamAction {
      * - 在 homeRoom 内会尝试向旗帜/目标房/出口方向收敛，以便从安全区出发。\n
      * - 其余情况：队首不动/由外层驱动，后续成员跟随前一名成员归位。\n
      */
-    public static GatherLine(team: Team): boolean {
+    GatherLine(team: Team): boolean {
         // 3/4 人队伍内部顺序重排：保证“队首→队尾”的跟随链更稳定
         let creeps: Creep[] = []
         if (team.creeps.length === 4) {
@@ -196,7 +187,7 @@ export default class TeamAction {
             creeps[i].moveTo! (creeps[i - 1]);
         }
         return true;
-    }
+    },
     /**
      * quad 队形集结/归位：优先保证“能 1 tick 恢复就 1 tick 恢复”，避免高 CPU 的全量搜索。
      *
@@ -205,23 +196,23 @@ export default class TeamAction {
      * - 若存在：优先精确占位（与 toward 一致），否则选择任意占位先恢复 quad（占位由 AdjustToward 纠偏）。\n
      * - 若不存在：退化为在最近可用 2x2 点上做一次“精确 vs 任意”的步数比较（仅对单个点），避免全局最优搜索。\n
      */
-    public static GatherQuad(team: Team): boolean {
+    GatherQuad(team: Team): boolean {
         let [ A1, A2, B1, B2 ] = team.creeps;
         // 根据 team.toward 推导“精确占位”时每个角位应该由哪个 creep 承担（不改变 creeps 数组顺序）
         let LT = A1, RT = A2,
             LB = B1, RB = B2;
         switch (team.toward) {
         case '←':
-            LT = A2, RT = B2,
-            LB = A1, RB = B1;
+            LT = A2; RT = B2;
+            LB = A1; RB = B1;
             break;
         case '→':
-            LT = B1, RT = A1,
-            LB = B2, RB = A2;
+            LT = B1; RT = A1;
+            LB = B2; RB = A2;
             break;
         case '↓':
-            LT = B2, RT = B1,
-            LB = A2, RB = A1;
+            LT = B2; RT = B1;
+            LB = A2; RB = A1;
             break;
         }
         // 选一个锚点：优先用推导出的 LT 成员位置；缺失时用 RT 往左一格作为近似锚点
@@ -412,12 +403,12 @@ export default class TeamAction {
         }
         bestAssign.forEach(([creep, target]) => moveToTarget(creep, target))
         return true;
-    }
+    },
 
     /**
      * 线性队形组成四人队形
      */
-    public static formLineToQuad(team: Team) {
+    formLineToQuad(team: Team) {
         if (team.creeps.length < 3) return false;
         if (!TeamUtils.isLinear(team)) return false;
         let creeps = team.creeps;
@@ -451,10 +442,10 @@ export default class TeamAction {
         }
 
         // 二分匹配
-        const bipartiteMatch = (creeps: Creep[], pos: RoomPosition[]) => {
+        const bipartiteMatch = (members: Creep[], pos: RoomPosition[]) => {
             // 检查后两个位置是否有效
             if (pos.find((p) => !creepPosHashSet.has(p.hashCode()) && !p.walkable(true))) return {}
-            return TeamUtils.creepPosBipartiteMatch(creeps, pos)
+            return TeamUtils.creepPosBipartiteMatch(members, pos)
         }
 
         let result: Record<string, RoomPosition> = {}
@@ -506,7 +497,7 @@ export default class TeamAction {
             }
         })
         return true
-    }
+    },
 
     // 线性队形移动到目标
     /**
@@ -521,7 +512,7 @@ export default class TeamAction {
      * - 队首处于边界时允许直接 moveTo 目标，用于跨房/出入口通过。\n
      * - 内部会在同房且已到达/疲劳时早退，避免无意义移动。
      */
-    public static LinearMove(team: Team, pos: RoomPosition = team.flag?.pos, reverse = false): void {
+    LinearMove(team: Team, pos: RoomPosition = team.flag?.pos, reverse = false): void {
         if (team.creeps.length == 0) return;
         if (!pos) pos = team.flag?.pos;
         if (!pos) return;
@@ -617,7 +608,7 @@ export default class TeamAction {
         if (Object.keys(creepDirections).length > 0) {
             team.cache.lastCreepMoveDirections = creepDirections
         }
-    }
+    },
 
 
     // 方阵移动
@@ -630,7 +621,7 @@ export default class TeamAction {
      * - 2 人队伍在无方向时会尝试把边界上的成员挪到内侧空位，减少“贴边抖动”。\n
      * - 有 fatigue 时直接停止，避免队形撕裂。
      */
-    public static move(team: Team, direction: DirectionConstant): void {
+    move(team: Team, direction: DirectionConstant): void {
         // 存在疲劳的creep则停止
         if (TeamUtils.hasCreepFatigue(team)) return;
 
@@ -699,7 +690,7 @@ export default class TeamAction {
             }
         }
         return;
-    }
+    },
 
     // 方阵移动到目标
     /**
@@ -708,18 +699,18 @@ export default class TeamAction {
      * @param team 队伍实例
      * @param targetPos 目标位置
      */
-    public static QuadMoveTo(team: Team, targetPos: RoomPosition): void {
+    QuadMoveTo(team: Team, targetPos: RoomPosition): void {
         // 获取移动方向
         let d = this.getTeamMoveDirection(team, [{pos:targetPos}]);
         return this.move(team, d);
-    }
+    },
 
 
     /**
      * 计算 tick 步内能否走到目标指定范围内
      * 用于 tick 较小的场景
      */
-    public static touchableNTickInRange(
+    touchableNTickInRange(
         creep: Creep,
         targetPos: RoomPosition,
         tick: number,
@@ -756,7 +747,7 @@ export default class TeamAction {
                     })
                     
 
-                    ((Game as any) ['_username_costs'] as any) [id] = costs
+                    ;((Game as any) ['_username_costs'] as any) [id] = costs
                 }
 
                 return ((Game as any) ['_username_costs'] as any) [id]
@@ -764,12 +755,12 @@ export default class TeamAction {
         })
 
         return !result.incomplete
-    }
+    },
 
     /**
      * 锁定目标位置
      */
-    public static focusTarget(team: Team, originPos: RoomPosition) {
+    focusTarget(team: Team, originPos: RoomPosition) {
         let targets: (Creep | Structure)[] = []
         if (team['_attackTargets']?.length) {
             targets = (team as any) ['_attackTargets']
@@ -777,12 +768,12 @@ export default class TeamAction {
             targets = team['_targets'].filter((s) => 'hits' in s) as (Creep | Structure)[]
         }
         return originPos.findClosestByRange(targets)
-    }
+    },
 
     /**
      * 扩展队形（cross/square3）移动入口：同房散队模板集结；成阵后按索敌目标/锚点八向群移。
      */
-    public static execMoveExtended(team: Team, anchor: RoomPosition | undefined): boolean {
+    execMoveExtended(team: Team, anchor: RoomPosition | undefined): boolean {
         const shape = shapeOfCount(team.creeps.length);
         if (!shape) return false;
         const goal = team['_targets']?.[0]?.pos ?? anchor;
@@ -824,7 +815,7 @@ export default class TeamAction {
 
         // ── 全员同房 ──
         if (TeamUtils.inSameRoom(team)) {
-            const inTargetRoom = team.creeps[0].room.name! === team.targetRoom;
+            const inTargetRoom = team.creeps[0].room.name === team.targetRoom;
 
             // 目标房内：成阵 → 集火整队推进（execAttack 同步开火）
             if (inTargetRoom) {
@@ -865,7 +856,7 @@ export default class TeamAction {
         if (!direction) return false;
         TeamAction.move(team, direction);
         return true;
-    }
+    },
 
     /**
      * 扩展队形模板集结：成员按角色分配到当前朝向的旋转模板占位
@@ -875,7 +866,7 @@ export default class TeamAction {
      * 集结锚点：成员质心；压 spawn 群时沿目标房方向推到 ≥4 格外，
      * 并按 teamID 散列沿推进方向垂直向错开多队集结点（±6 格内）。
      */
-    public static stagingAnchorOf(teamName: string, creeps: Creep[], targetRoom: string | undefined): RoomPosition {
+    stagingAnchorOf(teamName: string, creeps: Creep[], targetRoom: string | undefined): RoomPosition {
         const roomName = creeps[0].room.name!;
         const clamp = (v: number) => Math.max(1, Math.min(48, v));
         const xs = creeps.map(c => c.pos.x), ys = creeps.map(c => c.pos.y);
@@ -915,9 +906,9 @@ export default class TeamAction {
             }
         }
         return new RoomPosition(cx, cy, roomName);
-    }
+    },
 
-    public static GatherByTemplate(team: Team, shape: 'cross' | 'square3'): boolean {
+    GatherByTemplate(team: Team, shape: 'cross' | 'square3'): boolean {
         if (team.creeps.length === 0) return false;
         const slots = formationTemplate(shape, team.toward as TowardName);
         const clamp = (v: number) => Math.max(1, Math.min(48, v));
@@ -950,19 +941,19 @@ export default class TeamAction {
             c.moveTo(new RoomPosition(clamp(cx), clamp(cy), roomName));
         }
         return true;
-    }
+    },
 
     /**
      * 扩展队形朝向旋转：按攻击目标相对队伍中心的八向扇区解析新朝向。
      */
-    public static switchFormationPos(team: Team, targetPos: RoomPosition): boolean {
+    switchFormationPos(team: Team, targetPos: RoomPosition): boolean {
         const center = TeamUtils.getTeamPos(team);
         if (!center) return false;
         const toward = sectorToward(targetPos.x - center.x, targetPos.y - center.y);
         if (team.toward === toward) return false;
         team.toward = toward;
         return true;
-    }
+    },
 
 
      /**
@@ -970,7 +961,7 @@ export default class TeamAction {
      *
      * @returns 是否变换过队形
      */
-     public static switchTeam4Pos(team: Team) {
+     switchTeam4Pos(team: Team) {
         if (team.status === 'flee') return false
 
         const creeps = team.creeps
@@ -1025,12 +1016,12 @@ export default class TeamAction {
             team.cache.lastTowardSwitchTick = Game.time
         }
         return switched
-    }
+    },
 
     /**
      * 根据缓存路径返回方向
      */
-    public static getDirectionByCachePath(team: Team) {
+    getDirectionByCachePath(team: Team) {
         const originPos = TeamUtils.getTeamPos(team)!
         const path = TeamCache.cacheTeamPath[team.name]
 
@@ -1051,12 +1042,12 @@ export default class TeamAction {
         }
 
         return direction
-    }
+    },
 
     /**
      * 是否有东西挡在路径上
      */
-    public static hasObstacleInPath(creeps: Creep[], nextPos: RoomPosition) {
+    hasObstacleInPath(creeps: Creep[], nextPos: RoomPosition) {
         if (!nextPos) return true
 
         const directions = [RIGHT, BOTTOM_RIGHT, BOTTOM]
@@ -1067,14 +1058,14 @@ export default class TeamAction {
         const creepsPosSet = new Set(creeps.map((creep) => creep.pos.hashCode()))
 
         return !!posList.find((pos) => !creepsPosSet.has(pos.hashCode()) && !pos.walkable(true))
-    }
+    },
 
     /**
      * 相邻移动，小队中只有一个爬与目标相邻时，通过该方法获取下一步的移动方向使得攻击姿态最佳（有两个爬相邻）
      *
      * @return 返回移动的方向
      */
-    public static getSamllMoveDirection(team: Team, targetPos: RoomPosition) {
+    getSamllMoveDirection(team: Team, targetPos: RoomPosition) {
         const creeps = team.creeps;
         // 左上角坐标
         const originPos = TeamUtils.getTeamPos(team)!
@@ -1088,9 +1079,9 @@ export default class TeamAction {
                 return new RoomPosition(pos.x + x!, pos.y + y!, pos.roomName)
             })
             // 移动后需要检查的小队位置，如果有位置等于现有的爬的位置则不用检查
-            const nextCheckPos = nextTeamPos.filter((pos) => !creeps.some((creep) => creep.pos.isEqualTo(pos)))
+            const nextCheckPos = nextTeamPos.filter((np) => !creeps.some((creep) => creep.pos.isEqualTo(np)))
             // 需要考虑其他爬
-            return nextCheckPos.every((pos) => pos.walkable(true))
+            return nextCheckPos.every((np) => np.walkable(true))
         }
 
         const diffX = targetPos.x - originPos.x
@@ -1114,7 +1105,7 @@ export default class TeamAction {
         }
 
         return undefined
-    }
+    },
 
     /**
      * 获取 CostMatrix
@@ -1129,7 +1120,7 @@ export default class TeamAction {
      * @param structHitLimit 建筑血量阈值，低于该值的建筑不会被视为障碍物
      * @param isSpawnDanger spawn 是否危险，即 spawn 周围 1 格是否禁止通行
      */
-    public static getMoveAbleCostMatrix(
+    getMoveAbleCostMatrix(
         roomName: string,
         myCreeps: Creep[],
         avoidObjects?: { pos: RoomPosition; range: number }[],
@@ -1246,7 +1237,7 @@ export default class TeamAction {
             avoidObjects.forEach((e) => {
                 if (e.pos.roomName !== roomName) return
 
-                tempRoomArray.forNear(e.pos.x, e.pos.y, e.range, (x, y, _) => {
+                tempRoomArray.forNear(e.pos.x, e.pos.y, e.range, (x, y) => {
                     if (costs.get(x, y) < 249) costs.set(x, y, 249)
                 })
             })
@@ -1283,12 +1274,12 @@ export default class TeamAction {
         }
 
         return costs
-    }
+    },
 
     /**
      * 获取小队移动方向
      */
-    public static getTeamMoveDirection(team: Team, goals: {pos: RoomPosition}[], pathMode?: 'flee') {
+    getTeamMoveDirection(team: Team, goals: {pos: RoomPosition}[], pathMode?: 'flee') {
         const creeps = team.creeps
         const originPos = TeamUtils.getTeamPos(team)!
         const status = pathMode || team.status
@@ -1497,7 +1488,6 @@ export default class TeamAction {
                 const isSpawnDanger = !!team.cache.isSpawnDanger
                 const damageLimit = (team as any) ['_max_damage'] || 0
                 const swampCost = needAvoid ? 50 : 5
-                const isFourTeam = creeps.length >= 3
 
                 // 缓存 key 需要包含所有会改变矩阵的关键参数，避免“不同参数共用同一矩阵”带来矛盾：
                 // - isFourTeam：4 人/3 人会用 2x2 逻辑抬高 cost
@@ -1552,13 +1542,13 @@ export default class TeamAction {
 
         TeamCache.cacheTeamPath[team.name] = result.path
         return originPos.getDirectionTo(result.path.shift()!)
-    }
+    },
 
 
     /**
      * 检查缓存路径是否正确
      */
-    public static checkCachePath(team: Team) {
+    checkCachePath(team: Team) {
         const originPos = TeamUtils.getTeamPos(team)
         
         return !!(
@@ -1566,32 +1556,32 @@ export default class TeamAction {
             TeamCache.cacheTeamPath[team.name].length! &&
             originPos?.isCrossRoomNearTo(TeamCache.cacheTeamPath[team.name][0]!)
         )
-    }
+    },
 
 
     /**
      * 移出边界
      */
-    public static moveOuterBorder(creep: Creep, nearCreep: Creep) {
+    moveOuterBorder(creep: Creep, nearCreep: Creep) {
         const targetPos = creep.pos.nearPos(1).find((pos) => pos.walkable(true) && nearCreep.pos.isNearTo(pos))
         if (targetPos) {
             creep.move(creep.pos.getDirectionTo(targetPos))
         }
-    }
+    },
 
     /**
      * 删除寻路缓存
      */
-    public static clearPathCache(team: Team) {
+    clearPathCache(team: Team) {
         delete TeamCache.cacheTeamPath[team.name]
-    }
+    },
     
     /**
      * 更新队伍推进目标点（targetPos）：
      * - 有可攻击目标时，锁定当前焦点目标位置，减少目标频繁切换导致的来回抖动
      * - 到点但本 tick 没有可攻击目标时，尝试在当前 targets 列表里自动换点推进
      */
-    public static updateTargetPos(team: Team) {
+    updateTargetPos(team: Team) {
         if (!team.creeps?.length) return
         if (!team.flag) return
 
@@ -1695,5 +1685,7 @@ export default class TeamAction {
         const nextIndex = ((team.cache.targetPosIndex || 0) + 1) % uniqPos.length
         team.cache.targetPosIndex = nextIndex
         TeamUtils.setCachePos(team, 'targetPos', uniqPos[nextIndex])
-    }
-}
+    },
+};
+
+export default TeamAction;

@@ -1,12 +1,11 @@
 
 import Team from "@/modules/teams/core/TeamClass";
 import TeamCalc from "@/modules/teams/core/TeamCalc";
-import TeamAction from "@/modules/teams/core/TeamAction";
 import TeamUtils from "@/modules/teams/core/TeamUtils";
 import { getTeamData } from "@/core/store/accessor";
 import { getTeamCreeps } from "@/utils/creepTickIndex";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
-import { getBoostCache } from "@/modules/spawning/legacy/boostFunction";
+import { getBoostCache } from "@/modules/prototype";
 
 /**
  * Team 执行调度器（运行时）。
@@ -16,7 +15,7 @@ import { getBoostCache } from "@/modules/spawning/legacy/boostFunction";
  * - 生成端（创建 TeamData、下发孵化）在 TeamSpawner。\n
  * - 数据源：Memory.Nexus.TeamData[teamID]（队伍状态与成员列表）。
  */
-export default class TeamController {
+const TeamController = {
     /**
      * Team 主入口（每 tick 调用）。
      *
@@ -25,10 +24,10 @@ export default class TeamController {
      * 1) 处理 Team creep：boost、归队、异常清理\n
      * 2) 处理 Team：集结/移动/战斗/解散
      */
-    static run(): void {
+    run(): void {
         this.runCreeps();
         this.runTeams();
-    }
+    },
 
     /**
      * 驱动 Team creep 行为（boost 与归队）。
@@ -39,7 +38,7 @@ export default class TeamController {
      * - 归队：首次完成 boost 后，把 creep.id 推入 Memory.Nexus.TeamData[teamID].creeps。\n
      * - 若 TeamData 已被删除，则 creep 自杀，避免残留占用资源。
      */
-    private static runCreeps(): void {
+    runCreeps(): void {
         // 小队成员的行为
         for (const creep of getTeamCreeps()) {
             if (!creep || creep.spawning) continue;
@@ -82,7 +81,7 @@ export default class TeamController {
             const teamID = creep.memory['teamID'];
             if (!getTeamData(teamID)) creep.suicide();
         }
-    }
+    },
 
     /**
      * 驱动队伍状态机（TeamClass.exec）。
@@ -93,7 +92,7 @@ export default class TeamController {
      * - 成员全部死亡：解散。\n
      * - 仅剩治疗者：把 healer 重新分配到未满员的队伍，尽量提高存活率。
      */
-    private static runTeams(): void {
+    runTeams(): void {
         // 独立的治疗者
         let soloHealers = [];
         // 未满的队伍
@@ -204,5 +203,7 @@ export default class TeamController {
             (teamData as TeamMemory).creeps.push(healer!.id!);
             healer!.memory['teamID'] = teamID;
         }
-    }
-}
+    },
+};
+
+export default TeamController;

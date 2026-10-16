@@ -186,32 +186,32 @@ export default {
                 globalThis.log(`已删去 ${roomName} 的自动lab合成: ${product}`);
                 return OK;
             },
-            list(roomName: string) {
+            list(listRoomName: string) {
                 const BotMemAutoFactory = getAutoLabData();
-                if(roomName) {
-                    const autoLab = BotMemAutoFactory[roomName];
+                if(listRoomName) {
+                    const autoLab = BotMemAutoFactory[listRoomName];
                     if(!autoLab || autoLab.length == 0) {
-                        globalThis.log(`[${roomName}]没有开启自动lab合成`);
+                        globalThis.log(`[${listRoomName}]没有开启自动lab合成`);
                     } else {
-                        console.log(`[${roomName}]自动lab合成有: `);
-                        for (const product in BotMemAutoFactory[roomName]) {
+                        console.log(`[${listRoomName}]自动lab合成有: `);
+                        for (const product in BotMemAutoFactory[listRoomName]) {
                             console.log(`\n    -${product} - ${autoLab[product]}`);
                         }
                     }
                     return OK;
                 }
-    
+
                 if(!BotMemAutoFactory || Object.keys(BotMemAutoFactory).length == 0) {
                     globalThis.log(`没有房间开启自动lab合成`);
                 }
-                for(const roomName in BotMemAutoFactory) {
-                    if(!BotMemAutoFactory[roomName] ||
-                        BotMemAutoFactory[roomName].length == 0) {
+                for(const memRoomName in BotMemAutoFactory) {
+                    if(!BotMemAutoFactory[memRoomName] ||
+                        BotMemAutoFactory[memRoomName].length == 0) {
                         continue;
                     }
-                    console.log(`[${roomName}]自动lab合成有: `);
-                    for (const product in BotMemAutoFactory[roomName]) {
-                        console.log(`\n    -${product} - ${BotMemAutoFactory[roomName][product]}`);
+                    console.log(`[${memRoomName}]自动lab合成有: `);
+                    for (const product in BotMemAutoFactory[memRoomName]) {
+                        console.log(`\n    -${product} - ${BotMemAutoFactory[memRoomName][product]}`);
                     }
                 }
                 return OK;

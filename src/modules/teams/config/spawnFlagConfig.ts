@@ -1,11 +1,10 @@
 
-import { UNITS } from '@/constant/CreepConstant';
+type BoostMap = { [bodypart: string]: MineralBoostConstant | MineralBoostConstant[] };
+
 type BoostConfig = {
     bodypart: [BodyPartConstant, number][];
     boostmap: BoostMap;
 };
-
-type BoostMap = { [bodypart: string]: MineralBoostConstant | MineralBoostConstant[] };
 
 type AioConfig = {
     bodypart: [BodyPartConstant, number][];
@@ -15,31 +14,6 @@ type AioConfig = {
 type LootConfig = {
     bodypart: [BodyPartConstant, number][];
     boostmap: BoostMap | null;
-};
-
-const AidBodys: { [unit: string]: { [tier: string]: BoostConfig } } = {
-    [UNITS['aid-build']]: {
-        'T3': {
-            bodypart: [[WORK, 35], [CARRY, 5], [MOVE, 10]],
-            boostmap: { [WORK]: 'XLH2O', [CARRY]: 'XKH2O', [MOVE]: 'XZHO2' }
-        }
-    },
-    [UNITS['aid-upgrade']]: {
-        'T3': {
-            bodypart: [[WORK, 35], [CARRY, 5], [MOVE, 10]],
-            boostmap: { [WORK]: 'XGH2O', [CARRY]: 'XKH2O', [MOVE]: 'XZHO2' }
-        }
-    },
-    [UNITS['aid-carry']]: {
-        'T3': {
-            bodypart: [[CARRY, 25], [MOVE, 25]],
-            boostmap: { [CARRY]: 'XKH2O' }
-        },
-        'BIG': {
-            bodypart: [[CARRY, 40], [MOVE, 10]],
-            boostmap: { [CARRY]: 'XKH2O', [MOVE]: 'XZHO2' }
-        }
-    }
 };
 
 const AIO_CONFIG: { [key: string]: AioConfig } = {
@@ -81,4 +55,4 @@ const LOOT_CONFIG: { [tier: string]: LootConfig } = {
 }
 
 export type { BoostConfig, BoostMap, AioConfig, LootConfig }
-export { AidBodys, AIO_CONFIG, LOOT_CONFIG }
+export { AIO_CONFIG, LOOT_CONFIG }

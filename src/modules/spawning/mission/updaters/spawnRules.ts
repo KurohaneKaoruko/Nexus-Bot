@@ -3,14 +3,15 @@ import { getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPo
 import { isWarMode } from '@/core/store/accessor';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS, UnitLevelData } from '@/constant/CreepConstant';
-import { getBuiltRoomLevel, getHarvesterTargetBySource, getHarvestStaffingTotal, isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy/productionGateAccess';
+import { getBuiltRoomLevel, getHarvesterTargetBySource, getHarvestStaffingTotal, isRoomProductionSecured, isRoomRemoteUnlocked } from '@/modules/economy';
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { SPAWN_CONFIG } from '@/config/economy';
 import { getDowngradedLogisticsCountByAssignedRoom, hasSoonDeadCreepByAssignedRoomRole } from '@/utils/creepTickIndex';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { isRaceCompat } from '@/config/capabilities';
-import { getControllerCarryQuota } from '@/modules/economy/energyLogistics';
-import { getRoomEnergyState, getRoomMode, isHighLikeMode, isUpgraderSpawnUrgent, getStoredEnergy, hasControllerEnergyBuffer, shouldDelayUpgraderForPrimaryBuild, getDowngradeUniversalTarget, getDowngradeUniversalSpawnMissing, getWorkerBuildTarget, getWorkerWallTarget, getWorkerUpgradeTarget, getWorkerPopulationCap, getUpgraderTarget, getUpgraderSuccessionNeeds, getDroppedPileEnergy, getDroppedPileWorkerBoost, getMyConstructionSites, getRushCarrierTarget, estimateRoomEnergyIncome } from '@/modules/economy/roomWorkforce';
+import { getControllerCarryQuota } from '@/modules/economy';
+import { getRoomEnergyState, isUpgraderSpawnUrgent, getStoredEnergy, hasControllerEnergyBuffer, shouldDelayUpgraderForPrimaryBuild, getDowngradeUniversalSpawnMissing, getWorkerBuildTarget, getWorkerWallTarget, getWorkerUpgradeTarget, getWorkerPopulationCap, getUpgraderTarget, getUpgraderSuccessionNeeds, getDroppedPileEnergy, getDroppedPileWorkerBoost, getRushCarrierTarget, estimateRoomEnergyIncome } from '@/modules/economy';
+import { getRoomMode, isHighLikeMode } from '@/modules/strategy';
 
 // 存量符号再导出：spawnMission / spawnControl 等历史调用方仍从本模块取用
 export {
@@ -18,7 +19,7 @@ export {
     getDowngradeUniversalTarget,
     getDowngradeUniversalSpawnMissing,
     getMyConstructionSites,
-} from '@/modules/economy/roomWorkforce';
+} from '@/modules/economy';
 
 // 搬运任务生成阈值
 const TRANSPORT_MIN = THRESHOLDS.TRANSPORT.MIN_AMOUNT;
@@ -28,9 +29,6 @@ const TRANSPORT_HIGH = THRESHOLDS.TRANSPORT.HIGH_AMOUNT;
 const RECOVERY_DOWNGRADED_CORRECTION_ROLE_SET = new Set<string>([UNITS.transporter]);
 
 // 低等级允许多采集位，高等级默认一矿一采（判定链已迁 productionGate.ts，此处按来源引用）。
-
-
-const getEnergyState = getRoomEnergyState;
 
 // 将已入队但应该被推迟的升级类任务清理掉，避免卡队列
 export const pruneDelayedUpgraderSpawnMissions = (room: Room) => {
@@ -106,7 +104,7 @@ export const UnitSpawnCheck: Record<string, (room: Room, current: number) => boo
         let baseTarget = standby ? staffingTarget : getHarvesterTargetBySource(room);
         // CRITICAL 复苏：定编压到每 source 1 只——多矿位小爬群只会吃光能量，
         // 集中孵大体型主力才能爬出贫困陷阱
-        if (getEnergyState(room) === 'CRITICAL') {
+        if (getRoomEnergyState(room) === 'CRITICAL') {
             baseTarget = Math.min(baseTarget, (room.source || []).length || 1);
         }
         if (baseTarget <= 0) return false;
@@ -125,7 +123,7 @@ export const UnitSpawnCheck: Record<string, (room: Room, current: number) => boo
         return current < num;
     },
     [UNITS.transporter]: (room: Room, current: number) => {
-        const state = getEnergyState(room);
+        const state = getRoomEnergyState(room);
         const highMode = isHighLikeMode(getRoomMode(room));
         const storedEnergy = getStoredEnergy(room);
         const hasStorageLike = !!room.storage || !!room.terminal;
@@ -190,7 +188,7 @@ export const UnitSpawnCheck: Record<string, (room: Room, current: number) => boo
             if (hasHarvester && room.CheckSpawnAndTower()) return true;
         }
 
-        if (room.mineral?.mineralAmount! > 0) return true;
+        if ((room.mineral?.mineralAmount ?? 0) > 0) return true;
         if (room.container?.some((c) => c.store.getUsedCapacity() > 1000)) return true;
         return false;
     },
@@ -310,7 +308,7 @@ export const createSpawnCheckContext = (
     creepNum: Record<string, number>,
     spawnMissionNum: Record<string, number>,
 ): SpawnCheckContext => {
-    const state = getEnergyState(room);
+    const state = getRoomEnergyState(room);
     const shouldRecover = state === 'NORMAL' || state === 'SURPLUS';
     return {
         room,

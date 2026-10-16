@@ -4,9 +4,8 @@
  * @description 以固定频率调度各类任务更新入口（spawn/transport/manage/work/mine 等）
  */
 import { qos } from '@/core/qos';
-import { getRoomData } from '@/core/store/accessor';
 import { getRoomPhase } from '@/utils/roomPhase';
-import { getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
+import { getRoomModeProfile } from '@/modules/strategy';
 
 export default class Mission extends Room {
     declare UpdateSpawnMission: (offset?: number) => void;
@@ -36,10 +35,10 @@ export default class Mission extends Room {
             { interval: 30, offset: 3, run: (offset) => this.UpdateManageMission(offset) },
             { interval: 50, offset: 4, run: (offset) => this.UpdateBuildRepairMission(offset) },
             { interval: 50, offset: 5, run: (offset) => this.UpdateWallRepairMission(offset) },
-            { interval: 100, offset: 6, run: (_) => this.TransportMissionCheck() },
-            { interval: 200, offset: 7, run: (_) => this.BuildRepairMissionCheck() },
-            { interval: 1, offset: 0, run: (_) => this.UpdateMineMission() },
-            { interval: 1, offset: 0, run: (_) => this.UpdateHighwayScan() },
+            { interval: 100, offset: 6, run: () => this.TransportMissionCheck() },
+            { interval: 200, offset: 7, run: () => this.BuildRepairMissionCheck() },
+            { interval: 1, offset: 0, run: () => this.UpdateMineMission() },
+            { interval: 1, offset: 0, run: () => this.UpdateHighwayScan() },
         ];
 
         const roomPhase = getRoomPhase(this.name);

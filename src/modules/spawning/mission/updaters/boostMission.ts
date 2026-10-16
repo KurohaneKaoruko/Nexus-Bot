@@ -1,7 +1,7 @@
 
 import { getAllMissionFromPool, checkSameMissionInPool, deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { getLabAB, ensureBoostLabs, type BoostLabsMemory } from '@/modules/industry/labReservations';
+import { getLabAB, ensureBoostLabs } from '@/modules/industry';
 import { getStructData, getTeamData } from '@/core/store/accessor';
 
 const BOOST_LAB_CAPACITY = 3000;

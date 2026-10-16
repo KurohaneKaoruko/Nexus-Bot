@@ -4,9 +4,9 @@ import { qos } from '@/core/qos';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';
 import { compress } from '@/utils/compress';
-import { getLabAB } from '@/modules/industry/labReservations';
-import { getRoomData, getStructData } from '@/core/store/accessor';
-import { getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
+import { getLabAB } from '@/modules/industry';
+import { getStructData } from '@/core/store/accessor';
+import { getRoomModeProfile } from '@/modules/strategy';
 import { THRESHOLDS } from '@/constant/Thresholds';
 
 
@@ -440,7 +440,6 @@ export default class TransportMission extends Room {
         energy = this.fillTowerEnergy(energySource, energy);
 
         const state = this.memory.energyState || this.updateEnergyState?.(false);
-        const roomMode = (getRoomData(this.name) as any)?.mode || (this.memory as any).mode || 'main';
 
         energy = this.fillControllerBufferEnergy(energySource, energy, state);
         energy = this.fillLabEnergy(energy, offset);
@@ -484,12 +483,11 @@ export default class TransportMission extends Room {
      * @description 周期性检查 nuker 的 GHODIUM，不足则从 storage/terminal 补齐
      */
     override UpdateNukerMission(offset = 0) {
-        const room = this;
         if (!qos.isTickAligned(THRESHOLDS.TICK.NUKER_CHECK, offset)) return;
-        if(room.level < 8) return;
-        if(!room.nuker) return;
-        const storage = room.storage;
-        const terminal = room.terminal;
+        if(this.level < 8) return;
+        if(!this.nuker) return;
+        const storage = this.storage;
+        const terminal = this.terminal;
         if(!storage && !terminal) return;
         
         const nuker = room.nuker;

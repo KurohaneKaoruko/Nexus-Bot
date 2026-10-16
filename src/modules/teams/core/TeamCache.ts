@@ -5,19 +5,19 @@ import TeamCalc from '@/modules/teams/core/TeamCalc';
 /**
  * 小队缓存
  */
-export default class TeamCache {
+const TeamCache = {
     /**
      * 空房间数组，不要修改它
      */
-    public static emptyRoomArray = new RoomArray()
+    emptyRoomArray: new RoomArray(),
     /**
      * 缓存各房间的塔伤信息
      */
-    protected static cacheTowerRoomArray: { [roomName: string]: { time: number; value: RoomArray } } = {}
+    cacheTowerRoomArray: {} as { [roomName: string]: { time: number; value: RoomArray } },
     /**
      * 缓存房间建筑信息
      */
-    public static cacheStructs: {
+    cacheStructs: {} as {
         [roomName: string]: {
             pos: RoomPosition
             my?: boolean
@@ -25,7 +25,7 @@ export default class TeamCache {
             structureType: string
             hits: number
         }[]
-    } = {}
+    },
 
     /**
      * 小队路径缓存（仅运行期内存，不写入 Memory）
@@ -35,7 +35,7 @@ export default class TeamCache {
      * - Key 用 team.name，而不是 flagName：队伍对象在多个模块间流转时更稳定
      * - 缓存的 RoomPosition[] 会在使用过程中 shift()，因此属于可变结构
      */
-    public static cacheTeamPath: { [teamName: string]: RoomPosition[] } = {}
+    cacheTeamPath: {} as { [teamName: string]: RoomPosition[] },
 
     /**
      * 缓存不可见房间的 CostMatrix（用于 PathFinder.roomCallback）
@@ -45,16 +45,16 @@ export default class TeamCache {
      * - 不可见房间：允许复用一小段时间（减少跨房寻路的 CPU）
      * - key 会包含避让对象的短 hash，避免不同避让集合错误命中
      */
-    public static globalCostMatrixCache: {
+    globalCostMatrixCache: {} as {
         [key: string]: {
             matrix: CostMatrix
             tick: number
         }
-    } = {}
+    },
 
-    private static globalCostMatrixCacheLastCleanupTick = -1
+    globalCostMatrixCacheLastCleanupTick: -1,
 
-    private static globalCostMatrixCacheCleanup(currentTick: number, maxAge = 5, maxEntries = 300) {
+    globalCostMatrixCacheCleanup(currentTick: number, maxAge = 5, maxEntries = 300) {
         if (this.globalCostMatrixCacheLastCleanupTick === currentTick) return
         this.globalCostMatrixCacheLastCleanupTick = currentTick
 
@@ -75,7 +75,7 @@ export default class TeamCache {
             .sort((a, b) => a.tick - b.tick)
             .slice(0, remainingKeys.length - maxEntries)
             .forEach(({ key }) => delete cache[key])
-    }
+    },
 
     /**
      * 清理 globalCostMatrixCache（公开入口）。
@@ -84,19 +84,19 @@ export default class TeamCache {
      * - 该缓存被多个模块直接读写；提供统一清理入口避免长期运行时无限增长。\n
      * - 同 tick 内只会执行一次清理（内部有 tick 去重）。
      */
-    public static cleanupGlobalCostMatrixCache(currentTick = Game.time, maxAge = 5, maxEntries = 300) {
+    cleanupGlobalCostMatrixCache(currentTick = Game.time, maxAge = 5, maxEntries = 300) {
         this.globalCostMatrixCacheCleanup(currentTick, maxAge, maxEntries)
-    }
+    },
 
-    private static hashString(value: string): string {
+    hashString(value: string): string {
         let hash = 0
         for (let i = 0; i < value.length; i++) {
             hash = (hash * 31 + value.charCodeAt(i)) | 0
         }
         return (hash >>> 0).toString(36)
-    }
+    },
 
-    private static getAvoidHash(avoidObjs: { pos: RoomPosition; range?: number }[] | undefined, roomName: string): string {
+    getAvoidHash(avoidObjs: { pos: RoomPosition; range?: number }[] | undefined, roomName: string): string {
         if (!avoidObjs?.length) return ''
         const objsInRoom = avoidObjs.filter((o) => o.pos.roomName === roomName)
         if (!objsInRoom.length) return ''
@@ -114,7 +114,7 @@ export default class TeamCache {
             .join('|')
 
         return `_${objsInRoom.length}_${this.hashString(signature)}`
-    }
+    },
 
     /**
      * 获取或构建房间 CostMatrix（支持避让集合维度缓存）。
@@ -130,7 +130,7 @@ export default class TeamCache {
      * - 不可见房间：最多复用 5 tick\n
      * - 内部会定期清理过期与超量条目，避免缓存无限增长
      */
-    public static getOrBuildGlobalCostMatrix(
+    getOrBuildGlobalCostMatrix(
         roomName: string,
         avoidObjs: { pos: RoomPosition; range?: number }[] | undefined,
         isVisible: boolean,
@@ -146,12 +146,12 @@ export default class TeamCache {
         const matrix = build()
         this.globalCostMatrixCache[cacheKey] = { matrix, tick: Game.time }
         return matrix
-    }
+    },
 
     /**
      * 创建塔伤分布图
      */
-    protected static createTowerDamageMap(towerInfoList: any[]) {
+    createTowerDamageMap(towerInfoList: any[]) {
         // 计算房间每个位置的防御塔总伤害
         const arr = new RoomArray()
         // 可以工作的防御塔
@@ -171,12 +171,12 @@ export default class TeamCache {
         })
 
         return arr
-    }
+    },
 
     /**
      * 获取塔伤分布图
      */
-    public static getTowerDamageMap(roomName: string) {
+    getTowerDamageMap(roomName: string) {
         // 当前 tick 计算过直接返回
         if (this.cacheTowerRoomArray[roomName] && this.cacheTowerRoomArray[roomName].time === Game.time) {
             return this.cacheTowerRoomArray[roomName].value
@@ -196,14 +196,14 @@ export default class TeamCache {
             const towerInfos = towers!.map((tower: any) => {
                 // 计算强化效果
                 const effect =
-                    (tower.effects as PowerEffect[] | undefined)?.reduce((sum, effect) => {
+                    (tower.effects as PowerEffect[] | undefined)?.reduce((sum, e) => {
                         // 增伤
-                        if (effect.effect === PWR_OPERATE_TOWER) {
-                            return sum * (1 + effect.level * 0.1)
+                        if (e.effect === PWR_OPERATE_TOWER) {
+                            return sum * (1 + e.level * 0.1)
                         }
                         // 减伤
-                        if (effect.effect === PWR_DISRUPT_TOWER) {
-                            return sum * (1 - effect.level * 0.1)
+                        if (e.effect === PWR_DISRUPT_TOWER) {
+                            return sum * (1 - e.level * 0.1)
                         }
                         return sum
                     }, 1) || 1
@@ -260,12 +260,12 @@ export default class TeamCache {
             time: Game.time,
             value: this.createTowerDamageMap(towerInfos),
         }).value
-    }
+    },
 
     /**
      * 获取房间建筑，房间不可见时从缓存中读
      */
-    public static getStructures(roomName: string) {
+    getStructures(roomName: string) {
         const room = Game.rooms[roomName]
         if (!room) {
             return this.cacheStructs[roomName] || []
@@ -280,23 +280,23 @@ export default class TeamCache {
             hits: s.hits,
         }))
         return (this.cacheStructs[roomName] = result)
-    }
+    },
 
     /**
      * 获取敌人防御性的建筑（rampart，constructedWall）
      */
-    public static getDefensiveStructure(room: Room) {
+    getDefensiveStructure(room: Room) {
         const structures = room.find(FIND_STRUCTURES)
         const defensiveStructures = structures.filter(
             (s) => (s.structureType === STRUCTURE_RAMPART && !s.my) || s.structureType === STRUCTURE_WALL,
         )
         return defensiveStructures
-    }
+    },
 
     /**
      * 压缩洪水填充数组
      */
-    public static compressFloodArray(floodArray: RoomArray) {
+    compressFloodArray(floodArray: RoomArray) {
         const result = []
         for (let i = 0; i < 50; i++) {
             result[i] = ''
@@ -305,13 +305,13 @@ export default class TeamCache {
             }
         }
         return result
-    }
+    },
 
     /**
      * 获取洪水填充分布图（暂时只用于敌人房间）
      * 用于将敌人房间划分为不连通的区域，爬只能寻找自己区域内的对象
      */
-    public static getFloodFillMap(room: Room, isFour = false) {
+    getFloodFillMap(room: Room, isFour = false) {
         if (!room) return
 
         const defensiveStructures = this.getDefensiveStructure(room)
@@ -412,12 +412,12 @@ export default class TeamCache {
         }
 
         return room.memory['floodFill']
-    }
+    },
 
     /**
      * 获取本区域内的可以攻击的建筑
      */
-    public static getStructuresInFloodFill(creep: Creep, structures: Structure[], isFour = false) {
+    getStructuresInFloodFill(creep: Creep, structures: Structure[], isFour = false) {
         if (!creep || !creep.room.controller) return structures
 
         // 假设房间内有控制器，否则不会调用本函数
@@ -530,12 +530,12 @@ export default class TeamCache {
         }
 
         return structures
-    }
+    },
 
     /**
      * 获取本区域内的可以攻击的爬
      */
-    public static getCreepsInFloodFill(creep: Creep, hostileCreeps: Creep[], isFour = false) {
+    getCreepsInFloodFill(creep: Creep, hostileCreeps: Creep[], isFour = false) {
         if (!creep || !creep.room.controller) return hostileCreeps
 
         const room = creep.room
@@ -559,8 +559,10 @@ export default class TeamCache {
         }
 
         return []
-    }
+    },
 
 
 
-}
+};
+
+export default TeamCache;

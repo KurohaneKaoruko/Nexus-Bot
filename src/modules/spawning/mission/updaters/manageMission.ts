@@ -203,9 +203,10 @@ function checkFactoryResourceBalance(room: Room): boolean {
 
         room.ManageMissionAdd('s', 'f', component as ResourceConstant, Math.min(amount, (storage.store as any) [component]));
         if((storage.store as any) [component] < amount) {
+            const terminalStore = (room.terminal?.store ?? {}) as any;
             room.ManageMissionAdd('t', 'f', component as ResourceConstant,
                 Math.min(amount - (storage.store as any) [component],
-                        (room.terminal?.store as any) [component]||0));
+                        terminalStore[component]||0));
         }
     }
 

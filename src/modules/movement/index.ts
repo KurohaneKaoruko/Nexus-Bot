@@ -35,7 +35,6 @@ import moveMatch from "./moveMatch";
 // 运行时参数
 let pathClearDelay = 5000; // 清理相应时间内都未被再次使用的路径，同时清理死亡creep的缓存，设为undefined表示不清除缓存
 let hostileCostMatrixClearDelay = 500; // 自动清理相应时间前创建的其他玩家房间的costMatrix
-let coreLayoutRange = 3; // 核心布局半径，在离storage这个范围内频繁检查对穿（减少堵路的等待
 let avoidRooms = new Set(["W99N99", "E99S99"]); // 永不踏入的房间
 let avoidExits = new Map([
 	// 单向屏蔽的房间出口
@@ -64,10 +63,8 @@ const tile2PosCache = new Map(); // 缓存tile到pos的转换，避免重复计�
 const unWalkableCost = 255;
 const halfWorldSize = 255 >> 1;
 const activeMoveScore = 32;
-const highMoveScore = activeMoveScore << 1;
 const ultraMoveScore = activeMoveScore << 2;
 const passiveMoveScore = -4;
-const overlapMoveScore = -4;
 const badMoveScore = -32;
 
 const IntentTiles = new Uint32Array(Math.max(Object.keys(Game.rooms).length * 128, 2048));
@@ -85,18 +82,14 @@ let creepIdx = 1; // 用于给新 creep 分配id
 const checkedTiles = new Map(); // 记录当前 tick 已经检查过的格子
 const nameToIntentIdx = new Map();
 const pullPair = new Map();
-let curTick = 0;
 
 const obstacles = new Set(OBSTACLE_OBJECT_TYPES);
 const originMove = Creep.prototype.move;
-const originMoveTo = Creep.prototype.moveTo;
 const originPull = Creep.prototype.pull;
 const originCancelOrder = Creep.prototype.cancelOrder;
-const originFindClosestByPath = RoomPosition.prototype.findClosestByPath;
 
 // 统计变量
 let startTime;
-let endTime;
 let startCacheSearch: any;
 let analyzeCPU = {
 	// 统计相关函数总耗时
@@ -108,23 +101,9 @@ let analyzeCPU = {
 let pathCounter = 0;
 let testCacheHits = 0;
 let testCacheMiss = 0;
-let testBypass = 0;
 let cacheHitCost = 0;
 let cacheMissCost = 0;
 
-const circleStyle = [
-	{ radius: 0.3, opacity: 0.3, fill: "#ADFF2F" },
-	{ radius: 0.3, opacity: 0.3, fill: "#f47983" },
-	{ radius: 0.3, opacity: 0.4, fill: "#4169E1" },
-	{ radius: 0.3, opacity: 0.9, fill: "#FFD700" },
-	{ radius: 0.3, opacity: 0.75, fill: "#D2B48C" },
-];
-
-const lineStyle = [
-	{ color: "#40de5a", width: 0.15, opacity: 0.4 },
-	{ color: "#FFA500", width: 0.15, opacity: 0.4 },
-	{ color: "#4169E1", width: 0.15, opacity: 0.4 },
-];
 /***************************************
  *  util functions
  */
@@ -242,33 +221,6 @@ function tile2Pos(tile: any) {
 	const pos = new RoomPosition(x % 50, y % 50, roomName);
 	tile2PosCache.set(tile, pos);
 	return pos;
-}
-
-/**
- * 解析带 shard 前缀的房间名（约定格式：shardX/W1N1）
- * @param {string} roomName
- * @returns {{ shard: string | null, room: string }}
- */
-function parseShardRoomName(roomName: any) {
-	if (typeof roomName !== "string") return { shard: null, room: roomName };
-	const idx = roomName.indexOf("/");
-	if (idx === -1) return { shard: null, room: roomName };
-	const shard = roomName.slice(0, idx);
-	const room = roomName.slice(idx + 1);
-	return { shard: shard || null, room };
-}
-
-function getAdjacents(pos: any) {
-	let posArray = [];
-	for (let i = -1; i <= 1; i++) {
-		for (let j = -1; j <= 1; j++) {
-			posArray.push({
-				x: pos.x + i,
-				y: pos.y + j,
-			});
-		}
-	}
-	return posArray;
 }
 
 /**
@@ -575,7 +527,7 @@ function getEdgeArray(room: any, costMatrix: any, squadNoStructureCostMatrix: an
 		squadNoStructureCostMatrix,
 		squadStructureCostMatrix,
 	); // 二维数组，每一个值代表以此为右下角的最大空地正方形边长
-	let current, cost, idx, u, v, w;
+	let current, u, v, w;
 
 	for (let y = 1, y50 = 50; y <= 49; y++, y50 += 50) {
 		for (let x = 1, idx = y50 + 1; x <= 49; x++, idx++) {
@@ -633,14 +585,14 @@ function getEdgeArray(room: any, costMatrix: any, squadNoStructureCostMatrix: an
 					// 有 2x2 空地正方形，可以走，要看 terrain 决定 cost
 					// 如果左上格是无路的 swamp，当前格、正上格、正左格也代价大
 					if (wTerrain === TERRAIN_MASK_SWAMP && costMatrix.get(x - 1, y - 1) !== 1) {
-						squadNoStructureCostMatrix.get(x, y) || squadNoStructureCostMatrix.set(x, y, 5);
-						squadStructureCostMatrix.get(x, y) || squadStructureCostMatrix.set(x, y, 5);
+						if (!squadNoStructureCostMatrix.get(x, y)) squadNoStructureCostMatrix.set(x, y, 5);
+						if (!squadStructureCostMatrix.get(x, y)) squadStructureCostMatrix.set(x, y, 5);
 
-						squadNoStructureCostMatrix.get(x - 1, y) || squadNoStructureCostMatrix.set(x - 1, y, 5);
-						squadStructureCostMatrix.get(x - 1, y) || squadStructureCostMatrix.set(x - 1, y, 5);
+						if (!squadNoStructureCostMatrix.get(x - 1, y)) squadNoStructureCostMatrix.set(x - 1, y, 5);
+						if (!squadStructureCostMatrix.get(x - 1, y)) squadStructureCostMatrix.set(x - 1, y, 5);
 
-						squadNoStructureCostMatrix.get(x, y - 1) || squadNoStructureCostMatrix.set(x, y - 1, 5);
-						squadStructureCostMatrix.get(x, y - 1) || squadStructureCostMatrix.set(x, y - 1, 5);
+						if (!squadNoStructureCostMatrix.get(x, y - 1)) squadNoStructureCostMatrix.set(x, y - 1, 5);
+						if (!squadStructureCostMatrix.get(x, y - 1)) squadStructureCostMatrix.set(x, y - 1, 5);
 					} // else costMatrix 为默认0，按地形是平原 1
 				} else {
 					squadNoStructureCostMatrix.set(x, y, unWalkableCost);
@@ -809,30 +761,30 @@ function generateCostMatrix(room: any, pos: any) {
 		if (squareMap[i]) {
 			noStructureCostMat.set(i, 0, 5);
 			structureCostMat.set(i, 0, 5);
-			squadStructureCostMatrix.get(i, 0) || squadStructureCostMatrix.set(i, 0, 5);
-			squadStructureCostMatrix.get(i, 1) || squadStructureCostMatrix.set(i, 1, 5);
-			noStructureSquadCostMatrix.get(i, 0) || noStructureSquadCostMatrix.set(i, 0, 5);
-			noStructureSquadCostMatrix.get(i, 1) || noStructureSquadCostMatrix.set(i, 1, 5);
+			if (!squadStructureCostMatrix.get(i, 0)) squadStructureCostMatrix.set(i, 0, 5);
+			if (!squadStructureCostMatrix.get(i, 1)) squadStructureCostMatrix.set(i, 1, 5);
+			if (!noStructureSquadCostMatrix.get(i, 0)) noStructureSquadCostMatrix.set(i, 0, 5);
+			if (!noStructureSquadCostMatrix.get(i, 1)) noStructureSquadCostMatrix.set(i, 1, 5);
 		}
 		if (squareMap[i + 2450]) {
 			noStructureCostMat.set(i, 49, 5);
 			structureCostMat.set(i, 49, 5);
-			squadStructureCostMatrix.get(i, 49) || squadStructureCostMatrix.set(i, 49, 5);
-			noStructureSquadCostMatrix.get(i, 49) || noStructureSquadCostMatrix.set(i, 49, 5);
+			if (!squadStructureCostMatrix.get(i, 49)) squadStructureCostMatrix.set(i, 49, 5);
+			if (!noStructureSquadCostMatrix.get(i, 49)) noStructureSquadCostMatrix.set(i, 49, 5);
 		}
 		if (squareMap[j]) {
 			noStructureCostMat.set(0, i, 5);
 			structureCostMat.set(0, i, 5);
-			squadStructureCostMatrix.get(0, i) || squadStructureCostMatrix.set(0, i, 5);
-			squadStructureCostMatrix.get(1, i) || squadStructureCostMatrix.set(1, i, 5);
-			noStructureSquadCostMatrix.get(0, i) || noStructureSquadCostMatrix.set(0, i, 5);
-			noStructureSquadCostMatrix.get(1, i) || noStructureSquadCostMatrix.set(1, i, 5);
+			if (!squadStructureCostMatrix.get(0, i)) squadStructureCostMatrix.set(0, i, 5);
+			if (!squadStructureCostMatrix.get(1, i)) squadStructureCostMatrix.set(1, i, 5);
+			if (!noStructureSquadCostMatrix.get(0, i)) noStructureSquadCostMatrix.set(0, i, 5);
+			if (!noStructureSquadCostMatrix.get(1, i)) noStructureSquadCostMatrix.set(1, i, 5);
 		}
 		if (squareMap[j + 49]) {
 			noStructureCostMat.set(49, i, 5);
 			structureCostMat.set(49, i, 5);
-			squadStructureCostMatrix.get(49, i) || squadStructureCostMatrix.set(49, i, 5);
-			noStructureSquadCostMatrix.get(49, i) || noStructureSquadCostMatrix.set(49, i, 5);
+			if (!squadStructureCostMatrix.get(49, i)) squadStructureCostMatrix.set(49, i, 5);
+			if (!noStructureSquadCostMatrix.get(49, i)) noStructureSquadCostMatrix.set(49, i, 5);
 		}
 	}
 
@@ -849,7 +801,6 @@ function generateCostMatrix(room: any, pos: any) {
 	};
 
 	let avoids: any = [];
-	let avoidChanged = false;
 	if (
 		room.controller &&
 		room.controller.owner &&
@@ -874,7 +825,6 @@ function generateCostMatrix(room: any, pos: any) {
 				if (status.status == "closed") {
 					if (!avoidRooms.has((neighbors as any) [direction])) {
 						avoidRooms.add((neighbors as any) [direction]);
-						avoidChanged = true;
 					}
 				} else if (status.status != "normal" && status.timestamp != null) {
 					let estimateTickToChange = (status.timestamp - new Date().getTime()) / 10000; // 10s per tick
@@ -894,7 +844,6 @@ function generateCostMatrix(room: any, pos: any) {
 							// 此路不通
 							avoidRooms.add((neighbors as any) [direction]);
 							avoids.push((neighbors as any) [direction]);
-							avoidChanged = true;
 						}
 					}
 				}
@@ -918,7 +867,8 @@ function generateCostMatrix(room: any, pos: any) {
  */
 function generateDirectionArray(path: any) {
 	let posArray = path.posArray;
-	let directionArray = new Array(posArray.length);
+	let directionArray: (DirectionConstant | number | undefined)[] = [];
+	directionArray.length = posArray.length;
 	let incomplete = false;
 	for (let idx = 1; idx in posArray; idx++) {
 		if (posArray[idx - 1].roomName in costMatrixCache) {
@@ -1127,7 +1077,7 @@ function findTemporalPath(creep: any, toPos: any, ops: any) {
 		nearbyCreeps = nearbyCreeps.filter(bypassHostile);
 	} else if (ops.bypassMyCreeps && !ops.bypassHostileCreeps) {
 		// 情况 2：只绕过自己的
-		nearbyCreeps = nearbyCreeps.filter((creep: any) => creep.my);
+		nearbyCreeps = nearbyCreeps.filter((c: any) => c.my);
 	} // else 都要绕
 
 	if (!(creep.room.name in costMatrixCache)) {
@@ -1770,36 +1720,15 @@ function moveOneStepSquad(
 }
 
 /**
- *  按缓存路径移动
+ *
  * @param {Creep} creep
- * @param {RoomPosition} toPos
- */
-function moveOneStepReverse(creep: any, ops: any, toPos: any) {
-	// deprecated
-	let creepCache = (creepPathCache as any) [creep.name];
-	const visualStyle = ops.visualizePathStyle;
-	if (visualStyle) {
-		showVisual(creep, toPos, creepCache.path.posArray, creepCache.idx, -1, visualStyle);
-	}
-	if (creep.fatigue) {
-		return ERR_TIRED;
-	}
-	(creepMoveCache as any) [creep.name] = Game.time;
-	//creep.room.visual.circle(creepCache.path.posArray[creepCache.idx]);
-	const pos = creepCache.path.posArray[creepCache.idx--]; // 是否应该 --creepCache.idx ?
-	return registerMoveIntent(creep, pos, ops.priority);
-}
-
-/**
- * 
- * @param {Creep} creep 
  * @param {{
         path: MyPath,
         dst: RoomPosition,
         idx: number
-    }} pathCache 
- * @param {PolyStyle} visualStyle 
- * @param {RoomPosition} toPos 
+    }} pathCache
+ * @param {PolyStyle} visualStyle
+ * @param {RoomPosition} toPos
  */
 function startRoute(creep: any, pathCache: any, ops: any, toPos: any) {
 	const posArray = pathCache.path.posArray;
@@ -2078,16 +2007,16 @@ function defaultCheckTile(tileList: any) {
 					if (cost === 255) {
 						continue;
 					}
-					const pos = new RoomPosition(x, y, roomName);
+					const adjPos = new RoomPosition(x, y, roomName);
 					let score = passiveMoveScore;
 					if (terrain[v] === TERRAIN_MASK_SWAMP && cost !== 1) {
 						// 没造路的 swamp，开销较大
 						score += passiveMoveScore << 2;
 					}
-					if (!isWorkTile(creep, pos)) {
+					if (!isWorkTile(creep, adjPos)) {
 						score += badMoveScore;
 					}
-					const formalPos = formalize(pos);
+					const formalPos = formalize(adjPos);
 					intent.push({
 						target: (formalPos.y << 14) | formalPos.x,
 						score,
@@ -2105,16 +2034,6 @@ function defaultCheckTile(tileList: any) {
 
 	// console.log(`defaultCheckTile moveIntents: ${JSON.stringify(moveIntents.map(intent => intent.start))}`);
 	return moveIntents;
-}
-
-function wrapCheckTile(checkTileFunc: any) {
-	return (tileList: any) => {
-		const posList = [];
-		for (let tile of tileList) {
-			posList.push(tile2Pos(tile));
-		}
-		return checkTileFunc(posList);
-	};
 }
 
 /**
@@ -2169,7 +2088,7 @@ function clearUnused() {
 	}
 }
 
-const defaultIsWorkTile = (creep: any, pos: any) => true;
+const defaultIsWorkTile = (_creep: any, _pos: any) => true;
 
 /***************************************
  *  功能实现
@@ -2423,9 +2342,11 @@ function betterMoveTo(this: any, firstArg: any, secondArg: any, opts: any) {
 	creepCache.dst = toPos;
 	setPathTimer(creepCache);
 
-	found
-		? (cacheHitCost += Game.cpu.getUsed() - startCacheSearch)
-		: (cacheMissCost += Game.cpu.getUsed() - startCacheSearch);
+	if (found) {
+		cacheHitCost += Game.cpu.getUsed() - startCacheSearch;
+	} else {
+		cacheMissCost += Game.cpu.getUsed() - startCacheSearch;
+	}
 
 	return startRoute(this, creepCache, ops, toPos);
 }
@@ -2540,10 +2461,10 @@ function isSwapIntent(a: any, b: any) {
  */
 function getMoveIntentStep(creep: any) {
 	if (!creep || !creep.name) return null;
-	const idx = cachedMoveIntents.get(creep.name);
-	if (!idx) return null;
-	const targetTile = IntentTiles[idx];
-	const curTile = IntentTiles[idx + 1];
+	const intentIdx = cachedMoveIntents.get(creep.name);
+	if (!intentIdx) return null;
+	const targetTile = IntentTiles[intentIdx];
+	const curTile = IntentTiles[intentIdx + 1];
 	return {
 		dx: (targetTile! & 0x3fff) - (curTile! & 0x3fff),
 		dy: (targetTile! >> 14) - (curTile! >> 14),
@@ -2929,84 +2850,17 @@ function squadMoveTo(squad: any, firstArg: any, secondArg: any, opts: any) {
 }
 
 /**
- * 暂未完成，后续版本可能更新
- *
- * @param {RoomPosition} this 写好后删这个参数
- * @param {FindConstant | RoomObject[] | RoomPosition[]} objects
- * @param {FindPathOpts & FilterOptions<FIND_STRUCTURES> & { algorithm?: string }} opts
- */
-function betterFindClosestByPath(this: any, objects: any, opts: any) {
-	throw new Error("betterFindClosestByPath 未实现");
-
-	const room = Game.rooms[this.roomName];
-	if (!room) {
-		throw new Error(`Could not access room ${this.roomName}`);
-	}
-
-	opts = opts || {};
-
-	if (_.isNumber(objects)) {
-		objects = room!.find! (objects, { filter: opts.filter });
-	} else if (opts.filter) {
-		objects = _.filter(objects, opts.filter);
-	}
-
-	if (!objects.length) {
-		return null;
-	}
-
-	const objectOnSquare = _.find(objects, (obj) => this.isEqualTo(obj));
-	if (objectOnSquare) {
-		return objectOnSquare;
-	}
-
-	const goals = _.map(objects, (i) => {
-		if (i.pos) {
-			i = i.pos;
-		}
-		return { range: opts.range || 1, pos: i };
-	});
-
-	findPathIgnoreCondition = !!opts.ignoreDestructibleStructures;
-	const searchOpts = {
-		roomCallback: roomCallback,
-		maxOps: opts.maxOps,
-		maxRooms: 1,
-	};
-	if (!opts.ignoreRoads) {
-		searchOpts.plainCost = 2;
-		searchOpts.swampCost = 10;
-	}
-	var ret = globals.PathFinder.search(fromPos, goals, searchOpts);
-
-	var result = null;
-	var lastPos = fromPos;
-
-	if (ret.path.length) {
-		lastPos = ret.path[ret.path.length - 1];
-	}
-
-	objects.forEach((obj: any) => {
-		if (lastPos.isNearTo(obj)) {
-			result = obj;
-		}
-	});
-
-	return result;
-}
-
-/**
  * 若当前位置不可作为四人小队站位的右下角，则返回 ERR_NO_PATH
  *
  * @param {RoomPosition} this 写好后删这个参数
  * @param {RoomPosition | RoomObject} toPos
  * @param {*} opts  支持 costCallback, ignoreDestructibleStructures, range, maxOps, maxCost, maxRooms, heuristicWeight
  */
-function findSquadPathTo(this: any, toPos: any, opts: any) {
+function findSquadPathTo(this: any, targetPos: any, opts: any) {
 	if (!(this.roomName in costMatrixCache) && this.roomName in Game.rooms) {
 		generateCostMatrix(Game.rooms[this.roomName]);
 	}
-	toPos = toPos.pos || toPos;
+	targetPos = targetPos.pos || targetPos;
 	opts = opts || {};
 	findPathIgnoreCondition = !!opts.ignoreDestructibleStructures;
 	if (this.roomName in costMatrixCache) {
@@ -3015,12 +2869,12 @@ function findSquadPathTo(this: any, toPos: any, opts: any) {
 			return ERR_NO_PATH;
 		}
 	}
-	let result = findSquadPath(this, toPos, opts);
+	let result = findSquadPath(this, targetPos, opts);
 	return result;
 }
 
 function endTickResolve(userIsWorkTile: any) {
-	const startTime = Game.cpu.getUsed();
+	const resolveStart = Game.cpu.getUsed();
 
 	if (userIsWorkTile && typeof userIsWorkTile === "function") {
 		isWorkTile = userIsWorkTile;
@@ -3039,11 +2893,11 @@ function endTickResolve(userIsWorkTile: any) {
 		const validCreeps = [];
 		noMove = false;
 		for (const creepName of creepList) {
-			const idx = cachedMoveIntents.get(creepName);
-			if (idx !== undefined) {
-				const tile = IntentTiles[idx];
+			const intentIdx = cachedMoveIntents.get(creepName);
+			if (intentIdx !== undefined) {
+				const tile = IntentTiles[intentIdx];
 				targetTiles.push(tile);
-				curTiles.push(IntentTiles[idx + 1]);
+				curTiles.push(IntentTiles[intentIdx + 1]);
 				cachedMoveIntents.set(creepName, 0);
 				validCreeps.push(creepName);
 				if (tile === 0) {
@@ -3090,22 +2944,22 @@ function endTickResolve(userIsWorkTile: any) {
 	}
 
 	// 再遍历所有 creep 移动 intent，保留不属于 squad 的
-	for (const [creepName, idx] of cachedMoveIntents) {
-		if (idx) {
-			const curTile = IntentTiles[idx + 1];
-			const targetTile = IntentTiles[idx];
+	for (const [creepName, intentIdx] of cachedMoveIntents) {
+		if (intentIdx) {
+			const curTile = IntentTiles[intentIdx + 1];
+			const targetTile = IntentTiles[intentIdx];
 			const targetList =
 				curTile === targetTile
 					? [
 							{
 								target: targetTile,
-								score: activeMoveScore << Priorities! [idx]!,
+								score: activeMoveScore << Priorities! [intentIdx]!,
 							},
 						]
 					: [
 							{
 								target: targetTile,
-								score: activeMoveScore << Priorities! [idx]!,
+								score: activeMoveScore << Priorities! [intentIdx]!,
 							},
 							{
 								target: curTile,
@@ -3141,8 +2995,8 @@ function endTickResolve(userIsWorkTile: any) {
 		const CostMatrix = ((costMatrixCache as any) [roomName] as any) ["false"];
 		const edgeArray = ((costMatrixCache as any) [roomName] as any) ["edgeArray"];
 		const startIdx = (creep!.pos!.y! * 50 + creep!.pos!.x!) << 3;
-		for (let idx = startIdx; idx < startIdx + 8; idx++) {
-			const v = edgeArray[idx];
+		for (let edgeIdx = startIdx; edgeIdx < startIdx + 8; edgeIdx++) {
+			const v = edgeArray[edgeIdx];
 			if (v === 0) {
 				break;
 			}
@@ -3288,7 +3142,7 @@ function endTickResolve(userIsWorkTile: any) {
 
 	analyzeCPU["endTickResolve"].calls++;
 	analyzeCPU["endTickResolve"].moveCount += moveCount;
-	analyzeCPU["endTickResolve"].sum += Game.cpu.getUsed() - startTime - moveCount * 0.2;
+	analyzeCPU["endTickResolve"].sum += Game.cpu.getUsed() - resolveStart - moveCount * 0.2;
 }
 
 function preTickBetterMove() {
@@ -3322,8 +3176,6 @@ Creep.prototype.cancelOrder = betterCancelOrder;
 PowerCreep.prototype.cancelOrder = betterCancelOrder;
 Creep.prototype.pull = wrapFn(betterPull, "pull");
 RoomPosition.prototype.findSquadPathTo = wrapFn(findSquadPathTo, "findSquadPathTo");
-// findClosestByPath 暂未完成，后续版本可能更新
-// RoomPosition.prototype.findClosestByPath = wrapFn(betterFindClosestByPath, 'findClosestByPath');
 
 export const betterMoveApi = {
 	squadMove,
@@ -3371,7 +3223,7 @@ export const betterMoveApi = {
 			return ERR_INVALID_ARGS;
 		}
 	},
-	deletePath: function (fromPos: any, toPos: any, opts: any) {
+	deletePath: function (_fromPos: any, _toPos: any, _opts: any) {
 		// TODO
 		//if(!(fromPos instanceof RoomPosition))
 		return "not implemented";
@@ -3389,15 +3241,15 @@ export const betterMoveApi = {
 				if (combinedX in globalPathCache) {
 					for (combinedY = minY; combinedY <= maxY; combinedY++) {
 						if (combinedY in (globalPathCache as any) [combinedX]) {
-							for (let path of ((globalPathCache as any) [combinedX] as any) [combinedY]) {
+							for (let cachedPath of ((globalPathCache as any) [combinedX] as any) [combinedY]) {
 								// 这个数组应该会很短
-								let posArray = path.posArray;
-								if (
-									posArray[0].roomName == roomName &&
-									posArray[posArray.length - 1].roomName == roomName
+								let posList = cachedPath.posArray;
+							if (
+									posList[0].roomName == roomName &&
+									posList[posList.length - 1].roomName == roomName
 								) {
 									// 是这个房间的路
-									deletePath(path);
+									deletePath(cachedPath);
 								}
 							}
 						}

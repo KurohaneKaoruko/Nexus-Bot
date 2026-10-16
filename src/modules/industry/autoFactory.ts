@@ -1,6 +1,6 @@
 
 import { log } from '@/utils/log';
-import { AUTO_FACTORY_CONFIG, AUTO_FACTORY_FALLBACK, Goods, PRODUCTION_MIN, zipMap } from "@/constant/ResourceConstant";
+import { AUTO_FACTORY_CONFIG, AUTO_FACTORY_FALLBACK, PRODUCTION_MIN, zipMap } from "@/constant/ResourceConstant";
 import { getAutoFactoryData, getMissionPools, getStructData } from "@/core/store/accessor";
 import { isRoomTickAligned } from "@/utils/roomPhase";
 import { sanitizeMissionPoolMemory } from "@/core/store/accessor";
@@ -389,7 +389,6 @@ const getFallbackTask = (room: Room, botmem: any, factoryLevel: number, getAvail
             if (!isFactoryLevelCompatible(effectiveLevel, level)) continue;
             const reducedKeep = getReducedThreshold(keep, degradeAttempt);
             if (getAvail(product as any) >= keep) {
-                const reducedKeep = getReducedThreshold(keep, degradeAttempt);
                 if (getAvail(product as any) < reducedKeep) {
                     const resolved = resolveProducible(product, 0, getMinQuota(product as any));
                     if (resolved && resolved.product === (product as any)) {
@@ -407,7 +406,6 @@ const getFallbackTask = (room: Room, botmem: any, factoryLevel: number, getAvail
             if (!isFactoryLevelCompatible(effectiveLevel, level)) continue;
             const reducedKeep = getReducedThreshold(keep, degradeAttempt);
             if (getAvail(product as any) >= keep) {
-                const reducedKeep = getReducedThreshold(keep, degradeAttempt);
                 if (getAvail(product as any) < reducedKeep) {
                     const resolved = resolveProducible(product, 0, getMinQuota(product as any));
                     if (resolved && resolved.product === (product as any)) {

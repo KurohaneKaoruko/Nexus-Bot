@@ -7,21 +7,21 @@ import TeamUtils from "@/modules/teams/core/TeamUtils";
 /**
  * 战斗类
  */
-export default class TeamBattle {
+const TeamBattle = {
     /**
      * 中立建筑
      */
-    public static neutralStructures = new Set(['road', 'keeperLair', 'container'])
+    neutralStructures: new Set(['road', 'keeperLair', 'container']),
 
     /**
      * 蓝球贴近小队时造成的伤害倍数
      */
-    public static rangeNearDamageRate: { [members: number]: number } = {
+    rangeNearDamageRate: {
         1: 1,
         2: 2,
         3: 2.4,
         4: 2.8,
-    }
+    } as { [members: number]: number },
 
     /**
      * n tick 内能否奶住
@@ -33,7 +33,7 @@ export default class TeamBattle {
      * @returns true 表示能奶住，false 表示不能奶住
      * TODO: 优化算伤策略，同时考虑会陷入沼泽的情况
      */
-    public static canHealInNTick(
+    canHealInNTick(
         team: Team,
         tick: number,
         opts?: { threatTick?: number; minHitsRate?: number },
@@ -195,8 +195,8 @@ export default class TeamBattle {
                 maxNeedHealCreep._been_heal = true;
             }
 
-            maxNeedHealCreep._need_heal_power! -= creep._heal_power!
-            maxNeedHealCreep._virtual_hits! = Math.min(
+            maxNeedHealCreep._need_heal_power = maxNeedHealCreep._need_heal_power! - creep._heal_power!
+            maxNeedHealCreep._virtual_hits = Math.min(
                 maxNeedHealCreep._virtual_hits! + creep._heal_power!,
                 creep.hitsMax,
             )
@@ -234,37 +234,37 @@ export default class TeamBattle {
         }
 
         return true
-    }
+    },
 
     
 
     /**
      * 小队能承受的最大伤害，大于该值一定会破防，低于该值可能破防
      */
-    public static maxBreakDamage(team: Team) {
+    maxBreakDamage(team: Team) {
         const creeps = team.creeps as any;
         // 取所有爬中最小的破防伤害
         (this as any)['_max_damage'] = creeps.reduce((pre: any, cur: any) =>(pre < cur._break_damage! ? pre : cur._break_damage), Infinity)
         return (this as any)['_max_damage'];
-    }
+    },
 
     /**
      * 获取攻击目标，赶路的时候用，打爬以及低血量的建筑
      */
-    public static getAttackTargets(creep: Creep) {
+    getAttackTargets(creep: Creep) {
         const hostileCreeps = creep.room.findEnemyCreeps();
         const hostileStructures = creep.room
             .findEnemyStructures()
             .filter((s) => s.hits && s.hits < TeamAction.structHitLimit)
         return [...hostileCreeps, ...hostileStructures].filter((s) => creep.pos.inRangeTo(s, 3))
-    }
+    },
 
     /**
      * 选取寻路目标
      *
      * @remarks 扫描房：指挥旗所在房优先；无旗队伍按数据 targetRoom（旗位无视野建不出来时的兜底口径）。
      */
-    public static chooseTargets(team: Team) {
+    chooseTargets(team: Team) {
         const scanRoomName = team.flag ? team.flag.pos.roomName : team.targetRoom;
         if (!scanRoomName) return;
         const room = Game.rooms[scanRoomName];
@@ -322,13 +322,13 @@ export default class TeamBattle {
             result.push(team.flag)
         }
         ;(team as any) ['_targets'] = result
-    }
+    },
 
 
     /**
      * 自动攻击
      */
-    public static autoAttack(team: Team) {
+    autoAttack(team: Team) {
         let targets = team._targets?.filter((s: any) => 'hits' in s) as (Creep | Structure)[]
         ;(team as any) ['_attackTargets'] = []
 
@@ -467,12 +467,12 @@ export default class TeamBattle {
 
             if (ordered) (creep.memory as any)._teamOrderTick = Game.time
         })
-    }
+    },
 
     /**
      * 添加需要避让的物体
      */
-    public static addAvoidObjs(team: Team, range = 1) {
+    addAvoidObjs(team: Team, range = 1) {
         if (!team.flag) return;
         if (team.status === 'avoid' || team.status === 'flee') {
             team.cache.lastAvoidTime = Game.time
@@ -501,6 +501,8 @@ export default class TeamBattle {
             pos: e.pos,
             range: range + (e.getActiveBodyparts(RANGED_ATTACK) ? 3 : 1),
         }))
-    }
+    },
 
-}
+};
+
+export default TeamBattle;

@@ -3,11 +3,11 @@
 /**
  * 计算函数
  */
-export default class TeamCalc {
+const TeamCalc = {
     /**
      * 供 PathFinder.roomCallback 使用的空 CostMatrix（避免重复 new）
      */
-    private static emptyCostMatrix = new PathFinder.CostMatrix()
+    emptyCostMatrix: new PathFinder.CostMatrix(),
 
     /**
      * `touchableNTickInRange` 的同 tick 结果缓存（避免重复 PathFinder.search）。
@@ -16,10 +16,10 @@ export default class TeamCalc {
      * - 仅缓存单 tick 结果；tick 变更会自动清空。\n
      * - 为避免极端情况下无限增长，设置了容量上限（touchableCacheLimit）。
      */
-    private static touchableCacheTick = -1
-    private static touchableCache = Object.create(null) as Record<string, boolean>
-    private static touchableCacheSize = 0
-    private static touchableCacheLimit = 2000
+    touchableCacheTick: -1,
+    touchableCache: Object.create(null) as Record<string, boolean>,
+    touchableCacheSize: 0,
+    touchableCacheLimit: 2000,
 
     /**
      * PathFinder.roomCallback 的结构 CostMatrix 缓存（按 roomName + username）。
@@ -28,17 +28,17 @@ export default class TeamCalc {
      * - 该矩阵构建成本较高，且在同一 tick/短时间内会被反复使用。\n
      * - 使用 tick 访问时间做淘汰：超龄或超量时清理，避免长期运行堆积。
      */
-    private static usernameCostsLastCleanupTick = -1
-    private static usernameCosts = Object.create(null) as Record<string, { matrix: CostMatrix; tick: number }>
-    private static usernameCostsMaxAge = 1500
-    private static usernameCostsMaxEntries = 500
+    usernameCostsLastCleanupTick: -1,
+    usernameCosts: Object.create(null) as Record<string, { matrix: CostMatrix; tick: number }>,
+    usernameCostsMaxAge: 1500,
+    usernameCostsMaxEntries: 500,
 
     /**
      * 清理 `usernameCosts` 缓存：移除过期与超量条目。
      *
      * @param currentTick 当前 tick
      */
-    private static cleanupUsernameCosts(currentTick: number) {
+    cleanupUsernameCosts(currentTick: number) {
         if (this.usernameCostsLastCleanupTick === currentTick) return
         this.usernameCostsLastCleanupTick = currentTick
 
@@ -59,34 +59,34 @@ export default class TeamCalc {
             .sort((a, b) => a.tick - b.tick)
             .slice(0, remainingKeys.length - this.usernameCostsMaxEntries)
             .forEach(({ key }) => delete cache[key])
-    }
+    },
 
     /**
      * 基础攻击力
      */
-    public static BODY_POWER: { [part: string]: number } = {
+    BODY_POWER: {
         [WORK]: DISMANTLE_POWER,
         [RANGED_ATTACK]: RANGED_ATTACK_POWER,
         [ATTACK]: ATTACK_POWER,
         [HEAL]: HEAL_POWER,
-    }
+    },
 
     /**
      * boost 资源对应的强化倍数
      */
-    public static BOOST_POWER: { [boost: string]: number } = (Object.values(BOOSTS) as any[])
+    BOOST_POWER: (Object.values(BOOSTS) as any[])
         .flatMap((e: Record<string, any>) => Object.entries(e).map(([k, v]: [string, any]) => [k, Object.values(v)[0]] as [string, number]))
-        .reduce((a, [boost, number]: [string, number]) => ({ ...a, [boost]: number }), {} as Record<string, number>)
+        .reduce((a, [boost, number]: [string, number]) => ({ ...a, [boost]: number }), {} as Record<string, number>),
 
 
     /**
      * 计算塔伤
      */
-     public static calcTowerDamage(distance: number) {
+     calcTowerDamage(distance: number) {
         if (distance <= 5) return 600
         else if (distance <= 20) return 750 - 30 * distance
         else return 150
-    }
+    },
 
     /**
      * 计算 tick 步内能否走到目标指定范围内（可达性判定）
@@ -109,7 +109,7 @@ export default class TeamCalc {
      * @param range 目标范围
      * @param plainCost 平原代价（swampCost 会按比例放大）
      */
-    public static touchableNTickInRange(
+    touchableNTickInRange(
         creep: Creep,
         targetPos: RoomPosition,
         tick: number,
@@ -180,7 +180,7 @@ export default class TeamCalc {
             writeCache(`${baseKey}_${tick - 1}`, false)
         }
         return ok
-    }
+    },
 
     /**
      * 计算爬的某种部件的伤害（抄的 63 的）
@@ -191,7 +191,7 @@ export default class TeamCalc {
      * @param massAttack 是否使用范围伤害
      * @param checkHits 是否检查 hits，不检查则认为是满血
      */
-    public static calcPartTypeDamage(
+    calcPartTypeDamage(
         creep: Creep,
         partType: BodyPartConstant,
         distance = 1,
@@ -223,35 +223,35 @@ export default class TeamCalc {
                 part.type == partType ? (part.boost ? this.BOOST_POWER[part.boost] : 1) : 0,
             )
         )
-    }
+    },
 
     /**
      * 计算爬 rangedAttack 部件的伤害
      */
-    public static calcRangeDamage(creep: Creep, distance = 1, massAttack = false, checkHits = false) {
+    calcRangeDamage(creep: Creep, distance = 1, massAttack = false, checkHits = false) {
         return this.calcPartTypeDamage(creep, RANGED_ATTACK, distance, massAttack, checkHits)
-    }
+    },
 
     /**
      * 计算爬 attack 部件的伤害
      */
-    public static calcAttackDamage(creep: Creep, distance = 1, checkHits = false) {
+    calcAttackDamage(creep: Creep, distance = 1, checkHits = false) {
         return this.calcPartTypeDamage(creep, ATTACK, distance, false, checkHits)
-    }
+    },
 
     /**
      * 计算爬 work 部件的伤害
      */
-    public static calcWorkDamage(creep: Creep, distance = 1, checkHits = false) {
+    calcWorkDamage(creep: Creep, distance = 1, checkHits = false) {
         return this.calcPartTypeDamage(creep, WORK, distance, false, checkHits)
-    }
+    },
 
     /**
      * 计算爬 heal 部件的治疗量
      *
      * @param checkHits 是否检查 hits，为数量时表示虚拟血量
      */
-    public static calcHealDamage(creep: Creep, distance = 1, rangeHeal = false, checkHits: boolean | number = false) {
+    calcHealDamage(creep: Creep, distance = 1, rangeHeal = false, checkHits: boolean | number = false) {
         if (typeof checkHits === 'number') {
             // 进入虚拟血量环节
             let power = distance > 3 ? 0 : HEAL_POWER
@@ -263,25 +263,25 @@ export default class TeamCalc {
 
             return (
                 power *
-                _.sum([...creep.body].reverse().slice(0, checkHits), (part: BodyPartDefinition) =>
+                _.sum([...creep.body].toReversed().slice(0, checkHits), (part: BodyPartDefinition) =>
                     part.type == HEAL ? (part.boost ? this.BOOST_POWER[part.boost] : 1) : 0,
                 )
             )
         }
 
         return this.calcPartTypeDamage(creep, HEAL, distance, rangeHeal, checkHits)
-    }
+    },
 
     /**
      * 计算爬的总伤害
      */
-    public static calcCreepDamage(creep: Creep, usedWork = true, distance = 1, massAttack = false, checkHits = false) {
+    calcCreepDamage(creep: Creep, usedWork = true, distance = 1, massAttack = false, checkHits = false) {
         // 使用 work
         const work = usedWork ? this.calcWorkDamage(creep, distance, checkHits) : 0
         // 如果用了 work 就没办法用 attack了
         const atk = work ? 0 : this.calcAttackDamage(creep, distance, checkHits)
         return this.calcRangeDamage(creep, distance, massAttack, checkHits) + work + atk
-    }
+    },
 
     /**
      * 计算爬受到的实际伤害
@@ -289,7 +289,7 @@ export default class TeamCalc {
      * @param creep 爬
      * @param damage 敌人的攻击力，由于会被 tough 减伤，所以并不是实际伤害
      */
-    public static calcRealDamage(creep: Creep, damage: number) {
+    calcRealDamage(creep: Creep, damage: number) {
         let damageReduce = 0,
             damageEffective = damage
 
@@ -318,7 +318,7 @@ export default class TeamCalc {
 
         damage -= Math.round(damageReduce)
         return damage
-    }
+    },
 
 
     /**
@@ -329,7 +329,7 @@ export default class TeamCalc {
      * @param healPower 治疗量
      * @param checkHits 是否检查 hits，不检查则认为是满血，为数字时表示虚拟血量
      */
-    public static calcHealHoldRealDamage(creep: Creep, healPower: number, checkHits: boolean | number = false): number {
+    calcHealHoldRealDamage(creep: Creep, healPower: number, checkHits: boolean | number = false): number {
         // 初始化双指针
         let left = 0 // 左指针
         let right = 0 // 右指针
@@ -338,7 +338,7 @@ export default class TeamCalc {
         let currentDamage = 0 // 当前累计的伤害
 
         // 虚拟血量
-        const virtualHits = typeof checkHits === 'number' ? new Array<number>(creep.body.length).fill(0) : null
+        const virtualHits = typeof checkHits === 'number' ? Array.from<number>({ length: creep.body.length }).fill(0) : null
         if (virtualHits && typeof checkHits === 'number') {
             for (let i = creep.body.length - 1; i >= 0; i--) {
                 if (checkHits > 100) {
@@ -384,7 +384,7 @@ export default class TeamCalc {
         }
 
         return maxDamage
-    }
+    },
 
 
     /**
@@ -398,7 +398,7 @@ export default class TeamCalc {
      * @param checkHits 是否检查 hits，不检查则认为是满血，为数字时表示虚拟血量
      *
      */
-    public static calcDamageNeedHeal(creep: Creep, damage: number, checkHits: boolean | number = false) {
+    calcDamageNeedHeal(creep: Creep, damage: number, checkHits: boolean | number = false) {
         if (damage <= 0) {
             return checkHits === false ? 0 : creep.hitsMax - (checkHits === true ? creep.hits : checkHits)
         }
@@ -406,7 +406,7 @@ export default class TeamCalc {
         // 需要的奶量
         let needHeal = 0
         // 虚拟血量
-        const virtualHits = typeof checkHits === 'number' ? new Array<number>(creep.body.length).fill(0) : null
+        const virtualHits = typeof checkHits === 'number' ? Array.from<number>({ length: creep.body.length }).fill(0) : null
         if (virtualHits && typeof checkHits === 'number') {
             for (let i = creep.body.length - 1; i >= 0; i--) {
                 if (checkHits > 100) {
@@ -421,7 +421,7 @@ export default class TeamCalc {
 
         for (let i = 0; i < creep.body.length; i++) {
             const part = creep.body[i]
-            const boost = part!.type! === TOUGH && part!.boost! ? (this.BOOST_POWER[part!.boost!] ?? 1) : 1
+            const boost = part!.type === TOUGH && part!.boost ? (this.BOOST_POWER[part!.boost!] ?? 1) : 1
             // 可以承受的伤害
             const partDamage = (checkHits === false ? 100 : virtualHits ? virtualHits[i] ?? 0 : part!.hits!) / boost!
 
@@ -435,12 +435,12 @@ export default class TeamCalc {
         }
 
         return Math.round(needHeal)
-    }
+    },
 
     /**
      * 计算爬的某种部件的能力
      */
-    public static calcBodyEffectiveness(
+    calcBodyEffectiveness(
         body: BodyPartDefinition[],
         bodyPartType: BodyPartConstant,
         methodName: string,
@@ -461,7 +461,7 @@ export default class TeamCalc {
             power += iPower
         })
         return power
-    }
+    },
 
 
     /**
@@ -471,12 +471,14 @@ export default class TeamCalc {
      * @param bodyPartType 部件类型
      * @param checkHits 是否检查 hits，不检查则认为是满血
      */
-    public static hasBodyPart(creep: Creep, bodyPartType: BodyPartConstant, checkHits = false) {
+    hasBodyPart(creep: Creep, bodyPartType: BodyPartConstant, checkHits = false) {
         if (checkHits) {
             return creep.body.some((i) => i.type == bodyPartType && i.hits > 0)
         }
 
         return creep.body.some((i) => i.type == bodyPartType)
-    }
+    },
 
-}
+};
+
+export default TeamCalc;

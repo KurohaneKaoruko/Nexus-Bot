@@ -94,7 +94,8 @@ let spfaDist = new Int16Array(NUM_NODE);
 let spfaPrev = new Uint16Array(NUM_NODE);
 let spfaInQue = new Uint8Array(NUM_NODE);
 let greedyStack = new Uint16Array(MAX_NUM_SQUAD);
-let idxToObject: MoveMatchIndexedObject[] = new Array(NUM_NODE);
+let idxToObject: MoveMatchIndexedObject[] = [];
+idxToObject.length = NUM_NODE;
 const startToIdx = new Map<string | number, number>();
 const targetToIdx = new Map<MoveMatchWorldPos | MoveMatchWorldPos[], number>();
 const matchedTarget = new Set<number>();
@@ -357,7 +358,8 @@ function moveMatch(
 		spfaPrev = new Uint16Array(NUM_NODE);
 		spfaInQue = new Uint8Array(NUM_NODE);
 		greedyStack = new Uint16Array(Math.max(MAX_NUM_SQUAD, NUM_NODE >> 2));
-		idxToObject = new Array(NUM_NODE);
+		idxToObject = [];
+		idxToObject.length = NUM_NODE;
 		return [];
 	}
 
