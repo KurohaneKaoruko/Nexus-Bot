@@ -17,18 +17,18 @@ import { ExternalMineMath } from '@/modules/external/mine/math';
 import { ExternalMineAnalysis } from '@/modules/external/mine/analysis';
 import { EXTERNAL_MINE_ANALYSIS } from '@/modules/external/mine/shared';
 
-export class ExternalMineSpawner {
+export const ExternalMineSpawner = {
     // 各角色任务优先级，统一从角色配置读取。
     // 注意：采集工/搬运工入队走专属流水线层级（采集 12 严格优先于搬运 13，见下），
     // 这里的 harvest/carry 只用于角色对齐与阅读参考，不再直接作为入队等级。
-    private static readonly PRIORITY = {
+    PRIORITY: {
         reserver: UnitData[UNITS.reserver].level,
         harvest: 12,
         carry: 13,
         scout: UnitData[UNITS.scout].level,
         build: UnitData[UNITS[UNITS['out-build']]].level,
         mineral: UnitData[UNITS[UNITS['out-mineral']]].level,
-    } as const;
+    } as const,
 
     // 采集与搬运的孵化层级：采集(12) 严格优先于搬运(13)，两者都直接读角色配置
     // （词表删键后固化为字面量：采集 12 / 搬运 13，仅作挂单排序口径）。
@@ -39,23 +39,23 @@ export class ExternalMineSpawner {
     // 分层语义：任何缺采集的房先把采集补上（12 压过所有搬运）；
     // 有采集在岗的房不存在竞争中的采集任务，其搬运不会被别房的采集饿死。
     // 搬运的「在场产出闸」（carry）与之配套：没有在场采集工的房根本不派搬运。
-    private static readonly OUTMINE_HARVEST_PIPELINE_LEVEL = 12;
-    private static readonly OUTMINE_CARRY_PIPELINE_LEVEL = 13;
+    OUTMINE_HARVEST_PIPELINE_LEVEL: 12,
+    OUTMINE_CARRY_PIPELINE_LEVEL: 13,
     // rush 管线等级（孵化层序：分发/采集搬运 > 升级 > 建造）：
     // 收入链（矿工 OH + 搬运 OC）整体压在升级前面，升级压在建造前面。
     // 升级不饿死的保障不是层级，而是升级定编有界（=实测收入 + 底火）——
     // 收入链先满、升级池封顶，谁也饿不死谁（自洽闭环）。
     // 旧口径（升级 7 > 搬运 8）的震荡根源：升级单常态缺编 → 永远插队搬运 →
     // 搬运饿死 → 收入掉 → 升级定编跟着掉 → 同步崩（attempt 19/20 实测 RCL4@25k）。
-    private static readonly OUTMINE_RUSH_HARVEST_LEVEL = 4;
-    private static readonly OUTMINE_RUSH_CARRY_LEVEL = 5;
+    OUTMINE_RUSH_HARVEST_LEVEL: 4,
+    OUTMINE_RUSH_CARRY_LEVEL: 5,
     // 积压饥荒层：常态 L5 已在升级(7)/建造(9) 之上，饥荒不再额外升层（留位未来调）
-    private static readonly OUTMINE_RUSH_CARRY_FAMINE_LEVEL = 5;
+    OUTMINE_RUSH_CARRY_FAMINE_LEVEL: 5,
 
     // 换班接力优先级：目标房仍有在岗采集工、但 TTL 覆盖不足时的接替孵化等级。
     // 高于本地 worker(8)（换班爬绝不被建造/升级无限插队），低于内部保命线
     // （universal=0 / manager=1 / transporter=2 / harvester=3）——生命线优先，其次无缝接力。
-    private static readonly OUTMINE_REPLACEMENT_LEVEL = 5;
+    OUTMINE_REPLACEMENT_LEVEL: 5,
 
     // 单个目标房在 spawn 池中允许挂的外矿任务上限（按角色分列）。
     // 外矿体型很大（RCL8 搬运工 48 格 ≈ 144 tick 孵化），单房一次把定编全塞进队列，
@@ -63,50 +63,50 @@ export class ExternalMineSpawner {
     // 等终于轮到它们时又是一次性批量产出。上限 + 每 tick 补员 ⇒ 队列自然轮转。
     // - 采集工额度 = 单源定编（RCL≥4 每源 1 个，两源房正好 2），刚好排满不浪费；
     // - 搬运工额度是大头，压到 3 条，把它对 spawn 的占用摊到多个外矿房上。
-    private static readonly OUTMINE_HARVEST_PENDING_CAP = 2;
+    OUTMINE_HARVEST_PENDING_CAP: 2,
     // rush 接力口径：OH 是收入源头，挂单额度大于搬运（先矿后车）
-    private static readonly OUTMINE_HARVEST_PENDING_CAP_RUSH = 2;
-    private static readonly OUTMINE_CARRY_PENDING_CAP = 3;
+    OUTMINE_HARVEST_PENDING_CAP_RUSH: 2,
+    OUTMINE_CARRY_PENDING_CAP: 3,
     // rush 接力车道（C4 微型件）的搬运挂单额度
-    private static readonly OUTMINE_CARRY_PENDING_CAP_RELAY = 3;
+    OUTMINE_CARRY_PENDING_CAP_RELAY: 3,
 
     // 触发“双人防御”模式的最低 RCL。
-    private static readonly DOUBLE_DEFEND_MIN_LEVEL = 7;
+    DOUBLE_DEFEND_MIN_LEVEL: 7,
 
-    private static getSpawnTaskData(task: Task | null | undefined): SpawnTask | null {
+    getSpawnTaskData(task: Task | null | undefined): SpawnTask | null {
         const data = task?.data;
         if (!data || typeof data !== 'object' || !('memory' in data)) return null;
         return data as SpawnTask;
-    }
+    },
 
-    private static getSpawnTaskMemory(task: Task | null | undefined): CreepMemory | null {
+    getSpawnTaskMemory(task: Task | null | undefined): CreepMemory | null {
         return this.getSpawnTaskData(task)?.memory || null;
-    }
+    },
 
     // 统计本源房 spawn 池里、发往某目标房、且角色落在给定集合内的任务数。
-    static countPendingMissions(sourceRoom: Room, targetRoomName: string, unitSet: ReadonlySet<string>): number {
+    countPendingMissions(sourceRoom: Room, targetRoomName: string, unitSet: ReadonlySet<string>): number {
         const memories = (sourceRoom.getAllMissionFromPool?.('spawn') || [])
             .map((task) => this.getSpawnTaskMemory(task));
         return countPendingMissions(memories, sourceRoom.name, targetRoomName, unitSet);
-    }
+    },
 
     // 统计本源房 spawn 池里、发往某目标房的外矿经济任务数（采集 + 搬运）。
     // 这是派单排序用的「挂单量」：挂单少的房先补员，避免单房独占总 spawn。
-    static countPendingEconomyTasks(sourceRoom: Room, targetRoomName: string): number {
+    countPendingEconomyTasks(sourceRoom: Room, targetRoomName: string): number {
         const memories = (sourceRoom.getAllMissionFromPool?.('spawn') || [])
             .map((task) => this.getSpawnTaskMemory(task));
         return countPendingEconomyMissions(memories, sourceRoom.name, targetRoomName);
-    }
+    },
 
     // 外矿补员派单顺序：先近后远 + 负载均衡（排序规则见 externalScheduler）。
     // 主键线性距离升序，次键该目标房已挂单数升序，末键房名。
-    static orderTargetsForSpawn(sourceRoom: Room, targetRoomNames: string[]): string[] {
+    orderTargetsForSpawn(sourceRoom: Room, targetRoomNames: string[]): string[] {
         return sortOutMineSpawnTargets(targetRoomNames.map((roomName) => ({
             roomName,
             distance: ExternalMineState.getTargetPriorityDistance(sourceRoom, roomName),
             pending: this.countPendingEconomyTasks(sourceRoom, roomName),
         })));
-    }
+    },
 
     // 清空本源房 spawn 池里「上一轮」的外矿经济任务。
     // 每轮派单都会按当前需求 + 先近后远重新铺一遍队列，残留旧任务必须先作废，
@@ -114,30 +114,30 @@ export class ExternalMineSpawner {
     // ② 旧任务把单房挂单额度占满，新任务永远排不进去，外矿补员被整体冻结。
     // （线上实测：165 条挂单里 77 条是早期 level=15 的遗留搬运任务，
     //   结果所有外矿房 0 个采集工、补员一条都排不进来。）
-    static clearPlannedEconomyMissions(sourceRoom: Room): number {
+    clearPlannedEconomyMissions(sourceRoom: Room): number {
         const tasks = sourceRoom.getAllMissionFromPool?.('spawn') || [];
         let removed = 0;
-        for (const task of [...tasks]) {
+        for (const task of tasks) {
             const memory = this.getSpawnTaskMemory(task);
             if (!shouldDropPlannedMission(memory, sourceRoom.name)) continue;
             deleteMissionFromPool(sourceRoom.name, 'spawn', task.id);
             removed++;
         }
         return removed;
-    }
+    },
 
     // 采集工挂单是否已达上限。采集工定编小、又是搬运的前置，
     // 所以额度独立：搬运队列排满也不能挡住采集工补员（否则断档后要等一整个搬运周期）。
-    static isHarvestAtPendingCap(sourceRoom: Room, targetRoomName: string): boolean {
+    isHarvestAtPendingCap(sourceRoom: Room, targetRoomName: string): boolean {
         const cap = getRoomMode(sourceRoom) === 'rush'
             ? this.OUTMINE_HARVEST_PENDING_CAP_RUSH
             : this.OUTMINE_HARVEST_PENDING_CAP;
         return this.countPendingMissions(sourceRoom, targetRoomName, OUTMINE_HARVEST_ROLE_SET)
             >= cap;
-    }
+    },
 
     // 搬运工挂单是否已达上限。搬运工体型最大（RCL8 48 格 ≈144 tick），是最需要限流的一方。
-    static isCarryAtPendingCap(sourceRoom: Room, targetRoomName: string): boolean {
+    isCarryAtPendingCap(sourceRoom: Room, targetRoomName: string): boolean {
         // rush 接力车道用 C4 微型件（300 能量 15-20t 孵化），单房占 spawn 风险低，
         // 挂单额度放大让车道密度快速到位
         const cap = getRoomMode(sourceRoom) === 'rush'
@@ -145,10 +145,10 @@ export class ExternalMineSpawner {
             : this.OUTMINE_CARRY_PENDING_CAP;
         return this.countPendingMissions(sourceRoom, targetRoomName, OUTMINE_CARRY_ROLE_SET)
             >= cap;
-    }
+    },
 
     // 统计某房间针对某目标房间的排队刷怪数量（仅本房间任务池）。
-    private static getQueuedSpawnUnitNumByTarget(sourceRoom: Room, unit: string, targetRoomName: string): number {
+    getQueuedSpawnUnitNumByTarget(sourceRoom: Room, unit: string, targetRoomName: string): number {
         const tasks = sourceRoom.getAllMissionFromPool?.('spawn') || [];
         let count = 0;
         for (const task of tasks) {
@@ -161,10 +161,10 @@ export class ExternalMineSpawner {
             count++;
         }
         return count;
-    }
+    },
 
     // 统计全局所有房间针对某目标房间的排队刷怪数量（可选按 sourceRoom 过滤）。
-    private static getQueuedSpawnUnitNumByTargetGlobal(unit: string, targetRoomName: string, sourceRoomName?: string): number {
+    getQueuedSpawnUnitNumByTargetGlobal(unit: string, targetRoomName: string, sourceRoomName?: string): number {
         let count = 0;
         for (const roomName in Game.rooms) {
             const room = Game.rooms[roomName];
@@ -183,10 +183,10 @@ export class ExternalMineSpawner {
             }
         }
         return count;
-    }
+    },
 
     // 统计全局某角色在目标房间的存活数量。
-    private static getActiveRoleNumByTarget(unit: string, targetRoomName: string): number {
+    getActiveRoleNumByTarget(unit: string, targetRoomName: string): number {
         let count = 0;
         for (const creepName in Game.creeps) {
             const creep = Game.creeps[creepName];
@@ -195,12 +195,12 @@ export class ExternalMineSpawner {
             count++;
         }
         return count;
-    }
+    },
 
     // 统计“本 tick 已经开始孵化，但尚未进入 Game.creeps 活体索引”的数量。
     // Screeps 的状态结算按 tick 延后，spawn 成功后任务会先从队列移除；
     // 若此时不补上 spawning 中的单位，就会出现 1 tick 的统计空窗，从而重复补单。
-    private static getSpawningRoleNumByTargetGlobal(unit: string, targetRoomName: string, sourceRoomName?: string): number {
+    getSpawningRoleNumByTargetGlobal(unit: string, targetRoomName: string, sourceRoomName?: string): number {
         let count = 0;
         for (const spawnName in Game.spawns) {
             const spawn = Game.spawns[spawnName];
@@ -220,10 +220,10 @@ export class ExternalMineSpawner {
             count++;
         }
         return count;
-    }
+    },
 
     // 统计某房间自身任务池里某角色排队数量（不关心 targetRoom）。
-    private static getQueuedSpawnRoleNumBySource(sourceRoom: Room, unit: string): number {
+    getQueuedSpawnRoleNumBySource(sourceRoom: Room, unit: string): number {
         const tasks = sourceRoom.getAllMissionFromPool?.('spawn') || [];
         let count = 0;
         for (const task of tasks) {
@@ -234,11 +234,11 @@ export class ExternalMineSpawner {
             count++;
         }
         return count;
-    }
+    },
 
     // spawnInAdvance：TTL 不足以再跑一趟（路程 + 缓冲）的
     // 采集者不计入覆盖数——接替者在其死亡前就提前孵化，新爬到场时老爬刚好耗尽，外矿不断档。
-    private static getEffectiveOutHarvesterNum(sourceRoom: Room, targetRoomName: string): number {
+    getEffectiveOutHarvesterNum(sourceRoom: Room, targetRoomName: string): number {
         const travelTicks = getRoomTickCacheValue(sourceRoom, `out_harvest_travel_${targetRoomName}`, () =>
             ExternalMineState.estimateTargetSelectionStat(sourceRoom, targetRoomName).distance
         );
@@ -253,12 +253,12 @@ export class ExternalMineSpawner {
             count++;
         }
         return count;
-    }
+    },
 
     // 目标房内「所有存活」采集工数（不限 TTL / 不限源房）。
     // 工位硬上限必须按在场身体数算：换班期快死的爬仍占着工位，
     // 若沿用 getEffectiveOutHarvesterNum 的换班排除口径，会把超额新爬顶进满员房间（No source 根源）。
-    private static getAllLiveOutHarvesterNum(targetRoomName: string): number {
+    getAllLiveOutHarvesterNum(targetRoomName: string): number {
         let count = 0;
         for (const creepName in Game.creeps) {
             const creep = Game.creeps[creepName];
@@ -267,15 +267,15 @@ export class ExternalMineSpawner {
             count++;
         }
         return count;
-    }
+    },
 
-    private static isSameSourceRoom(creepSourceRoom: string | undefined, sourceRoomName: string): boolean {
+    isSameSourceRoom(creepSourceRoom: string | undefined, sourceRoomName: string): boolean {
         if (!creepSourceRoom) return false;
         return creepSourceRoom === sourceRoomName;
-    }
+    },
 
     // 侦查：全局与本房均只允许 1 个 scout，以避免重复探路。
-    static scout(sourceRoom: Room, targetRoomName: string): boolean {
+    scout(sourceRoom: Room, targetRoomName: string): boolean {
         const globalActive = this.getActiveRoleNumByTarget(UNITS['scout'], targetRoomName);
         const globalQueued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['scout'], targetRoomName);
         if (globalActive + globalQueued > 0) return false;
@@ -296,10 +296,10 @@ export class ExternalMineSpawner {
 
         sourceRoom.SpawnMissionAdd('OS', [], this.PRIORITY.scout, UNITS['scout'], ExternalMineState.createMemory(sourceRoom.name, targetRoomName));
         return true;
-    }
+    },
 
     // 常规外矿攻击者（单目标房最多 1 个）。
-    static attack(sourceRoom: Room, targetRoom: Room): boolean {
+    attack(sourceRoom: Room, targetRoom: Room): boolean {
         const globalActive = this.getActiveRoleNumByTarget(UNITS['out-attack'], targetRoom.name);
         const globalQueued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['out-attack'], targetRoom.name);
         const globalSpawning = this.getSpawningRoleNumByTargetGlobal(UNITS['out-attack'], targetRoom.name);
@@ -308,17 +308,17 @@ export class ExternalMineSpawner {
         const memory = ExternalMineState.createMemory(sourceRoom.name, targetRoom.name);
         sourceRoom.SpawnMissionAdd('OA', [], -1, UNITS['out-attack'], memory);
         return true;
-    }
+    },
 
-    static hasKeeperAttackCoverage(targetRoomName: string): boolean {
+    hasKeeperAttackCoverage(targetRoomName: string): boolean {
         const active = this.getActiveRoleNumByTarget(UNITS['out-attack'], targetRoomName);
         const queued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['out-attack'], targetRoomName);
         const spawning = this.getSpawningRoleNumByTargetGlobal(UNITS['out-attack'], targetRoomName);
         return active + queued + spawning > 0;
-    }
+    },
 
     // 远程攻击者（单目标房最多 1 个）。
-    static ranged(sourceRoom: Room, targetRoom: Room): boolean {
+    ranged(sourceRoom: Room, targetRoom: Room): boolean {
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
         const outerRanged = (creepByTargetRoom[UNITS[UNITS['out-ranged']]] || [])
             .filter((c: any) => c.ticksToLive > 300 || c.spawning);
@@ -327,7 +327,7 @@ export class ExternalMineSpawner {
 
         sourceRoom.SpawnMissionAdd('OR', [], -1, UNITS['out-ranged'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
         return true;
-    }
+    },
 
     // ── 外矿孵化容量准入──
     // 单位 = 身体部件数：B 件爬孵化耗 3B tick，每 spawn 每 1500t 窗口产 500×N 部件，
@@ -336,7 +336,7 @@ export class ExternalMineSpawner {
     // 主房成长后外矿规模自动放大——早期照常开张，但不再抽干主房孵化产能。
 
     /** 任务体型折算部件数（空体型 = 角色默认配置；压缩串 = 解码后求和） */
-    static resolveMissionBodyParts(sourceRoom: Room, unit: string, body: ((BodyPartConstant | number)[])[] | string): number {
+    resolveMissionBodyParts(sourceRoom: Room, unit: string, body: ((BodyPartConstant | number)[])[] | string): number {
         const sumPairs = (pairs: any): number => {
             if (!Array.isArray(pairs)) return 0;
             let sum = 0;
@@ -353,15 +353,15 @@ export class ExternalMineSpawner {
             return sumPairs(decompressBodyConfig(body));
         }
         return sumPairs(body);
-    }
+    },
 
     /** 外矿准入判定：剩余孵化容量 ≥ 新单部件数 */
-    static hasRemoteSpawnBudget(sourceRoom: Room, newParts: number): boolean {
+    hasRemoteSpawnBudget(sourceRoom: Room, newParts: number): boolean {
         return this.getRemoteSpawnLeftover(sourceRoom) >= newParts;
-    }
+    },
 
     /** 剩余外矿孵化容量（已扣本地计划编成与在编外务；负数 = 本地缺口，外矿全停） */
-    static getRemoteSpawnLeftover(sourceRoom: Room): number {
+    getRemoteSpawnLeftover(sourceRoom: Room): number {
         const LIFE = typeof CREEP_LIFE_TIME === 'number' ? CREEP_LIFE_TIME : 1500;
         // 引擎按 `CREEP_SPAWN_TIME × 部件数` 计孵化耗时, 须乘标称部件数, 否则容量高估数倍
         const SPAWN_TIME = (typeof CREEP_SPAWN_TIME === 'number' ? CREEP_SPAWN_TIME : 3)
@@ -396,16 +396,16 @@ export class ExternalMineSpawner {
             localDemand += 7 * (LIFE / Math.max(200, LIFE - pathTime)) + pathTime * 0.04 * 10 * 2;
         }
         return capacity - localDemand - remoteUsed;
-    }
+    },
 
     /** 外矿经济单统一入口：过容量准入闸再落单（战争/防御/侦察单不走此闸） */
-    static addEconomyMission(sourceRoom: Room, name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, unit: string, memory: any): boolean {
+    addEconomyMission(sourceRoom: Room, name: string, body: ((BodyPartConstant | number)[])[] | string, level: number, unit: string, memory: any): boolean {
         if (!this.hasRemoteSpawnBudget(sourceRoom, this.resolveMissionBodyParts(sourceRoom, unit, body))) return false;
         return sourceRoom.SpawnMissionAdd(name, body, level, unit, memory) === OK;
-    }
+    },
 
     // 外矿矿物采集（需要 RCL6+ 且单房仅 1 个）。
-    static mineral(sourceRoom: Room, targetRoom: Room): boolean {
+    mineral(sourceRoom: Room, targetRoom: Room): boolean {
         if (sourceRoom.level < 6) return false;
         const creepByTargetRoom = getCreepByTargetRoom(targetRoom.name);
         const outerMiners = (creepByTargetRoom[UNITS[UNITS['out-mineral']]] || []).length;
@@ -413,10 +413,10 @@ export class ExternalMineSpawner {
         if (outerMiners + spawnNum >= 1) return false;
 
         return this.addEconomyMission(sourceRoom, 'OMR', [], this.PRIORITY.mineral, UNITS['out-mineral'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
-    }
+    },
 
     // 常规防守：根据敌人种类/数量派遣 out-defend 或 out-invader。
-    static defend(sourceRoom: Room, targetRoom: Room, hostiles: Creep[]): boolean {
+    defend(sourceRoom: Room, targetRoom: Room, hostiles: Creep[]): boolean {
         const invaderCore = targetRoom.find(FIND_STRUCTURES, {
             filter: (structure) => structure.structureType === STRUCTURE_INVADER_CORE
         });
@@ -449,10 +449,10 @@ export class ExternalMineSpawner {
         }
 
         return false;
-    }
+    },
 
     // 高等级的“双人防守”编队（out-2attack + out-2heal）。
-    static doubleDefend(sourceRoom: Room, targetRoom: Room, hostiles: Creep[]): boolean {
+    doubleDefend(sourceRoom: Room, targetRoom: Room, hostiles: Creep[]): boolean {
         if (hostiles.length === 0) return false;
 
         if (sourceRoom.level < this.DOUBLE_DEFEND_MIN_LEVEL) {
@@ -471,13 +471,13 @@ export class ExternalMineSpawner {
         sourceRoom.SpawnMissionAdd('', [], -1, UNITS['out-2attack'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
         sourceRoom.SpawnMissionAdd('', [], -1, UNITS['out-2heal'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
         return true;
-    }
+    },
 
     // 外矿采集者：根据源数、站位上限与 body 配置决定目标数量。
     // targetRoom 可为 null（无视野）：此时优先用 scout 记录的工位数做离线口径；
     // 拿不到记录就退回「源数 × 每源编制」补给——绝不因视野丢失而停发采集工，
     // 否则外矿一次视野间隙（采集工死光 → 没视野 → 不再补位）就会整体停摆。
-    static harvester(sourceRoom: Room, targetRoom: Room | null, targetRoomName: string, sourceNum: number, upbody?: boolean, slotCapOverride?: number): boolean {
+    harvester(sourceRoom: Room, targetRoom: Room | null, targetRoomName: string, sourceNum: number, upbody?: boolean, slotCapOverride?: number): boolean {
         let slotCap: number | null;
         if (targetRoom) {
             slotCap = ExternalMineMath.getOutHarvesterSlotCap(targetRoom);
@@ -542,10 +542,10 @@ export class ExternalMineSpawner {
             const body = buildRemoteMinerBody(energyBudget, 5, !rushMode);
             return this.addEconomyMission(sourceRoom, 'OH', body, replaceLevel, UNITS.harvester, memory);
         }
-    }
+    },
 
     // 外矿运输者：以 carrier 角色孵化，走外矿工作位分支。
-    static carry(sourceRoom: Room, targetRoom: Room, num: number): boolean {
+    carry(sourceRoom: Room, targetRoom: Room, num: number): boolean {
         // 决策轨迹：拒绝原因进环形缓冲，诊断采样读取（定位搬运断供）
         const trace = (reason: string): false => {
             const g = globalThis as any;
@@ -601,18 +601,18 @@ export class ExternalMineSpawner {
         }
 
         return trace(`satisfied(${totalCarry}>=${Math.min(num, fleetCap)})`);
-    }
+    },
 
     // 外矿积压是否处于严重饥荒：可用积压（扣除在场搬运预定）过严重线。
     // 饥荒期 OC 升层重建、建造派单让位——能量优先回流收入管线。
-    private static isCarryFamine(sourceRoom: Room, targetRoomName: string): boolean {
+    isCarryFamine(sourceRoom: Room, targetRoomName: string): boolean {
         const backlog = ExternalMineAnalysis.getManagedRoomBacklogMap(sourceRoom)[targetRoomName] ?? 0;
         return backlog >= EXTERNAL_MINE_ANALYSIS.SEVERE_BACKLOG_THRESHOLD
             * getRoomModeProfile(sourceRoom).remoteCarryBacklogScale;
-    }
+    },
 
     // 外矿预定：仅在目标未被占领、且自家预定不足时派遣。
-    static reserver(sourceRoom: Room, targetRoom: Room): boolean {
+    reserver(sourceRoom: Room, targetRoom: Room): boolean {
         if (!targetRoom.controller || targetRoom.controller.my) return false;
         if (sourceRoom.controller!.level! < 3) return false;
 
@@ -628,30 +628,30 @@ export class ExternalMineSpawner {
         // 砍半），是外矿收入的倍增器——垫底 L11 会在孵化繁忙期永久饿死
         const reserveLevel = getRoomMode(sourceRoom) === 'rush' ? 6 : this.PRIORITY.reserver;
         return this.addEconomyMission(sourceRoom, '', '', reserveLevel, UNITS['reserver'], ExternalMineState.createMemory(sourceRoom.name, targetRoom.name));
-    }
+    },
 
-    private static getBuilderConstructionTargets(targetRoom: Room): ConstructionSite[] {
+    getBuilderConstructionTargets(targetRoom: Room): ConstructionSite[] {
         return targetRoom.find(FIND_CONSTRUCTION_SITES, {
             filter: (site) => site.structureType === STRUCTURE_ROAD || site.structureType === STRUCTURE_CONTAINER
         }) as ConstructionSite[];
-    }
+    },
 
-    private static getBuilderRepairTargets(targetRoom: Room): Structure[] {
+    getBuilderRepairTargets(targetRoom: Room): Structure[] {
         return targetRoom.find(FIND_STRUCTURES, {
             filter: (structure) =>
                 (structure.structureType === STRUCTURE_ROAD || structure.structureType === STRUCTURE_CONTAINER) &&
                 structure.hits < structure.hitsMax * 0.8
         }) as Structure[];
-    }
+    },
 
-    private static getBuilderWorkCount(targetRoom: Room): number {
+    getBuilderWorkCount(targetRoom: Room): number {
         return this.getBuilderConstructionTargets(targetRoom).length + this.getBuilderRepairTargets(targetRoom).length;
-    }
+    },
 
     // 外矿建造者：道路/容器存在施工或维修需求时派遣。
     // 不分配 targetSourceId——运行时按「离当前工作目标最近的源」动态取能
     // （见 out-build.ts 的 getAssignedSource），采建同侧、不跨源绑定。
-    static builder(sourceRoom: Room, targetRoom: Room): boolean {
+    builder(sourceRoom: Room, targetRoom: Room): boolean {
         // 运力饥荒让位：外矿积压过严重线时暂停建造派单，spawn 周期让给 OC 重建
         //（路网/容器再投资在积压消化后自然恢复——builder 按工地存在性自限）
         if (this.isCarryFamine(sourceRoom, targetRoom.name)) return false;
@@ -686,5 +686,5 @@ export class ExternalMineSpawner {
             ? Math.max(300, sourceRoom.energyAvailable)
             : sourceRoom.energyCapacityAvailable;
         return this.addEconomyMission(sourceRoom, 'OB', buildOutBuildBody(buildBudget), buildLevel, UNITS['out-build'], memory);
-    }
-}
+    },
+};

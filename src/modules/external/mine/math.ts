@@ -26,22 +26,22 @@ const EXTERNAL_MINE_CARRY_TARGET_CONFIG = {
 } as const;
 
 // 外矿的数学/容量估算集中在此处，避免散落的魔数。
-export class ExternalMineMath {
+export const ExternalMineMath = {
     // 期望单源总 WORK 数量（用于估算采集人数）。
-    private static readonly SOURCE_TARGET_WORK = 5;
+    SOURCE_TARGET_WORK: 5,
     // 低等级阶段允许的单源外矿采集者上限（用于过渡补能）。
-    private static readonly MAX_HARVESTERS_PER_SOURCE_LOW_LEVEL = 3;
+    MAX_HARVESTERS_PER_SOURCE_LOW_LEVEL: 3,
     // 成熟房间（有效等级 >= 4）单源上限：严格 1 个采集者。
-    private static readonly MAX_HARVESTERS_PER_SOURCE_STABLE = 1;
+    MAX_HARVESTERS_PER_SOURCE_STABLE: 1,
     // 允许占位在采集点旁的可通行结构类型。
-    private static readonly WALKABLE_SOURCE_STRUCTURE_SET = new Set<StructureConstant>([
+    WALKABLE_SOURCE_STRUCTURE_SET: new Set<StructureConstant>([
         STRUCTURE_CONTAINER,
         STRUCTURE_ROAD,
         STRUCTURE_RAMPART,
-    ]);
+    ]),
 
     // 获取 high/rush 模式下的外矿小体型；具体体型配置直接复用 UnitLevelData.minipart。
-    static getModeLimitedBodyConfig(
+    getModeLimitedBodyConfig(
         sourceRoom: Room,
         unit: string,
         upbody?: boolean
@@ -51,10 +51,10 @@ export class ExternalMineMath {
         if (mode !== 'high' && mode !== 'rush') return null;
         const body = sourceRoom.GetUnitBodys(unit, false, undefined, true);
         return Array.isArray(body) && body.length > 0 ? body : null;
-    }
+    },
 
     // 判断外矿资源点旁某个坐标是否可站立（不在边界、非墙、结构阻塞）。
-    private static isStandableOutmineSourcePos(room: Room, x: number, y: number): boolean {
+    isStandableOutmineSourcePos(room: Room, x: number, y: number): boolean {
         const terrain = room.getTerrain();
         if (x <= 0 || x >= 49 || y <= 0 || y >= 49) return false;
         if (terrain.get(x, y) === TERRAIN_MASK_WALL) return false;
@@ -72,10 +72,10 @@ export class ExternalMineMath {
         if (sites.some(site => !this.WALKABLE_SOURCE_STRUCTURE_SET.has(site.structureType))) return false;
 
         return true;
-    }
+    },
 
     // 计算并缓存某个 Source 周围可站立格数，用于采集者数量上限估计。
-    private static getOutmineSourceStandableCount(room: Room, source: Source): number {
+    getOutmineSourceStandableCount(room: Room, source: Source): number {
         if (!room.memory.sourcePosCount) room.memory.sourcePosCount = {};
         const cached = room.memory.sourcePosCount[source.id];
         if (typeof cached === 'number') return cached;
@@ -94,10 +94,10 @@ export class ExternalMineMath {
 
         room.memory.sourcePosCount[source.id] = walkable;
         return walkable;
-    }
+    },
 
     // 获取目标房间内所有资源点的可站立格总数（作为全局采集上限）。
-    static getOutHarvesterSlotCap(targetRoom: Room): number {
+    getOutHarvesterSlotCap(targetRoom: Room): number {
         const sources = (targetRoom.source || targetRoom.find(FIND_SOURCES) || []) as Source[];
         if (sources.length <= 0) return 0;
 
@@ -106,24 +106,24 @@ export class ExternalMineMath {
             totalSlots += this.getOutmineSourceStandableCount(targetRoom, source);
         }
         return totalSlots;
-    }
+    },
 
     // 无视野时的离线口径：scout 到访时记录的工位缓存（Memory.rooms[target].sourcePosCount）。
     // 从未记录过返回 null——此时不做工位上限，由调用方决定是否放弃孵化。
-    static getRecordedOutHarvesterSlotCap(targetRoomName: string): number | null {
+    getRecordedOutHarvesterSlotCap(targetRoomName: string): number | null {
         const recorded = readRecordedSourceSlotCounts(targetRoomName);
         if (!recorded) return null;
         return recorded.reduce((a, b) => a + b, 0);
-    }
+    },
 
     // 无视野时的离线口径：scout 记录的 source 数量；从未记录过返回 null。
-    static getRecordedSourceNum(targetRoomName: string): number | null {
+    getRecordedSourceNum(targetRoomName: string): number | null {
         const recorded = readRecordedSourceSlotCounts(targetRoomName);
         return recorded ? recorded.length : null;
-    }
+    },
 
     // 计算外矿采集者的 WORK 数量，支持 upbody（固定高配）或读取配置。
-    static getOutHarvesterWorkParts(sourceRoom: Room, upbody?: boolean): number {
+    getOutHarvesterWorkParts(sourceRoom: Room, upbody?: boolean): number {
         if (upbody) return 16;
         const body = buildRemoteMinerBody(sourceRoom.energyCapacityAvailable, 5, true);
         if (!Array.isArray(body) || body.length === 0) return 1;
@@ -136,10 +136,10 @@ export class ExternalMineMath {
             workParts += part[1];
         }
         return Math.max(1, workParts);
-    }
+    },
 
     // 根据体型配置估算外矿搬运的单体承载能力。
-    static getOutCarryCapacity(sourceRoom: Room): number {
+    getOutCarryCapacity(sourceRoom: Room): number {
         // 接力车道（rush）：C4 微型件口径，定编按 200 容量/件折算——
         // 定编必须与实际孵出的体型一致，否则车队目标会被低估 4-6 倍
         if (getRoomMode(sourceRoom) === 'rush') return 200;
@@ -157,10 +157,10 @@ export class ExternalMineMath {
         }
         const lv = Math.max(1, Math.min(8, sourceRoom.level));
         return EXTERNAL_MINE_CARRY_TARGET_CONFIG.fallbackCarryCapacityByLevel[lv] ?? 0;
-    }
+    },
 
     // 根据源数、WORK 能力与站位上限，估算采集者目标数量。
-    static calcOutHarvesterTargetNum(sourceRoom: Room, sourceNum: number, upbody?: boolean, slotCap?: number): number {
+    calcOutHarvesterTargetNum(sourceRoom: Room, sourceNum: number, upbody?: boolean, slotCap?: number): number {
         if (sourceNum <= 0) return 0;
         const workParts = this.getOutHarvesterWorkParts(sourceRoom, upbody);
         const perSource = Math.ceil(this.SOURCE_TARGET_WORK / workParts);
@@ -172,10 +172,10 @@ export class ExternalMineMath {
         const targetNum = sourceNum * cappedPerSource;
         if (typeof slotCap === 'number') return Math.max(0, Math.min(slotCap, targetNum));
         return targetNum;
-    }
+    },
 
     // 根据距离与吞吐估算运输数量，考虑 RCL 运输能力、往返时间与产量。
-    static calcEnergyOutCarryTarget(
+    calcEnergyOutCarryTarget(
         sourceRoom: Room,
         targetRoom: Room,
         sourceNum: number,
@@ -217,5 +217,5 @@ export class ExternalMineMath {
             sourceNum * EXTERNAL_MINE_CARRY_TARGET_CONFIG.maxTargetNumPerSource
         );
         return Math.min(cappedMax, Math.max(baseNum, dynamicNum));
-    }
-}
+    },
+};

@@ -31,8 +31,8 @@ import {
 
 export type { ExternalMineSourceStat, ExternalMineCarryPlan };
 
-export class ExternalMineAnalysis {
-    static getSourceStats(
+export const ExternalMineAnalysis = {
+    getSourceStats(
         sourceRoom: Room,
         targetRoom: Room,
         source: Source,
@@ -67,15 +67,15 @@ export class ExternalMineAnalysis {
             collectionRange,
             container,
         };
-    }
+    },
 
-    static getRoomSourceStats(sourceRoom: Room, targetRoom: Room, excludeCreepName?: string, unreservedIncomeFactor = 0.5): ExternalMineSourceStat[] {
+    getRoomSourceStats(sourceRoom: Room, targetRoom: Room, excludeCreepName?: string, unreservedIncomeFactor = 0.5): ExternalMineSourceStat[] {
         return getExternalMineTargetSources(targetRoom)
             .map((source) => this.getSourceStats(sourceRoom, targetRoom, source, excludeCreepName, unreservedIncomeFactor))
             .filter((stat) => stat.energyPerTick > 0 && stat.distance > 0);
-    }
+    },
 
-    static buildCarryPlan(
+    buildCarryPlan(
         sourceRoom: Room,
         targetRoom: Room,
         allowWorkCarry: boolean,
@@ -114,9 +114,9 @@ export class ExternalMineAnalysis {
             throughputTargetNum,
             targetCarryNum,
         };
-    }
+    },
 
-    static pickBestCarrySource(creep: Creep): ExternalMineSourceStat | null {
+    pickBestCarrySource(creep: Creep): ExternalMineSourceStat | null {
         const sourceRoomName = creep.memory.sourceRoom;
         const targetRoomName = creep.memory.targetRoom;
         if (!sourceRoomName || !targetRoomName) return null;
@@ -159,11 +159,11 @@ export class ExternalMineAnalysis {
 
         if (!currentSourceKey) return null;
         return stats.find((stat) => stat.sourceKey === currentSourceKey) || null;
-    }
+    },
 
     // 每 tick 每源房缓存一次：各托管目标房的「可用积压」（已扣除在场搬运工预定量）。
     // 单次调度覆盖全部托管房，多个搬运工复用同一份结果，避免逐 creep 重算。
-    static getManagedRoomBacklogMap(sourceRoom: Room): Record<string, number> {
+    getManagedRoomBacklogMap(sourceRoom: Room): Record<string, number> {
         return getRoomTickCacheValue(sourceRoom, 'outmine_room_backlog', () => {
             const backlog: Record<string, number> = {};
             const roomNames = [
@@ -181,11 +181,11 @@ export class ExternalMineAnalysis {
             }
             return backlog;
         });
-    }
+    },
 
     // 每 tick 每源房缓存一次：各目标房在册的搬运工数量（含在途与孵化中，不含濒死返程的）。
     // 这是搬运重平衡的主键（人数最少者优先），单次统计全房搬运工复用。
-    private static getCarryCountByTargetRoom(sourceRoom: Room): Record<string, number> {
+    getCarryCountByTargetRoom(sourceRoom: Room): Record<string, number> {
         return getRoomTickCacheValue(sourceRoom, 'outmine_carry_count', () => {
             const counts: Record<string, number> = {};
             for (const name in Game.creeps) {
@@ -197,19 +197,19 @@ export class ExternalMineAnalysis {
                 const targetRoom = memory.targetRoom;
                 if (!targetRoom) continue;
                 // 濒死返程的搬运工这趟交完就退休，不再计入在册
-                if (typeof creep!.ticksToLive! === 'number' && creep!.ticksToLive! <= OUT_CARRY_DYING_TTL) continue;
+                if ((creep?.ticksToLive ?? Infinity) <= OUT_CARRY_DYING_TTL) continue;
                 counts[targetRoom] = (counts[targetRoom] || 0) + 1;
             }
             return counts;
         });
-    }
+    },
 
     // 每 tick 每源房缓存一次：有「在场产出采集工」的目标房集合。
     // 在场产出 = 本源房孵的外矿采集爬物理位于其目标房 + 有 WORK（能采）
     // + 有 CARRY（能装；零 CARRY 的废体型 harvest 永远 ERR_FULL，不算产出）。
     // 在途/孵化中的采集工不算——到场前没有产出。
     // 供搬运派送的「在场产出闸」与重平衡的候选过滤共用。
-    static getOnSiteHarvesterRoomSet(sourceRoom: Room): Set<string> {
+    getOnSiteHarvesterRoomSet(sourceRoom: Room): Set<string> {
         return getRoomTickCacheValue(sourceRoom, 'outmine_onsite_harvester_rooms', () => {
             const rooms = new Set<string>();
             for (const name in Game.creeps) {
@@ -217,10 +217,10 @@ export class ExternalMineAnalysis {
                 const memory = creep?.memory as any;
                 if (!memory || memory.unit !== UNITS.harvester || !memory.targetRoom) continue;
                 if (memory.sourceRoom !== sourceRoom.name) continue;
-                if (creep!.spawning!) continue;
+                if (creep?.spawning) continue;
                 const targetRoomName = memory.targetRoom;
-                if (!targetRoomName || !creep!.pos || creep!.pos.roomName!== targetRoomName) continue;
-                const hasWork = typeof creep!.getActiveBodyparts! === 'function' && creep!.getActiveBodyparts! (WORK) > 0;
+                if (!targetRoomName || !creep?.pos || creep.pos.roomName !== targetRoomName) continue;
+                const hasWork = typeof creep.getActiveBodyparts === 'function' && creep.getActiveBodyparts(WORK) > 0;
                 if (!hasWork) continue;
                 // 不要求 store 容量：rush 定点矿工 [W5,M1] 无 CARRY（掉落由搬运收取），
                 // 在场产出的判定只看「在目标房 + 有采集力」
@@ -228,7 +228,7 @@ export class ExternalMineAnalysis {
             }
             return rooms;
         });
-    }
+    },
 
     /**
      * 为一个外矿搬运工挑「更值得跑」的目标房（搬运工动态选房）。
@@ -243,7 +243,7 @@ export class ExternalMineAnalysis {
      * @param backlogOverride 候选房可用积压（测试/外部注入用；不传则按 tick 缓存现算）。
      * @returns 建议的目标房名；维持现状或数据不足时返回 `null`。
      */
-    static pickBestCarryTargetRoom(
+    pickBestCarryTargetRoom(
         creep: Creep,
         candidatesOverride?: string[],
         backlogOverride?: Record<string, number>,
@@ -292,11 +292,11 @@ export class ExternalMineAnalysis {
         }
 
         return pickBestCarryRoomName(currentTarget, carryNeed, stats);
-    }
+    },
 
     // 每 tick 每源房缓存：发往某目标房的在册搬运总载量（含孵化中，不含濒死返程）。
     // 供收入瓶颈口径计算「搬运比」使用。
-    private static getAssignedCarryCapacityByTarget(sourceRoomName: string, targetRoomName: string): number {
+    getAssignedCarryCapacityByTarget(sourceRoomName: string, targetRoomName: string): number {
         let capacity = 0;
         for (const name in Game.creeps) {
             const creep = Game.creeps[name];
@@ -306,11 +306,11 @@ export class ExternalMineAnalysis {
             if (memory.sourceRoom !== sourceRoomName) continue;
             if (memory.targetRoom !== targetRoomName) continue;
             // 濒死返程的搬运工这趟交完就退休，不再计入运力
-            if (typeof creep!.ticksToLive! === 'number' && creep!.ticksToLive! <= OUT_CARRY_DYING_TTL) continue;
-            capacity += getExternalMineStoreCapacity(creep!.store! as ExternalMineStoreLike);
+            if ((creep?.ticksToLive ?? Infinity) <= OUT_CARRY_DYING_TTL) continue;
+            capacity += getExternalMineStoreCapacity(creep!.store as ExternalMineStoreLike);
         }
         return capacity;
-    }
+    },
 
     /**
      * 本源房外矿的真实有效收入（每 tick 能量口径）。
@@ -324,7 +324,7 @@ export class ExternalMineAnalysis {
      * - 搬运比 = 在册搬运总载量 ÷ 需求运力（2 × 距离 × 净收入 × 模式冗余系数）；
      * - 无视野的目标房退化为「在册采集工 × 5」估算（宁估不缺，不断档口径）。
      */
-    static getRoomRemoteIncome(sourceRoom: Room): number {
+    getRoomRemoteIncome(sourceRoom: Room): number {
         return getRoomTickCacheValue(sourceRoom, 'outmine_remote_income', () => {
             const profile = getRoomModeProfile(sourceRoom);
             let income = 0;
@@ -372,5 +372,5 @@ export class ExternalMineAnalysis {
             }
             return income;
         });
-    }
-}
+    },
+};

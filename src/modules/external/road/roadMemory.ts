@@ -6,10 +6,10 @@
 import { compress, decompress } from '@/utils/compress';
 import { getOutMineData } from '@/core/store/accessor';
 
-export class RoadMemory {
-    private static groupPositionsCache: {
+export const RoadMemory = {
+    groupPositionsCache: {} as {
         [key: string]: { lastUpdate: number; positions: RoomPosition[] };
-    } = {};
+    },
     /**
      * 已解码的路线缓存（key 为 `源房:目标房`）。
      *
@@ -21,9 +21,9 @@ export class RoadMemory {
      *
      * 注意：返回值是进程内共享对象，调用方**不得就地修改**其中的数组或 Map。
      */
-    private static allPathsCache: {
+    allPathsCache: {} as {
         [key: string]: { lastUpdate: number; paths: Map<string, RoomPosition[]> };
-    } = {};
+    },
 
     /**
      * 获取指定目标房间的路线组
@@ -31,11 +31,11 @@ export class RoadMemory {
      * @param targetRoom 目标房间名
      * @returns 路线组数据或 undefined
      */
-    static getRouteGroup(sourceRoom: string, targetRoom: string): OutMineRoadRouteGroup | undefined {
+    getRouteGroup(sourceRoom: string, targetRoom: string): OutMineRoadRouteGroup | undefined {
         const mem = this.getMemory(sourceRoom);
         if (!mem?.routes) return undefined;
         return mem.routes[targetRoom] as OutMineRoadRouteGroup;
-    }
+    },
 
     /**
      * 设置指定目标的路径数据
@@ -44,7 +44,7 @@ export class RoadMemory {
      * @param targetPos 目标位置 "x:y"
      * @param positions 道路位置数组（按顺序）
      */
-    static setPath(sourceRoom: string, targetRoom: string, targetPos: string, positions: RoomPosition[]): void {
+    setPath(sourceRoom: string, targetRoom: string, targetPos: string, positions: RoomPosition[]): void {
         this.ensureMemory(sourceRoom);
         const mem = getOutMineData(sourceRoom).RoadData!;
         
@@ -69,7 +69,7 @@ export class RoadMemory {
         mem.lastUpdate = Game.time;
         delete this.groupPositionsCache[`${sourceRoom}:${targetRoom}`];
         delete this.allPathsCache[`${sourceRoom}:${targetRoom}`];
-    }
+    },
 
     /**
      * 批量设置多个目标的路径
@@ -77,7 +77,7 @@ export class RoadMemory {
      * @param targetRoom 目标房间名
      * @param pathsMap 路径映射 { "x:y": positions[] }
      */
-    static setPaths(sourceRoom: string, targetRoom: string, pathsMap: Map<string, RoomPosition[]>): void {
+    setPaths(sourceRoom: string, targetRoom: string, pathsMap: Map<string, RoomPosition[]>): void {
         this.ensureMemory(sourceRoom);
         const mem = getOutMineData(sourceRoom).RoadData!;
         
@@ -100,7 +100,7 @@ export class RoadMemory {
         mem.lastUpdate = Game.time;
         delete this.groupPositionsCache[`${sourceRoom}:${targetRoom}`];
         delete this.allPathsCache[`${sourceRoom}:${targetRoom}`];
-    }
+    },
 
     /**
      * 获取指定目标的路径
@@ -109,7 +109,7 @@ export class RoadMemory {
      * @param targetPos 目标位置 "x:y"
      * @returns RoomPosition 数组（按顺序）
      */
-    static getPath(sourceRoom: string, targetRoom: string, targetPos: string): RoomPosition[] | undefined {
+    getPath(sourceRoom: string, targetRoom: string, targetPos: string): RoomPosition[] | undefined {
         const group = this.getRouteGroup(sourceRoom, targetRoom);
         if (!group?.paths?.[targetPos]) return undefined;
 
@@ -118,7 +118,7 @@ export class RoadMemory {
             const [x, y] = decompress(compressed);
             return new RoomPosition(x, y, roomName);
         });
-    }
+    },
 
     /**
      * 读取某源房外矿路线数据的版本号（`RoadData.lastUpdate`）。
@@ -131,9 +131,9 @@ export class RoadMemory {
      * @param sourceRoom 源头房间名。
      * @returns 版本号；该源房还没有路线数据时返回 0。
      */
-    static getRouteVersion(sourceRoom: string): number {
+    getRouteVersion(sourceRoom: string): number {
         return this.getMemory(sourceRoom)?.lastUpdate ?? 0;
-    }
+    },
 
     /**
      * 获取目标房间内所有目标的路径
@@ -144,7 +144,7 @@ export class RoadMemory {
      * 结果按 `RoadData.lastUpdate` 缓存，同 tick 内多次调用（多个 creep、
      * 多轮工地维护）只解压一次。**返回值为共享对象，调用方只读。**
      */
-    static getAllPaths(sourceRoom: string, targetRoom: string): Map<string, RoomPosition[]> {
+    getAllPaths(sourceRoom: string, targetRoom: string): Map<string, RoomPosition[]> {
         const mem = this.getMemory(sourceRoom);
         const group = this.getRouteGroup(sourceRoom, targetRoom);
         if (!group?.paths) return new Map<string, RoomPosition[]>();
@@ -172,7 +172,7 @@ export class RoadMemory {
             this.allPathsCache[cacheKey] = { lastUpdate, paths: result };
         }
         return result;
-    }
+    },
 
     /**
      * 获取指定路线组的所有唯一道路位置
@@ -180,7 +180,7 @@ export class RoadMemory {
      * @param targetRoom 目标房间名
      * @returns 唯一道路位置数组
      */
-    static getGroupPositions(sourceRoom: string, targetRoom: string): RoomPosition[] {
+    getGroupPositions(sourceRoom: string, targetRoom: string): RoomPosition[] {
         const mem = this.getMemory(sourceRoom);
         const group = this.getRouteGroup(sourceRoom, targetRoom);
         if (!group?.paths) return [];
@@ -214,7 +214,7 @@ export class RoadMemory {
             };
         }
         return positions;
-    }
+    },
 
     /**
      * 删除指定路线
@@ -222,7 +222,7 @@ export class RoadMemory {
      * @param targetRoom 目标房间名
      * @returns 是否删除成功
      */
-    static deleteRoute(sourceRoom: string, targetRoom: string): boolean {
+    deleteRoute(sourceRoom: string, targetRoom: string): boolean {
         const mem = this.getMemory(sourceRoom);
         if (!mem?.routes?.[targetRoom]) return false;
         delete mem.routes[targetRoom];
@@ -230,25 +230,25 @@ export class RoadMemory {
         delete this.groupPositionsCache[`${sourceRoom}:${targetRoom}`];
         delete this.allPathsCache[`${sourceRoom}:${targetRoom}`];
         return true;
-    }
+    },
 
     /**
      * 获取所有路线的目标房间列表
      * @param sourceRoom 源头房间名
      * @returns 目标房间名数组
      */
-    static getRouteTargets(sourceRoom: string): string[] {
+    getRouteTargets(sourceRoom: string): string[] {
         const mem = this.getMemory(sourceRoom);
         if (!mem?.routes) return [];
         return Object.keys(mem.routes);
-    }
+    },
 
     /**
      * 获取统计信息
      * @param sourceRoom 源头房间名
      * @returns 统计信息
      */
-    static getStats(sourceRoom: string): {
+    getStats(sourceRoom: string): {
         routeCount: number;
         pathCount: number;
         totalLength: number;
@@ -282,14 +282,14 @@ export class RoadMemory {
             totalLength,
             roomCount: roomSet.size,
         };
-    }
+    },
 
     /**
      * 验证数据完整性
      * @param sourceRoom 源头房间名
      * @returns 验证结果
      */
-    static validate(sourceRoom: string): {
+    validate(sourceRoom: string): {
         valid: boolean;
         errors: string[];
     } {
@@ -335,18 +335,18 @@ export class RoadMemory {
         }
 
         return { valid: errors.length === 0, errors };
-    }
+    },
     /**
      * 获取道路内存
      */
-    private static getMemory(sourceRoom: string): OutMineRoadMemory | undefined {
+    getMemory(sourceRoom: string): OutMineRoadMemory | undefined {
         return getOutMineData()?.[sourceRoom]?.RoadData;
-    }
+    },
 
     /**
      * 确保内存结构存在
      */
-    private static ensureMemory(sourceRoom: string): void {
+    ensureMemory(sourceRoom: string): void {
         const outMineData = getOutMineData();
         if (!outMineData[sourceRoom]) outMineData[sourceRoom] = {} as any;
         if (!outMineData[sourceRoom]?.RoadData) {
@@ -354,5 +354,5 @@ export class RoadMemory {
                 routes: {},
             };
         }
-    }
-}
+    },
+};

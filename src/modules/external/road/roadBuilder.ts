@@ -16,14 +16,14 @@ const hasLayoutMemory = (roomName: string): boolean => {
     return Object.keys(roomLayout).length > 0;
 };
 
-export class RoadBuilder {
+export const RoadBuilder = {
     /**
      * 解析目标房间的外矿基础设施路径。
      * @description
      * - 优先复用已缓存的路径，避免重复寻路。
      * - 若还没有路径内存，则按 source/mineral 重新规划并写回内存。
      */
-    private static resolveInfrastructurePaths(sourceRoomName: string, targetRoom: Room): Map<string, RoomPosition[]> {
+    resolveInfrastructurePaths(sourceRoomName: string, targetRoom: Room): Map<string, RoomPosition[]> {
         const targetRoomName = targetRoom.name;
 
         // 检查是否已有路线数据。
@@ -51,7 +51,7 @@ export class RoadBuilder {
 
         RoadMemory.setPaths(sourceRoomName, targetRoomName, pathsToSave);
         return pathsToSave;
-    }
+    },
 
     /**
      * 仅为目标房间补齐外矿 container 工地。
@@ -60,11 +60,11 @@ export class RoadBuilder {
      * - 允许在低等级外矿阶段先把 container 工地落下；
      * - road 仍然由 `createRoadSites` 按等级与间隔控制。
      */
-    static ensureContainerSites(sourceRoom: Room, targetRoom: Room): number {
+    ensureContainerSites(sourceRoom: Room, targetRoom: Room): number {
         const pathsToUse = this.resolveInfrastructurePaths(sourceRoom.name, targetRoom);
         const containerAnchors = this.resolveContainerAnchors(sourceRoom, targetRoom, pathsToUse);
         return this.createContainerSites(targetRoom, containerAnchors);
-    }
+    },
 
     /**
      * 控制器容器保活：
@@ -76,7 +76,7 @@ export class RoadBuilder {
      *   保证静态升级工有驻位；次选靠近 spawn 缩短搬运。
      * - 幂等：控制器 3 格内已有容器或同类型工地则跳过。
      */
-    static ensureControllerContainer(sourceRoom: Room): void {
+    ensureControllerContainer(sourceRoom: Room): void {
         const controller = sourceRoom.controller;
         if (!controller?.my) return;
         const rcl = controller.level;
@@ -169,7 +169,7 @@ export class RoadBuilder {
             if (site !== atCoord) site.remove();
         }
         if (!atCoord) sourceRoom.createConstructionSite(coord!.x!, coord!.y!, STRUCTURE_CONTAINER);
-    }
+    },
 
     /**
      * 为目标房间创建道路建造工地
@@ -177,7 +177,7 @@ export class RoadBuilder {
      * @param targetRoom 目标房间
      * @returns 创建的工地数量
      */
-    static createRoadSites(sourceRoom: Room, targetRoom: Room): number {
+    createRoadSites(sourceRoom: Room, targetRoom: Room): number {
         const sourceRoomName = sourceRoom.name;
         const pathsToUse = this.resolveInfrastructurePaths(sourceRoomName, targetRoom);
 
@@ -196,7 +196,7 @@ export class RoadBuilder {
         );
         const containerSiteCount = this.createContainerSites(targetRoom, containerAnchors);
         return roadSiteCount + containerSiteCount;
-    }
+    },
 
     /**
      * 从多条路径创建建造工地
@@ -204,7 +204,7 @@ export class RoadBuilder {
      * @param paths 路径映射
      * @returns 创建的工地数量
      */
-    private static createSitesFromPaths(
+    createSitesFromPaths(
         _sourceRoomName: string,
         paths: Map<string, RoomPosition[]>,
         skipPositions?: Set<string>
@@ -247,7 +247,7 @@ export class RoadBuilder {
         }
 
         return created;
-    }
+    },
 
     /**
      * 为每个 source / mineral 解析容器落点。
@@ -256,7 +256,7 @@ export class RoadBuilder {
      * - 有路径时，优先取路径末端那个“贴着目标”的落脚格，保持与道路规划一致。
      * - 路径失败时，退化为从资源点 8 邻域里选一个最靠近发起房中心的可放置点位。
      */
-    private static resolveContainerAnchors(
+    resolveContainerAnchors(
         sourceRoom: Room,
         targetRoom: Room,
         paths: Map<string, RoomPosition[]>
@@ -277,7 +277,7 @@ export class RoadBuilder {
         }
 
         return anchors;
-    }
+    },
 
     /**
      * 获取 container 锚点候选目标。
@@ -286,7 +286,7 @@ export class RoadBuilder {
      * 若测试环境或极端场景下对象枚举为空，但路径内存里已经有目标 key，
      * 也要把这些 key 还原成目标坐标，避免已有路径却无法放 container。
      */
-    private static getAnchorTargetPositions(
+    getAnchorTargetPositions(
         targetRoom: Room,
         paths: Map<string, RoomPosition[]>
     ): RoomPosition[] {
@@ -305,12 +305,12 @@ export class RoadBuilder {
         }
 
         return Array.from(positions.values());
-    }
+    },
 
     /**
      * 判断目标周围是否已经存在 container 或对应工地。
      */
-    private static hasNearbyContainerInfrastructure(targetPos: RoomPosition): boolean {
+    hasNearbyContainerInfrastructure(targetPos: RoomPosition): boolean {
         const hasContainer = targetPos.findInRange(FIND_STRUCTURES, 1, {
             filter: (s) => s.structureType === STRUCTURE_CONTAINER
         }).length > 0;
@@ -320,13 +320,13 @@ export class RoadBuilder {
             filter: (s) => s.structureType === STRUCTURE_CONTAINER
         }).length > 0;
         return hasContainerSite;
-    }
+    },
 
     /**
      * 从路径末端反推 source / mineral 的容器锚点。
      * @description 只接受目标房内、与目标距离 1 的落脚格。
      */
-    private static findContainerAnchorForTarget(targetPos: RoomPosition, positions: RoomPosition[]): RoomPosition | null {
+    findContainerAnchorForTarget(targetPos: RoomPosition, positions: RoomPosition[]): RoomPosition | null {
         for (let i = positions.length - 1; i >= 0; i--) {
             const pos = positions[i];
             if (pos!.roomName!== targetPos.roomName) continue;
@@ -335,7 +335,7 @@ export class RoadBuilder {
             return pos!;
         }
         return null;
-    }
+    },
 
     /**
      * 路径规划失败时，为 source / mineral 选择一个保底的 container 落点。
@@ -345,7 +345,7 @@ export class RoadBuilder {
      * - 必须是可放置 container 的格子；
      * - 选取“全局坐标距离发起房中心最近”的那个点位，尽量贴近回程方向。
      */
-    private static findFallbackContainerAnchor(sourceRoom: Room, targetPos: RoomPosition): RoomPosition | null {
+    findFallbackContainerAnchor(sourceRoom: Room, targetPos: RoomPosition): RoomPosition | null {
         const candidates: RoomPosition[] = [];
         for (let dx = -1; dx <= 1; dx++) {
             for (let dy = -1; dy <= 1; dy++) {
@@ -376,27 +376,27 @@ export class RoadBuilder {
         });
 
         return candidates[0]!;
-    }
+    },
 
     /**
      * 把房间坐标转换成跨房间可比较的“全局平面坐标”。
      * @description
      * 这里只用于比较“哪个资源邻格更接近发起房中心”，不参与真实寻路。
      */
-    private static toWorldCoord(pos: RoomPosition): { x: number; y: number } | null {
+    toWorldCoord(pos: RoomPosition): { x: number; y: number } | null {
         const parsed = this.parseRoomName(pos.roomName);
         if (!parsed) return null;
         return {
             x: parsed.x * 50 + pos.x,
             y: parsed.y * 50 + pos.y,
         };
-    }
+    },
 
     /**
      * 解析 Screeps 房间名到跨房间坐标。
      * @example W0N0 -> (-1, -1), E0S0 -> (0, 0)
      */
-    private static parseRoomName(roomName: string): { x: number; y: number } | null {
+    parseRoomName(roomName: string): { x: number; y: number } | null {
         const match = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
         if (!match) return null;
 
@@ -405,7 +405,7 @@ export class RoadBuilder {
             x: ew === 'W' ? -Number(ewNum) - 1 : Number(ewNum),
             y: ns === 'N' ? Number(nsNum) : -Number(nsNum) - 1,
         };
-    }
+    },
 
     /**
      * 检查容器锚点是否允许放置 container。
@@ -413,7 +413,7 @@ export class RoadBuilder {
      * - road / road 工地允许共址
      * - 其他阻塞结构或阻塞工地直接跳过
      */
-    private static canPlaceContainerAt(pos: RoomPosition): boolean {
+    canPlaceContainerAt(pos: RoomPosition): boolean {
         const room = Game.rooms[pos.roomName];
         if (!room) return false;
         if (room.getTerrain().get(pos.x, pos.y) === TERRAIN_MASK_WALL) return false;
@@ -439,12 +439,12 @@ export class RoadBuilder {
         if (sites.some((s) => s.structureType === STRUCTURE_CONTAINER)) return false;
         if (structures.some((s) => s.structureType === STRUCTURE_CONTAINER)) return false;
         return true;
-    }
+    },
 
     /**
      * 基于路径锚点创建外矿 container 工地。
      */
-    private static createContainerSites(targetRoom: Room, anchors: Map<string, RoomPosition>): number {
+    createContainerSites(targetRoom: Room, anchors: Map<string, RoomPosition>): number {
         let created = 0;
         const processedPositions = new Set<string>();
 
@@ -460,14 +460,14 @@ export class RoadBuilder {
         }
 
         return created;
-    }
+    },
 
     /**
      * 获取目标房间的采集目标位置
      * @param targetRoom 目标房间
      * @returns 目标位置数组
      */
-    static getTargetPositions(targetRoom: Room): RoomPosition[] {
+    getTargetPositions(targetRoom: Room): RoomPosition[] {
         const targets: RoomPosition[] = [];
         
         // 判断是否为中央九房（SK房）
@@ -488,7 +488,7 @@ export class RoadBuilder {
         }
 
         return targets;
-    }
+    },
 
     /**
      * 重新计算指定路线
@@ -496,7 +496,7 @@ export class RoadBuilder {
      * @param targetRoomName 目标房间名
      * @returns 是否成功
      */
-    static recalculateRoute(sourceRoomName: string, targetRoomName: string): boolean {
+    recalculateRoute(sourceRoomName: string, targetRoomName: string): boolean {
         const sourceRoom = Game.rooms[sourceRoomName];
         const targetRoom = Game.rooms[targetRoomName];
         
@@ -534,7 +534,7 @@ export class RoadBuilder {
         this.createContainerSites(targetRoom, containerAnchors);
         
         return true;
-    }
+    },
 
     /**
      * 检查是否应该建造道路
@@ -542,7 +542,7 @@ export class RoadBuilder {
      * @param targetRoomName 目标房间名
      * @returns 是否应该建造
      */
-    static shouldBuildRoad(sourceRoom: Room, targetRoomName: string): boolean {
+    shouldBuildRoad(sourceRoom: Room, targetRoomName: string): boolean {
         const level = sourceRoom.controller?.level || 0;
         const isCenterRoom = /^[EW]\d*[456][NS]\d*[456]$/.test(targetRoomName);
 
@@ -551,5 +551,5 @@ export class RoadBuilder {
         } else {
             return level >= EXTERNAL_ROAD_CONFIG.ENERGY_ROAD_MIN_LEVEL;
         }
-    }
-}
+    },
+};

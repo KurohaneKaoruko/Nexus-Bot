@@ -8,9 +8,9 @@ import { RoomArray } from '@/utils/roomArray';
 import { getOutMineData } from '@/core/store/accessor';
 import { RoadMemory } from '@/modules/external/road/roadMemory';
 
-export class RoadVisual {
+export const RoadVisual = {
     /** 可视化颜色配置 */
-    private static readonly COLORS = {
+    COLORS: {
         /** 计划道路（未建造） */
         PLANNED: '#ffff00',     // 黄色
         /** 已建道路 */
@@ -21,49 +21,49 @@ export class RoadVisual {
         DAMAGED: '#ff0000',     // 红色
         /** 建造工地 */
         SITE: '#ffa500',        // 橙色
-    };
+    },
 
     /** 可视化开关状态 */
-    private static enabled: { [sourceRoom: string]: boolean } = {};
+    enabled: {} as { [sourceRoom: string]: boolean },
 
-    private static readonly DRAW_INTERVAL = 1;
-    private static readonly MAP_DRAW_INTERVAL = 1;
-    private static readonly MAX_ROOM_POSITIONS_FOR_LINES = 220;
+    DRAW_INTERVAL: 1,
+    MAP_DRAW_INTERVAL: 1,
+    MAX_ROOM_POSITIONS_FOR_LINES: 220,
 
-    private static lastDrawTickBySource: { [sourceRoom: string]: number } = {};
-    private static lastMapDrawTickBySource: { [sourceRoom: string]: number } = {};
+    lastDrawTickBySource: {} as { [sourceRoom: string]: number },
+    lastMapDrawTickBySource: {} as { [sourceRoom: string]: number },
 
-    private static perfTick = -1;
-    private static perfDrawInterval = RoadVisual.DRAW_INTERVAL;
-    private static perfMapDrawInterval = RoadVisual.MAP_DRAW_INTERVAL;
-    private static perfAllowLines = true;
-    private static perfEnabled = true;
+    perfTick: -1,
+    perfDrawInterval: 1,
+    perfMapDrawInterval: 1,
+    perfAllowLines: true,
+    perfEnabled: true,
 
-    private static roomStateCache: {
+    roomStateCache: {} as {
         [roomName: string]: {
             tick: number;
             roadsByXy: Map<string, StructureRoad>;
             roadSiteXy: Set<string>;
         };
-    } = {};
+    },
 
     /**
      * 可视化指定路线
      * @param sourceRoom 源头房间名
      * @param targetRoom 目标房间名
      */
-    static visualize(sourceRoom: string, targetRoom: string, allowLines = true): void {
+    visualize(sourceRoom: string, targetRoom: string, allowLines = true): void {
         const positions = RoadMemory.getGroupPositions(sourceRoom, targetRoom);
         if (positions.length === 0) return;
 
         this.drawPositions(positions, sourceRoom, undefined, allowLines);
-    }
+    },
 
     /**
      * 可视化所有路线
      * @param sourceRoom 源头房间名
      */
-    static visualizeAll(sourceRoom: string, allowLines = true): void {
+    visualizeAll(sourceRoom: string, allowLines = true): void {
         const targets = RoadMemory.getRouteTargets(sourceRoom);
         if (targets.length === 0) return;
 
@@ -93,9 +93,9 @@ export class RoadVisual {
             if (!room) continue;
             this.drawRoomPositions(room, byRoom[roomName] ?? [], sharedCount, allowLines);
         }
-    }
+    },
 
-    private static drawPositions(
+    drawPositions(
         positions: RoomPosition[],
         sourceRoom: string,
         sharedCount?: { [key: string]: number },
@@ -118,9 +118,9 @@ export class RoadVisual {
             if (!room) continue;
             this.drawRoomPositions(room, byRoom[roomName] ?? [], sharedCount, allowLines);
         }
-    }
+    },
 
-    private static drawRoomPositions(
+    drawRoomPositions(
         room: Room,
         roomPositions: RoomPosition[],
         sharedCount?: { [key: string]: number },
@@ -217,7 +217,7 @@ export class RoadVisual {
                 }
             }, pos.x, pos.y);
         }
-    }
+    },
 
 
 
@@ -225,42 +225,42 @@ export class RoadVisual {
      * 启用可视化
      * @param sourceRoom 源头房间名
      */
-    static enable(sourceRoom: string): void {
+    enable(sourceRoom: string): void {
         this.enabled[sourceRoom] = true;
-    }
+    },
 
     /**
      * 禁用可视化
      * @param sourceRoom 源头房间名
      */
-    static disable(sourceRoom: string): void {
+    disable(sourceRoom: string): void {
         this.enabled[sourceRoom] = false;
-    }
+    },
 
     /**
      * 切换可视化状态
      * @param sourceRoom 源头房间名
      * @returns 新状态
      */
-    static toggle(sourceRoom: string): boolean {
+    toggle(sourceRoom: string): boolean {
         this.enabled[sourceRoom] = !this.enabled[sourceRoom];
         return this.enabled[sourceRoom];
-    }
+    },
 
     /**
      * 检查是否启用可视化
      * @param sourceRoom 源头房间名
      * @returns 是否启用
      */
-    static isEnabled(sourceRoom: string): boolean {
+    isEnabled(sourceRoom: string): boolean {
         return this.enabled[sourceRoom] || false;
-    }
+    },
 
     /**
      * 运行可视化（每 tick 调用）
      * @description 检查 Flag 触发和启用状态，自动绘制房间内和世界地图可视化
      */
-    static run(): void {
+    run(): void {
         this.refreshPerfProfile();
         if (!this.perfEnabled) return;
         const sourceRoomsToDraw = new Set<string>();
@@ -302,9 +302,9 @@ export class RoadVisual {
                 this.visualizeOnMap(sourceRoom);
             }
         }
-    }
+    },
 
-    private static refreshPerfProfile(): void {
+    refreshPerfProfile(): void {
         if (this.perfTick === Game.time) return;
         this.perfTick = Game.time;
 
@@ -323,13 +323,13 @@ export class RoadVisual {
         this.perfDrawInterval = constrained ? Math.max(5, this.DRAW_INTERVAL) : this.DRAW_INTERVAL;
         this.perfMapDrawInterval = constrained ? Math.max(5, this.MAP_DRAW_INTERVAL) : this.MAP_DRAW_INTERVAL;
         this.perfAllowLines = !constrained && bucket >= 5000;
-    }
+    },
 
     /**
      * 绘制图例
      * @param roomName 房间名
      */
-    static drawLegend(roomName: string): void {
+    drawLegend(roomName: string): void {
         const room = Game.rooms[roomName];
         if (!room) return;
 
@@ -362,10 +362,10 @@ export class RoadVisual {
                 align: 'left',
             });
         }
-    }
+    },
 
     /** 世界地图可视化颜色 */
-    private static readonly MAP_COLORS = [
+    MAP_COLORS: [
         '#ff6b6b',  // 红
         '#4ecdc4',  // 青
         '#45b7d1',  // 蓝
@@ -376,14 +376,14 @@ export class RoadVisual {
         '#a29bfe',  // 紫
         '#00b894',  // 深绿
         '#e17055',  // 橙
-    ];
+    ],
 
     /**
      * 在世界地图上可视化道路路径
      * @param sourceRoom 源头房间名
      * @param targetRoom 可选，指定目标房间
      */
-    static visualizeOnMap(sourceRoom: string, targetRoom?: string): void {
+    visualizeOnMap(sourceRoom: string, targetRoom?: string): void {
         const targets = targetRoom ? [targetRoom] : RoadMemory.getRouteTargets(sourceRoom);
         
         if (targets.length === 0) {
@@ -400,7 +400,7 @@ export class RoadVisual {
             const color = this.MAP_COLORS[colorIndex % this.MAP_COLORS.length];
             colorIndex++;
 
-            for (const [targetPos, positions] of paths) {
+            for (const [, positions] of paths) {
                 if (positions.length < 2) continue;
 
                 // 路径已经是按顺序存储的，直接绘制
@@ -417,14 +417,14 @@ export class RoadVisual {
                 });
             }
         }
-    }
+    },
 
     /**
      * 在世界地图上绘制路径
      * @param positions 位置数组（应已按路径顺序排序）
      * @param color 线条颜色
      */
-    private static drawMapPath(positions: RoomPosition[], color: string): void {
+    drawMapPath(positions: RoomPosition[], color: string): void {
         if (positions.length < 2) return;
 
         const validPath = positions.map((p: any) => (p instanceof RoomPosition ? p : new RoomPosition(p.x, p.y, p.roomName)));
@@ -444,8 +444,8 @@ export class RoadVisual {
             fill: color,
             opacity: 0.6,
         });
-    }
-}
+    },
+};
 
 /**
  * 外矿搬运路程的道路覆盖率：已建路格 / 规划路格（仅有视野房间计入）。

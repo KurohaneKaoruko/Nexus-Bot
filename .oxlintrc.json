@@ -4,8 +4,7 @@
 		"sim/",
 		"dist/",
 		"scripts/",
-		"plugins/",
-		"src/modules/external/"
+		"plugins/"
 	],
 	"globals": {
 		"__dirname": "readonly"
@@ -21,6 +20,8 @@
 			"error",
 			{
 				"allow": [
+					"__carryTrace",
+					"__dropped",
 					"__layoutPlannerCache",
 					"__moveWorkTileRuntimeIntent",
 					"_assign",
@@ -38,6 +39,9 @@
 					"_idObjCache",
 					"_idObjCacheTime",
 					"_init",
+					"_ism",
+					"_ismNonce",
+					"_ismToShard",
 					"_loadLineId",
 					"_lpt",
 					"_lpv",

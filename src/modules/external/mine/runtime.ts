@@ -6,7 +6,6 @@
 import { getWhitelistIds, isWarMode } from '@/core/store/accessor';
 import { EXTERNAL_ROAD_CONFIG } from '@/constant/BaseConstant';
 import { isRoomTickAligned } from '@/utils/roomPhase';
-import { getRoomMode } from '@/modules/strategy';
 import { getActiveRemoteThreshold } from '@/core/bucketGovernor';
 import { UNITS } from '@/constant/CreepConstant';
 import { RoadBuilder } from '@/modules/external/externalRoad';
@@ -22,33 +21,33 @@ import { ExternalMineSpawner } from '@/modules/external/mine/spawner';
 const lastKnownSourceNum = new Map<string, number>();
 
 // 外矿入口类：调度能量外矿与中心房外矿的整体流程。
-export class ExternalMine {
+export const ExternalMine = {
     // 每个 tick 的准备阶段：防守与战争态短路、清理无效任务、修正优先级。
-    static prepareRoom(room: Room): string | null {
+    prepareRoom(room: Room): string | null {
         if (room.memory.defend) return null;
         if (isWarMode()) return null;
 
         const qosLevel = ExternalMineState.getQosLevel();
         if (qosLevel === 'emergency') return null;
         return qosLevel;
-    }
+    },
 
     // 外矿相关可视化。
-    static runVisuals(): void {
+    runVisuals(): void {
         ExternalMineState.runVisuals();
-    }
+    },
 
     // 对外暴露房间模式读取接口（兼容旧调用）。
-    static getRoomMode(room: Room): string {
+    getRoomMode(room: Room): string {
         return ExternalMineState.getRoomMode(room);
-    }
+    },
 
     // 对外暴露：本源房当前托管的目标房列表（供跨房搬运重平衡复用同一份选择结果）。
     // 背包选择本身不便宜，按 tick 缓存，避免每个搬运工每 tick 重算一次。
-    static getManagedTargetRooms(room: Room, key: OutMineTargetListKey): string[] {
+    getManagedTargetRooms(room: Room, key: OutMineTargetListKey): string[] {
         return getRoomTickCacheValue(room, `outmine_managed_targets_${key}`, () =>
             ExternalMineState.getManagedTargets(room, key));
-    }
+    },
 
     // 常规外矿：能量采集、运输、防守、预定与建造。
     // 采集/搬运不设容量门槛（小体型自带 CARRY 也能有效产出，
@@ -57,7 +56,7 @@ export class ExternalMine {
     // 不设能量状态硬门：外矿规模由孵化容量准入预算统一约束
     //（本地计划编成含距离因子先扣，外矿占剩余量）——状态门会连搬运工一起拦死，
     // 收入管道断流反而把 CRITICAL 固化成贫困循环（实测 2.9 万能量搁置外房、家里饿死）。
-    static runEnergy(room: Room, timing: ExternalMineTiming): void {
+    runEnergy(room: Room, timing: ExternalMineTiming): void {
         const runState = ExternalMineState.getRunState(timing);
         if (!runState) return;
         // 控制器容器保活不受任何闸门限制：饥荒期恰恰是升级链最依赖容器的时刻
@@ -213,11 +212,11 @@ export class ExternalMine {
 
             ExternalMineSpawner.builder(room, targetRoom);
         }
-    }
+    },
 
     // 中心房外矿：包含 SK/中心房的高强度采集与矿物采集逻辑。
     // 无能量状态硬门（同 runEnergy：外矿规模由孵化容量准入预算统一约束）。
-    static runCenter(room: Room, timing: ExternalMineTiming): void {
+    runCenter(room: Room, timing: ExternalMineTiming): void {
         const runState = ExternalMineState.getRunState(timing);
         if (!runState) return;
 
@@ -289,5 +288,5 @@ export class ExternalMine {
 
             ExternalMineSpawner.builder(room, targetRoom);
         }
-    }
-}
+    },
+};

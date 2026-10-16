@@ -214,25 +214,21 @@ const runOnePlanInRoom = (mem: LocalExpandMemory, room: Room, plan: LocalExpandP
     const needUpgrader = Math.max(0, plan.desired.upgrader - unitCount(UNITS['aid-upgrade']));
 
     if (needClaimer > 0) {
-        const spawnName = `EXP-CLAIM#${plan.id}`;
         const rc = directSpawn(room, UNITS.claimer, { homeRoom: room.name, targetRoom: plan.targetRoom, expandId: plan.id });
         if (rc === OK) plan.lastSpawnTick = Game.time;
         return;
     }
     if (needBuilder > 0) {
-        const spawnName = `EXP-BUILD#${plan.id}`;
         const rc = directSpawn(room, UNITS['aid-build'], { homeRoom: room.name, sourceRoom: plan.targetRoom, targetRoom: plan.targetRoom, expandId: plan.id });
         if (rc === OK) plan.lastSpawnTick = Game.time;
         return;
     }
     if (needCarry > 0) {
-        const spawnName = `EXP-CARRY#${plan.id}`;
         const rc = directSpawn(room, UNITS['aid-carry'], { homeRoom: room.name, sourceRoom: room.name, targetRoom: plan.targetRoom, resource: RESOURCE_ENERGY, expandId: plan.id });
         if (rc === OK) plan.lastSpawnTick = Game.time;
         return;
     }
     if (needUpgrader > 0) {
-        const spawnName = `EXP-UPGRADE#${plan.id}`;
         const rc = directSpawn(room, UNITS['aid-upgrade'], { homeRoom: room.name, targetRoom: plan.targetRoom, expandId: plan.id });
         if (rc === OK) plan.lastSpawnTick = Game.time;
         return;

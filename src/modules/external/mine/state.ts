@@ -72,29 +72,29 @@ type ManagedSelectionCacheEntry = {
 };
 const managedSelectionCache = new Map<string, ManagedSelectionCacheEntry>();
 // 外矿运行的状态工具：QoS、房间模式、节流、以及视觉渲染。
-export class ExternalMineState {
-    private static readonly CENTER_ROOM_REGEX = /^[EW]\d*[456][NS]\d*[456]$/;
-    private static readonly EXACT_CENTER_ROOM_REGEX = /^[EW]\d*[5][NS]\d*[5]$/;
-    private static readonly DEFAULT_LOCAL_SOURCE_COUNT = 2;
+export const ExternalMineState = {
+    CENTER_ROOM_REGEX: /^[EW]\d*[456][NS]\d*[456]$/,
+    EXACT_CENTER_ROOM_REGEX: /^[EW]\d*[5][NS]\d*[5]$/,
+    DEFAULT_LOCAL_SOURCE_COUNT: 2,
     /** 每 spawn 在册爬容量 = 寿命 / 单只孵化耗时; 单只孵化耗时 = CREEP_SPAWN_TIME × 部件数 */
-    private static readonly SPAWN_USAGE_PER_SPAWN =
+    SPAWN_USAGE_PER_SPAWN:
         (typeof CREEP_LIFE_TIME === 'number' && typeof CREEP_SPAWN_TIME === 'number')
             ? CREEP_LIFE_TIME / (CREEP_SPAWN_TIME * CARRY_STAFFING_CONFIG.nominalCreepParts)
-            : 1500 / (3 * 6);
-    private static readonly LOCAL_SOURCE_BASE_WEIGHT = 42;
-    private static readonly LOCAL_PORTER_WEIGHT_PER_SPAWN = 23;
-    private static readonly LOCAL_CONTROLLER_WEIGHT = 18;
-    private static readonly LOCAL_QUEUE_WEIGHT_PER_TASK = 18;
-    private static readonly REMOTE_RESERVER_WEIGHT = 5;
-    private static readonly REMOTE_RESERVER_VALUE_COST = 1.3;
-    private static readonly KEEPER_REMOTE_WEIGHT = typeof MAX_CREEP_SIZE === 'number' ? MAX_CREEP_SIZE : 50;
-    private static readonly KEEPER_REMOTE_VALUE_COST = 4.5;
-    private static readonly DEFAULT_KEEPER_ATTACK_COST = 4270;
-    private static readonly DEFAULT_ENERGY_TARGET_LIMIT = Number.POSITIVE_INFINITY;
-    private static readonly LOW_MODE_ENERGY_TARGET_LIMIT = 1;
-    private static readonly LOW_MODE_MAX_REMOTE_BUDGET = 140;
-    private static readonly SURPLUS_STATE_REMOTE_BUDGET_MULTIPLIER = 1.1;
-    private static readonly REMOTE_QUEUE_ROLE_SET: ReadonlySet<string> = new Set([
+            : 1500 / (3 * 6),
+    LOCAL_SOURCE_BASE_WEIGHT: 42,
+    LOCAL_PORTER_WEIGHT_PER_SPAWN: 23,
+    LOCAL_CONTROLLER_WEIGHT: 18,
+    LOCAL_QUEUE_WEIGHT_PER_TASK: 18,
+    REMOTE_RESERVER_WEIGHT: 5,
+    REMOTE_RESERVER_VALUE_COST: 1.3,
+    KEEPER_REMOTE_WEIGHT: typeof MAX_CREEP_SIZE === 'number' ? MAX_CREEP_SIZE : 50,
+    KEEPER_REMOTE_VALUE_COST: 4.5,
+    DEFAULT_KEEPER_ATTACK_COST: 4270,
+    DEFAULT_ENERGY_TARGET_LIMIT: Number.POSITIVE_INFINITY,
+    LOW_MODE_ENERGY_TARGET_LIMIT: 1,
+    LOW_MODE_MAX_REMOTE_BUDGET: 140,
+    SURPLUS_STATE_REMOTE_BUDGET_MULTIPLIER: 1.1,
+    REMOTE_QUEUE_ROLE_SET: new Set<string>([
         UNITS['scout'],
         UNITS['reserver'],
         UNITS.harvester,
@@ -107,52 +107,52 @@ export class ExternalMineState {
         UNITS['out-invader'],
         UNITS['out-2attack'],
         UNITS['out-2heal'],
-    ]);
+    ]),
 
-    private static getTargetList(memory: OutMineMemory, key: OutMineTargetListKey): string[] {
+    getTargetList(memory: OutMineMemory, key: OutMineTargetListKey): string[] {
         const list = memory[key];
         if (!Array.isArray(list) || list.length <= 0) return [];
         return list.filter((roomName): roomName is string => typeof roomName === 'string' && !!roomName);
-    }
+    },
 
     // 从全局 QoS 中获取当前级别，缺失时默认 normal。
-    static getQosLevel(): string {
+    getQosLevel(): string {
         return qos.getQoS()?.level || 'normal';
-    }
+    },
 
-    static isCenterRoom(roomName: string): boolean {
+    isCenterRoom(roomName: string): boolean {
         return this.CENTER_ROOM_REGEX.test(roomName);
-    }
+    },
 
-    static isExactCenterRoom(roomName: string): boolean {
+    isExactCenterRoom(roomName: string): boolean {
         return this.EXACT_CENTER_ROOM_REGEX.test(roomName);
-    }
+    },
 
-    static isKeeperCenterRoom(roomName: string): boolean {
+    isKeeperCenterRoom(roomName: string): boolean {
         return this.isCenterRoom(roomName) && !this.isExactCenterRoom(roomName);
-    }
+    },
 
-    static getEnergyState(room: Room): ExternalMineEnergyState {
+    getEnergyState(room: Room): ExternalMineEnergyState {
         return room.getEnergyState?.() || room.updateEnergyState?.(false) || room.memory.energyState || 'UNKNOWN';
-    }
+    },
 
     // 源房到目标房的线性距离（外矿派单用的「先近后远」主键）。
-    static getTargetPriorityDistance(sourceRoom: Room, targetRoomName: string): number {
+    getTargetPriorityDistance(sourceRoom: Room, targetRoomName: string): number {
         if (typeof Game.map?.getRoomLinearDistance === 'function') {
             return Math.max(1, Game.map.getRoomLinearDistance(sourceRoom.name, targetRoomName, true));
         }
         return 1;
-    }
+    },
 
-    private static getTargetKind(targetRoomName: string): OutMineTargetListKey {
+    getTargetKind(targetRoomName: string): OutMineTargetListKey {
         return this.isCenterRoom(targetRoomName) ? 'centerRoom' : 'energy';
-    }
+    },
 
-    private static getSourceRoomLevel(sourceRoom: Room): number {
+    getSourceRoomLevel(sourceRoom: Room): number {
         return sourceRoom.getEffectiveRoomLevel?.() ?? sourceRoom.level ?? 1;
-    }
+    },
 
-    private static getBodyConfigCost(bodyConfig: ((BodyPartConstant | number)[])[] | undefined): number {
+    getBodyConfigCost(bodyConfig: ((BodyPartConstant | number)[])[] | undefined): number {
         if (!Array.isArray(bodyConfig) || bodyConfig.length <= 0) return 0;
         let total = 0;
         for (const part of bodyConfig) {
@@ -188,28 +188,28 @@ export class ExternalMineState {
             }
         }
         return total;
-    }
+    },
 
-    private static getKeeperRemoteAttackCost(sourceRoom: Room): number {
+    getKeeperRemoteAttackCost(sourceRoom: Room): number {
         const roleBody = sourceRoom.GetUnitBodys?.(UNITS['out-attack']);
         const roleBodyCost = this.getBodyConfigCost(roleBody);
         if (roleBodyCost > 0) return roleBodyCost;
         const fallbackBody = UnitData[UNITS[UNITS['out-attack']]]?.bodypart as ((BodyPartConstant | number)[])[] | undefined;
         const fallbackCost = this.getBodyConfigCost(fallbackBody);
         return fallbackCost > 0 ? fallbackCost : this.DEFAULT_KEEPER_ATTACK_COST;
-    }
+    },
 
-    private static canRunKeeperRemote(sourceRoom: Room): boolean {
+    canRunKeeperRemote(sourceRoom: Room): boolean {
         const requiredCost = this.getKeeperRemoteAttackCost(sourceRoom);
         return (sourceRoom.energyCapacityAvailable || 0) >= requiredCost;
-    }
+    },
 
-    private static getSpawnUsageCapacity(sourceRoom: Room): number {
+    getSpawnUsageCapacity(sourceRoom: Room): number {
         const spawnCount = Math.max(1, sourceRoom.spawn?.length || 0);
         return Math.floor(spawnCount * this.SPAWN_USAGE_PER_SPAWN);
-    }
+    },
 
-    private static getLocalSourceCount(sourceRoom: Room): number {
+    getLocalSourceCount(sourceRoom: Room): number {
         const indexed = Array.isArray(sourceRoom.source) ? sourceRoom.source.length : 0;
         if (indexed > 0) return indexed;
         if (typeof sourceRoom.find === 'function') {
@@ -220,9 +220,9 @@ export class ExternalMineState {
             catch { }
         }
         return this.DEFAULT_LOCAL_SOURCE_COUNT;
-    }
+    },
 
-    private static getLocalSpawnQueuePressure(sourceRoom: Room): number {
+    getLocalSpawnQueuePressure(sourceRoom: Room): number {
         const tasks = sourceRoom.getAllMissionFromPool?.('spawn') || [];
         let localQueued = 0;
         for (const task of tasks) {
@@ -238,9 +238,9 @@ export class ExternalMineState {
             localQueued++;
         }
         return localQueued * this.LOCAL_QUEUE_WEIGHT_PER_TASK;
-    }
+    },
 
-    private static getLocalSpawnReserve(sourceRoom: Room): number {
+    getLocalSpawnReserve(sourceRoom: Room): number {
         const spawnCount = Math.max(1, sourceRoom.spawn?.length || 0);
         const localSourceCount = this.getLocalSourceCount(sourceRoom);
         let reserve =
@@ -251,20 +251,20 @@ export class ExternalMineState {
         }
         reserve += this.getLocalSpawnQueuePressure(sourceRoom);
         return reserve;
-    }
+    },
 
-    private static canReserveRemote(sourceRoom: Room, kind: OutMineTargetListKey): boolean {
+    canReserveRemote(sourceRoom: Room, kind: OutMineTargetListKey): boolean {
         return kind === 'energy' && this.getSourceRoomLevel(sourceRoom) >= 3;
-    }
+    },
 
-    private static isRemoteConstructed(sourceRoom: Room, targetRoom: Room | undefined, source: Source | undefined): boolean {
+    isRemoteConstructed(sourceRoom: Room, targetRoom: Room | undefined, source: Source | undefined): boolean {
         const builtLevel = this.getSourceRoomLevel(sourceRoom);
         if (builtLevel >= 4) return true;
         if (!targetRoom || !source) return false;
         return !!getExternalMineNearbyContainer(targetRoom, source);
-    }
+    },
 
-    private static getSelectionEnergyPerTick(
+    getSelectionEnergyPerTick(
         sourceRoom: Room,
         targetRoomName: string,
         kind: OutMineTargetListKey,
@@ -293,9 +293,9 @@ export class ExternalMineState {
             return energyPerTick;
         }
         return canReserve ? energyPerTick : energyPerTick * 0.5;
-    }
+    },
 
-    private static estimateSourceSelectionStat(
+    estimateSourceSelectionStat(
         sourceRoom: Room,
         targetRoomName: string,
         kind: OutMineTargetListKey,
@@ -333,9 +333,9 @@ export class ExternalMineState {
             value: Math.max(0.1, energyPerTick - minerCost - haulerCost - repairLoss),
             weight: Math.max(1, minerSpawnUsage + haulerSpawnUsage),
         };
-    }
+    },
 
-    static estimateTargetSelectionStat(sourceRoom: Room, targetRoomName: string): ExternalMineTargetSelectionStat {
+    estimateTargetSelectionStat(sourceRoom: Room, targetRoomName: string): ExternalMineTargetSelectionStat {
         const targetRoom = Game.rooms[targetRoomName];
         const kind = this.getTargetKind(targetRoomName);
         const fallbackSourceCount = kind === 'centerRoom' ? 3 : 2;
@@ -383,9 +383,9 @@ export class ExternalMineState {
             weight: safeWeight,
             score: safeValue / safeWeight,
         };
-    }
+    },
 
-    private static compareTargetStats(left: ExternalMineTargetSelectionStat, right: ExternalMineTargetSelectionStat): number {
+    compareTargetStats(left: ExternalMineTargetSelectionStat, right: ExternalMineTargetSelectionStat): number {
         const scoreDiff = right.score - left.score;
         if (Math.abs(scoreDiff) > 0.0001) return scoreDiff;
         const valueDiff = right.value - left.value;
@@ -393,9 +393,9 @@ export class ExternalMineState {
         const distanceDiff = left.distance - right.distance;
         if (Math.abs(distanceDiff) > 0.0001) return distanceDiff;
         return left.roomName.localeCompare(right.roomName);
-    }
+    },
 
-    private static selectTargetStats(
+    selectTargetStats(
         sourceRoom: Room,
         stats: ExternalMineTargetSelectionStat[],
         policy: ExternalMineTargetPolicy,
@@ -436,15 +436,15 @@ export class ExternalMineState {
         }
         const capacity = Math.min(budget, affordableTotal);
 
-        const table: Array<KnapsackEntry | null> = new Array(capacity + 1).fill(null);
+        const table: Array<KnapsackEntry | null> = Array.from({ length: capacity + 1 }, () => null);
         table[0] = { value: 0, totalWeight: 0, energyCount: 0, roomCount: 0, prev: null, roomName: '' };
 
         const joinRooms = (entry: KnapsackEntry): string => {
             const names: string[] = [];
             for (let node: KnapsackEntry | null = entry; node && node.prev; node = node.prev) {
-                names.push(node.roomName);
+                names.unshift(node.roomName);
             }
-            return names.reverse().join(',');
+            return names.join(',');
         };
 
         const betterThan = (candidate: KnapsackEntry, current: KnapsackEntry | null): boolean => {
@@ -466,7 +466,7 @@ export class ExternalMineState {
             const stat = allowedStats[index];
             const requiredWeight = requiredWeights[index];
             if (requiredWeight! > capacity) continue;
-            const isEnergy = stat!.kind! === 'energy';
+            const isEnergy = stat?.kind === 'energy';
             for (let currentBudget = capacity; currentBudget >= requiredWeight!; currentBudget -= 1) {
                 const previous = table[currentBudget - requiredWeight!];
                 if (!previous) continue;
@@ -545,13 +545,13 @@ export class ExternalMineState {
             break;
         }
         return selection;
-    }
+    },
 
     // 外矿预算折扣已移除：外矿是摆脱能量短缺的收入投资，短缺期砍它只会加剧短缺（贫困陷阱）。
     // 能量平衡由预算公式本身表达——本地编制优先占满 spawn（getLocalSpawnReserve），
     // 能量紧张时本地队列变长、预算自动收窄；孵化端对 out-* 按当前能量缩水体（spawnControl），
     // 收入按比例下降但不断档。
-    private static getTargetPolicy(sourceRoom: Room): ExternalMineTargetPolicy {
+    getTargetPolicy(sourceRoom: Room): ExternalMineTargetPolicy {
         const mode = this.getRoomMode(sourceRoom);
         const energyState = this.getEnergyState(sourceRoom);
         const spawnUsageCapacity = this.getSpawnUsageCapacity(sourceRoom);
@@ -589,16 +589,16 @@ export class ExternalMineState {
             energyTargetLimit,
             allowCenterRoom,
         };
-    }
+    },
 
     // 兼容多处存储路径读取房间模式（统一走 roomMode 单一来源）。
-    static getRoomMode(room: Room): string {
+    getRoomMode(room: Room): string {
         return getRoomMode(room);
-    }
+    },
 
     // 根据 QoS 与间隔判断本 tick 是否运行，返回运行状态快照。
     // emergency 时直接停机，constrained 时拉长间隔且限制副作用操作频率。
-    static getRunState(timing: ExternalMineTiming): OutMineRunState | null {
+    getRunState(timing: ExternalMineTiming): OutMineRunState | null {
         const qosLevel = this.getQosLevel();
         if (qosLevel === 'emergency') return null;
 
@@ -608,14 +608,14 @@ export class ExternalMineState {
         if (Game.time % interval !== 0) return null;
 
         return { qosLevel, canRunSecondaryAction };
-    }
+    },
 
     // rush 自动扩图：把**上下左右四个正交相邻**房间自动加入能量外矿列表
     // （跳过 novice/respawn/closed 等不可达扇区；斜对角距离太远，不扩）。
     // 仅当列表**完全为空**时生效（首次引导语义：空 = 没配置，帮我自动来）；
     // 用户一旦手动管理过列表（非空），自动扩图彻底退出——否则手动 remove/add 会被
     // 下一轮扩图写回，表现为「莫名其妙自动乱加外矿」。上限 4 与触发条件对齐。
-    static autoAddNearbyEnergyTargets(sourceRoomName: string, known: string[]): string[] {
+    autoAddNearbyEnergyTargets(sourceRoomName: string, known: string[]): string[] {
         if (known.length > 0) return known;
         // 满级房双保险：调用侧已闸，这里再挡一层（其他调用方未来接入也不会越界）
         const srcRoom = Game.rooms[sourceRoomName];
@@ -652,13 +652,13 @@ export class ExternalMineState {
             console.log(`[自动扩图] ${sourceRoomName} 自动加入相邻外矿: ${addedRooms.join(', ')}`);
         }
         return known;
-    }
+    },
 
     // 同一个源房的 energy / centerRoom 旧桶数据可能串味；
     // 这里统一按“房名是否属于 center room”重新分类，避免同一目标被两条分支重复处理。
     // 选择结果按「源房 → energy+centerRoom 一次算齐」做 TTL 缓存（两个 key 共享同一次 DP），
     // 返回副本，避免调用方（如 rush 自动扩图）就地 push 污染缓存。
-    static getManagedTargets(sourceRoom: Room, key: OutMineTargetListKey): string[] {
+    getManagedTargets(sourceRoom: Room, key: OutMineTargetListKey): string[] {
         const cached = managedSelectionCache.get(sourceRoom.name);
         if (!cached || Game.time - cached.tick >= MANAGED_SELECTION_TTL_TICKS) {
             const selection = this.computeManagedTargets(sourceRoom);
@@ -666,9 +666,9 @@ export class ExternalMineState {
             return selection[key].slice();
         }
         return cached.selection[key].slice();
-    }
+    },
 
-    private static computeManagedTargets(sourceRoom: Room): ExternalMineManagedTargetSelection {
+    computeManagedTargets(sourceRoom: Room): ExternalMineManagedTargetSelection {
         const data = getOutMineData(sourceRoom.name);
         const mergedTargets = [
             ...this.getTargetList(data, 'energy'),
@@ -681,18 +681,18 @@ export class ExternalMineState {
         const policy = this.getTargetPolicy(sourceRoom);
         const stats = uniqueTargets.map((roomName) => this.estimateTargetSelectionStat(sourceRoom, roomName));
         return this.selectTargetStats(sourceRoom, stats, policy);
-    }
+    },
 
-    static createMemory(sourceRoomName: string, targetRoomName: string): CreepMemory {
+    createMemory(sourceRoomName: string, targetRoomName: string): CreepMemory {
         return { sourceRoom: sourceRoomName, targetRoom: targetRoomName } as CreepMemory;
-    }
+    },
 
     // 外矿基础设施建造入口。
     // container 只要目标房有视野就优先尝试落地，不再受 secondary action 节流影响；
     // road 仍按 secondary action、等级与 BUILD_INTERVAL 节流，避免把高成本寻路/铺路放大到每 tick。
     // rush 例外：道路是采集/搬运的 2 倍速引擎（平地 1 tick/格 → 路面 0.5），落地即铺、
     // 100 tick 一轮——等 RCL4 才铺路，整个前期远程运力都在平地上爬（race 实测 4 万 tick 零路网）。
-    static tryBuildRoad(
+    tryBuildRoad(
         sourceRoom: Room,
         targetRoom: Room,
         minLevel: number,
@@ -716,13 +716,13 @@ export class ExternalMineState {
         }
         if (Game.time % (rush ? 100 : EXTERNAL_ROAD_CONFIG.BUILD_INTERVAL) !== 0) return;
         RoadBuilder.createRoadSites(sourceRoom, targetRoom);
-    }
+    },
 
     // 外矿相关的可视化输出。
-    static runVisuals(): void {
+    runVisuals(): void {
         RoadVisual.run();
         HighwayMineVisual.run();
-    }
-}
+    },
+};
 
 export const getExternalMineCollectionRange = (roomName: string): number => ExternalMineState.isCenterRoom(roomName) ? 5 : 1;

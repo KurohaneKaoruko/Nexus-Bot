@@ -8,11 +8,11 @@ import { compress, decompress } from '@/utils/compress';
 import { getLayoutData } from '@/core/store/accessor';
 import { CostMatrixCache } from '@/modules/external/road/costMatrixCache';
 
-export class PathPlanner {
+export const PathPlanner = {
     /** 当前 tick 已计算的路径数 */
-    private static pathsThisTick = 0;
+    pathsThisTick: 0,
     /** 上次重置的 tick */
-    private static lastResetTick = 0;
+    lastResetTick: 0,
 
     /**
      * 计算单个目标的路径
@@ -20,7 +20,7 @@ export class PathPlanner {
      * @param target 目标位置
      * @returns 路径位置数组，或 undefined（如果计算失败或 CPU 不足）
      */
-    static planPath(sourceRoom: string, target: RoomPosition): RoomPosition[] | undefined {
+    planPath(sourceRoom: string, target: RoomPosition): RoomPosition[] | undefined {
         // CPU 保护检查
         if (!this.canPlanPath()) {
             return undefined;
@@ -45,7 +45,7 @@ export class PathPlanner {
         }
 
         return result.path;
-    }
+    },
 
     /**
      * 批量计算多个目标的路径（按距离排序，复用已计算路径）
@@ -53,7 +53,7 @@ export class PathPlanner {
      * @param targets 目标位置数组
      * @returns 路径结果映射 { targetKey: positions[] }，targetKey 格式为 "roomName:x:y"
      */
-    static planPaths(sourceRoom: string, targets: RoomPosition[]): Map<string, RoomPosition[]> {
+    planPaths(sourceRoom: string, targets: RoomPosition[]): Map<string, RoomPosition[]> {
         const results = new Map<string, RoomPosition[]>();
         
         if (targets.length === 0) return results;
@@ -129,14 +129,14 @@ export class PathPlanner {
         }
 
         return results;
-    }
+    },
 
     /**
      * 构建房间的 CostMatrix
      * @param roomName 房间名
      * @returns CostMatrix 或 false（不可通行）
      */
-    static buildCostMatrix(roomName: string): CostMatrix | false {
+    buildCostMatrix(roomName: string): CostMatrix | false {
         // 尝试从缓存获取
         const cached = CostMatrixCache.get(roomName);
         if (cached) return cached;
@@ -197,13 +197,13 @@ export class PathPlanner {
         // 缓存结果
         CostMatrixCache.set(roomName, costs);
         return costs;
-    }
+    },
 
     /**
      * 检查是否可以继续计算路径（CPU 保护）
      * @returns 是否可以继续
      */
-    static canPlanPath(): boolean {
+    canPlanPath(): boolean {
         // 重置计数器
         if (Game.time !== this.lastResetTick) {
             this.pathsThisTick = 0;
@@ -221,25 +221,25 @@ export class PathPlanner {
         }
 
         return true;
-    }
+    },
 
     /**
      * 获取当前 tick 的路径计算统计
      */
-    static getStats(): { pathsThisTick: number; canPlan: boolean; cpuUsage: number } {
+    getStats(): { pathsThisTick: number; canPlan: boolean; cpuUsage: number } {
         const cpuLimit = Game.cpu.tickLimit || 500;
         return {
             pathsThisTick: this.pathsThisTick,
             canPlan: this.canPlanPath(),
             cpuUsage: Game.cpu.getUsed() / cpuLimit,
         };
-    }
+    },
 
     /**
      * 重置路径计算计数器（用于测试）
      */
-    static reset(): void {
+    reset(): void {
         this.pathsThisTick = 0;
         this.lastResetTick = Game.time;
-    }
-}
+    },
+};
