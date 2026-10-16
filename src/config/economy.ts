@@ -105,6 +105,10 @@ export const SPAWN_CONFIG = {
 	 * staffed==0 通道立即小体。
 	 */
 	capacityWaitRoles: ["harvester", "upgrader", "carrier", "worker", "rush-courier", "transporter"] as readonly string[],
+	/** 采集让位期间的搬运保底数: rush 矿工 0 CARRY (drop 采矿), spawn 能量流入
+	 *  全靠 carrier 回收——carrier 低于该数时让位门放行搬运自举, 否则攒能的钱
+	 *  永远到不了 spawn, 让位死锁 (sim 实证采集面锁死 2/t 单只换代循环) */
+	yieldCarrierFloor: 1,
 	/** 攒能角色的短等待窗: 匹配 replacement 提前量, 换代断采 <8% 工作期 (50k 实测) */
 	capacityWaitTicksShort: 120,
 	/** 替补用途请求的等待上限: 换代提前量 (生产+路程+余量) 量级 ~80t, 原 400t 等待
@@ -142,11 +146,14 @@ export const SPAWN_CONFIG = {
 	/** 常驻编制缺口的请求优先级 (低于任务驱动, 只兜底) */
 	standingPriority: 55,
 	/** 按角色的常驻优先级覆盖: carrier 物流是骨干——涓流孵化队列里 55 会被
-	 *  任务驱动请求 (70) 永久压队, 没有搬运一切不流 (bugs/P1-14 根因③);
-	 *  scout 是外矿链路第一环 (1 MOVE 一次性点亮件, 50 能量), 必须压过孵化
-	 *  churn 满负荷期的 fill_spawn (95)——urgent 选择取队头, 95 之下 scout
-	 *  永远轮不到, 外矿视野丢失即收入振荡死锁 (bugs (十二) 实证) */
-	standingPriorityByRole: { carrier: 72, scout: 96 } as Readonly<Record<string, number>>,
+	 *  任务驱动请求 (70) 永久压队, 没有搬运一切不流 (bugs/P1-14 根因③)。
+	 *  88: 升级任务优先级 85 也压不住搬运——sprint 实证 upgrade 85 恒压 72,
+	 *  carrier 稳态只维持 4 只 (target 8), 双源 20/t 采集落地腐烂 48%
+	 *  (docs/bugs (二十)); scout 是外矿链路第一环 (1 MOVE 一次性点亮件,
+	 *  50 能量), 必须压过孵化 churn 满负荷期的 fill_spawn (95)——urgent
+	 *  选择取队头, 95 之下 scout 永远轮不到, 外矿视野丢失即收入振荡死锁
+	 *  (bugs (十二) 实证) */
+	standingPriorityByRole: { carrier: 88, scout: 96 } as Readonly<Record<string, number>>,
 	/** bootstrap 空转治理 (bugs/P1-10): 失明态连续孵化超限后降频, 防能量被 universal churn 耗尽 */
 	bootstrap: {
 		/** 连续 bootstrap 超过该次数仍未恢复可见房 → 进入节流 */
@@ -234,8 +241,10 @@ export const CARRY_STAFFING_CONFIG = {
 	 *  会把运力定编吹成几十只小搬运形成拥堵正反馈; 按 50×50 平地最远单程兜底 */
 	pathTimeClamp: 50,
 	/** 上限随 RCL 分档的基准: 实际上限 = min(maxCarriers, carriersPerRcl × RCL);
-	 *  早期孵化槽紧张, 全量吞吐编制会挤死采集/升级 (sim 实证 RCL2 +1000t) */
-	carriersPerRcl: 2,
+	 *  早期采集面小 (1W 小矿工) 时 2/rcl 足够; 采集面解锁 (5W 饱和矿工) 后
+	 *  搬运成为瓶颈——rcl2 双源 20/t 需 ~8 只 (250/只·170t 往返), 4 只封顶
+	 *  时 sim 实证落地腐烂 12.5%→49.8% (141k 能量烂在源边) */
+	carriersPerRcl: 4,
 } as const;
 
 /**

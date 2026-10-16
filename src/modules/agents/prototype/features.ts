@@ -42,8 +42,11 @@ function runRoomFeatures(room: Room): void {
 	// 工业结构链由 Industry 域驱动; 塔控/主动防御由主线 Defense (broker) 独家驱动,
 	// legacy TowerWork/activeDefense 退役——装配回收期 qos.getRoomQosLevel 从不存在,
 	// 特性链实际静默死亡期间主线单轨已验证
+	// 孵化消费端 (SpawnWork → spawnControl.SpawnCreep) 已退役: 与主线 spawnDirector
+	// 双孵化器分治——攒能/让位政策只约束主线, legacy 按平行定编静默孵化 (sim 实证
+	// 全场 179 只中 139 只无日志孵化, 让位期仍孵 upgrader/worker 把攒能窗口抽干)。
+	// 生产端 (UpdateSpawnMission) 保留: 池内挂单计入 pending 有自然上界; 消费走主线。
 	room.MissionUpdate?.()
-	room.SpawnWork?.()
 	room.updateEnergyState?.(false)
 
 	// 外矿双体系勘误 (2026-10-15): 外矿由任务板系 planRemoteHarvest 独家驱动

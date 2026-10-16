@@ -6,14 +6,13 @@ import { isUnitId, UNITS, UnitData, type UnitId } from '@/constant/CreepConstant
 import { THRESHOLDS } from '@/constant/Thresholds';
 import { generateCreepName } from '@/utils/naming';
 import { decompressBodyConfig } from '@/utils/compress';
-import { getRoomData } from '@/core/store/accessor';
-import { getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
+import { getRoomMode, getRoomModeProfile } from '@/modules/strategy/roomModeAccess';
 import { isEnergyCheckEnabled } from '@/config/capabilities';
 import { isRoomTickAligned } from '@/utils/roomPhase';
 import { drawSpawnInfo } from '@/modules/visuals/roomPanels';
-const getRoomMode = (room: Room) => {
-    return (getRoomData(room.name) as any)?.mode || (room.memory as any).mode || 'main';
-};
+// 模式判定统一走 roomModeAccess (托管配置缺 mode 时按订阅档位兜底);
+// 此前的本地残缺版缺 cpuLimit 兜底, 冲级局整条 legacy 链以 main 跑,
+// 与主线模式分治 (sim 实证降档链全程不受 rush 政策约束)
 
 const getEnergyState = (room: Room) =>
     room.memory.energyState || room.updateEnergyState?.(false);
@@ -134,19 +133,11 @@ export default class SpawnControl extends Room {
             return true;
         };
 
-        // rush 开局经济 = 定点矿工/搬运/升级三种 creep：
-        // 判定只看场上活体（池内挂单可能永远付不起，不算补给）——
-        // 无活体矿工先补矿工重启收入，有活体矿工才补搬运收掉落
+        // rush 开局应急孵化已退役: 主线 spawnDirector 的自举硬保障
+        // (harvester staffed==0 直接第一孵化) 与采集让位 (非生存角色让能量)
+        // 已完整覆盖开局路径; 此处再孵 2C2M carrier 会抽干主线的矿工攒能
+        // (sim 实证 27 次降档小体全部来自本应急链, 采集面被锁小体档)。
         if (getRoomMode(this) === 'rush') {
-            const aliveHarvesters = creepNum[UNITS.harvester] || 0;
-            if (aliveHarvesters > 0 && (creepNum[UNITS.carrier] || 0) < 4) {
-                return spawnBootstrap(UNITS.carrier, [CARRY, CARRY, MOVE, MOVE]);
-            }
-            if (aliveHarvesters === 0) {
-                return this.energyAvailable >= 200
-                    ? spawnBootstrap(UNITS.harvester, [WORK, WORK, MOVE, MOVE])
-                    : spawnBootstrap(UNITS.harvester, [WORK, MOVE]);
-            }
             return false;
         }
 
@@ -320,9 +311,15 @@ export default class SpawnControl extends Room {
         // 不缩水体（会产出零 CARRY 废体型）、也不代孵 universal（挤占编制）。
         // 它们的队列优先级天然低于本地角色，本地需求总是先被满足。
         if (unit.startsWith('out-') || unit === UNITS.reserver) return;
-        // 低能量期预算小体型重试（仅 EMERGENCY_DOWNSIZE 角色）
+        // 低能量期预算小体型重试（仅 EMERGENCY_DOWNSIZE 角色）。
+        // rush 档停用: 降档小体破坏主线攒能政策 (攒的是矿工饱和体型 5W1M,
+        // 降档把攒能窗口的钱花在小体上, 采集面永锁小体档)
         const state = getEnergyState(this);
-        if ((state === 'LOW' || state === 'CRITICAL') && EMERGENCY_DOWNSIZE_ROLES.has(unit)) {
+        if (
+            getRoomMode(this) !== 'rush' &&
+            (state === 'LOW' || state === 'CRITICAL') &&
+            EMERGENCY_DOWNSIZE_ROLES.has(unit)
+        ) {
             const config = this.GetUnitBodys(unit, false, this.energyAvailable);
             const bodypart = this.GenerateBodys(config, unit);
             const cost = this.CalculateEnergy(bodypart);

@@ -403,8 +403,8 @@ export function raceVisual(room: Room): void {
     push(`外矿采集 ${ohTotal} 只(在场${ohOnSite})`, ohOnSite < targets.length ? C.warn : C.good);
     push(`远矿积压 ${fmtTick(backlog)}${backlog > 5000 ? ' ⚠运力不足' : ''}`, backlog > 5000 ? C.warn : C.text);
     push(`── 孵化/达成 ────────`, C.section);
-    // 孵化状态直读 spawn 结构体：room.spawning 是孵化流程填充的临时属性，
-    // 面板渲染先于 SpawnWork 执行，读它会恒为空（显示「空闲」的假象）
+    // 孵化状态直读 spawn 结构体：room.spawning 是孵化流程的临时属性，
+    // 渲染时机不可靠（常为空 → 显示「空闲」的假象），直读结构体是唯一可靠口径
     const spawnStructures = room.find(FIND_MY_SPAWNS) as StructureSpawn[];
     const spawningInfo = spawnStructures.map(s => s.spawning).find(Boolean) || null;
     push(spawningInfo

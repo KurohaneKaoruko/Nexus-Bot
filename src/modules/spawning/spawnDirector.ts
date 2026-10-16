@@ -258,10 +258,15 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		return;
 	}
 	/** spawn 空闲起算 tick (攒能等待超时兜底): 跨 Tick 持久化, 修复每 Tick 重建
-	 *  使 capacityWaitTicks 超时永不触发的死代码 (specs/workforce-staffing 顺手修) */
+	 *  使 capacityWaitTicks 超时永不触发的死代码 (specs/workforce-staffing 顺手修)。
+	 *  陈旧键清理改按存活 spawn id 集合比对——idleSince 的键是 hex id, 而
+	 *  Game.spawns 的键是 spawn 名, 拿 id 去 in Game.spawns 恒 miss → 每 tick
+	 *  全量误删, 超时降档窗口永远归零 (sim 实证 idle 恒 0, carrier 500 成本
+	 *  单位缺编 6000t 不降档, 让位期攒能死锁) */
 	const spawnIdleSince = ctx.memory.spawn.idleSince ?? {};
+	const liveSpawnIds = new Set(spawns.map((spawn) => String(spawn.id)));
 	for (const id of Object.keys(spawnIdleSince)) {
-		if (!(id in Game.spawns)) {
+		if (!liveSpawnIds.has(id)) {
 			delete spawnIdleSince[id];
 		}
 	}
@@ -443,7 +448,16 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			gated.some((r) => r.unit === "harvester") &&
 			staffed("harvester") < Math.max(1, staffingFloor);
 		const pool = harvesterShort
-			? gated.filter((r) => r.unit === "harvester" || r.unit === "defender" || r.unit === "scout")
+			? gated.filter(
+					(r) =>
+						r.unit === "harvester" ||
+						r.unit === "defender" ||
+						r.unit === "scout" ||
+						// 搬运回流断档自举: rush 矿工 0 CARRY (drop 采矿), spawn 的能量
+						// 流入全靠 carrier 回收——carrier 归零时攒能的钱永远到不了
+						// spawn, 让位本身死锁 (sim 实证 t7025 后采集面锁死 2/t 换代循环)
+						(r.unit === "carrier" && staffed("carrier") < SPAWN_CONFIG.yieldCarrierFloor),
+				)
 			: gated;
 		// 体型按容量定档 (energyCapacityAvailable), 攒能等待: 涓流经济下按瞬时存量定档
 		// 会永远困在最小体型 (sim 实证: 5 万 tick 仍 3 部件);
@@ -516,14 +530,19 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测);
 					// 替补用途的等待另受换代窗口钳制 (提前量量级), 老单位死前必出新人。
 					// 无收入期等的是 WORK 底线而非大体型, 长窗只会拖长断采 → 同样走短窗。
-					// harvester 例外: 永不降档——超时降档锁死小体档, 56% 能量烧在换血;
-					// 持单等能量直到攒够饱和体型。
+					// harvester 分档: 定编缺口 (采集面未铺满) 必须允许降档——缺编补位
+					// 保覆盖, 否则 1 只小矿工 2/t 收入永填不满 550 池, 第二只永不出现,
+					// 采集面锁死 (sim 实证 legacy 退役后 31k 仅 4 爬存活); 铺满后的
+					// replacement 换代才永不降档——保体型演进, 避免小体 churn。
 					const waitLimit = request.purpose.startsWith("replacement:")
 						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.replacementWaitTicks)
 						: SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
 							? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
 							: SPAWN_CONFIG.capacityWaitTicks;
-					if (ctx.tick - idleSince < waitLimit || request.unit === "harvester") {
+					const harvesterNeverDownsize =
+						request.unit === "harvester" &&
+						request.purpose.startsWith("replacement:");
+					if (ctx.tick - idleSince < waitLimit || harvesterNeverDownsize) {
 						spawnIdleSince[spawn.id] = idleSince;
 						ctx.cpu.recordSkip("spawn-director", "budget");
 						continue;
