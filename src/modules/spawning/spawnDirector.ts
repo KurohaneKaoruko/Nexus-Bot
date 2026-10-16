@@ -14,7 +14,7 @@ import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import { UNITS, UnitData } from "@/constant/CreepConstant";
 import { generateCreepName } from "@/utils/naming";
 import { createTaskBoard } from "@/modules/tasks";
-import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy/remoteMining";
+import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy";
 import {
 	bodyCost,
 	buildBody,
@@ -74,6 +74,8 @@ function unitForTaskKind(kind: string): SpawnUnit | undefined {
 			return "defender";
 		case "scout":
 			return "scout";
+		case "reserve":
+			return "reserver"; // 外矿预订件 (对齐 Rosmarin race): 未预订源容量减半
 		default:
 			return undefined;
 	}
@@ -106,6 +108,10 @@ function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
 	const board = createTaskBoard(ctx.memory.tasks);
 	const remoteHarvest = activeRemoteHarvestCount(ctx, board);
 	const scoutNeed = activeScoutCount(ctx, board);
+	// 外矿预订件: 活跃 reserve 任务每房 1 只 (预订在身任务即撤, 编制自然收敛)
+	const reserverNeed = board
+		.list({ kinds: ["reserve"], statuses: ["available", "leased", "in_progress"] })
+		.filter((t) => t.targetPos?.roomName && t.targetPos.roomName !== t.roomName).length;
 	let upgraderNeed = 0;
 	let carrierNeed = 0;
 	for (const room of rooms) {
@@ -137,6 +143,8 @@ function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
 		defender: STAFFING_CONFIG.tierDefenders[threatTierOf(maxThreatScore(ctx.memory))],
 		// 扩张占领件: 活跃 claim 任务时 1 只 (任务消失编制即收)
 		claimer: board.list({ kinds: ["claim"] }).some((t) => t.status !== "completed") ? 1 : 0,
+		// 外矿预订件: 活跃 reserve 任务数 (预订完成即收编)
+		reserver: reserverNeed,
 	};
 }
 
@@ -467,18 +475,29 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		// 注: 冲级窗口不强制 harvester 带 CARRY——sim 实证 RCL2 档 (550 容量) 强制 carry
 		// 会 -1 WORK 且把源能量导向 ext/spawn 而非 cc 升级链, 升级总量 17658→4614 恶化;
 		// 直供泵的 carry 前提由生成器的 1-CARRY 下限自然满足 (预算 ≥650 即 RCL3 起)
+		// 开局无搬运工在场 → 采集体自带 CARRY (否则地面堆无人收, 控制器拿不到能量)。
+		// 远程采集件另判: 本地矿工 0 CARRY 靠 carrier 回收 drop, 但远程件是自回运
+		// (满载跨房走回本矿卸 cc), 无 CARRY 则永远驻源 drop, 能量全烂在外矿地板。
+		const remoteHarvestActive = board
+			.list({ kinds: ["harvest"] })
+			.some(
+				(t) =>
+					(t.status === "available" || t.status === "leased" || t.status === "in_progress") &&
+					t.targetPos?.roomName !== t.roomName,
+			);
 		const hints = {
 			slowTerrain: isSlowTerrain(terrainProfileFor(spawn.room.name, ctx.tick)),
 			// 接力期档 (specs/relay-hauling): RCL < 等级门用微型接力件, 达门大件直运
 			relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl,
 			directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl,
-			// 开局无搬运工在场 → 采集体自带 CARRY (否则地面堆无人收, 控制器拿不到能量)
-			noCarrierOnSite: !Object.values(Game.creeps).some(
-				(c) =>
-					c.room.name === spawn.room.name &&
-					!c.spawning &&
-					c.memory?.unit === UNITS.carrier,
-			),
+			noCarrierOnSite:
+				remoteHarvestActive ||
+				!Object.values(Game.creeps).some(
+					(c) =>
+						c.room.name === spawn.room.name &&
+						!c.spawning &&
+						c.memory?.unit === UNITS.carrier,
+				),
 		};
 		const capacity = spawn.room.energyCapacityAvailable;
 		const available = spawn.room.energyAvailable;
@@ -591,7 +610,6 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			if (reservationId) {
 				commitReservation(ctx, reservationId, bodyCost(body));
 			}
-			ctx.logger.info(`生产 ${name} (${request.purpose}, ${body.length} 部件)`);
 		} else {
 			if (reservationId) {
 				releaseReservation(ctx, reservationId, "spawn-failed");

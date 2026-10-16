@@ -412,11 +412,16 @@ export const PRODUCTION_GATE_CONFIG = {
 	 * (scout 是 1 MOVE 廉价件, 是外矿链路第一环——被此闸卡死则 auto 档
 	 * remoteMining 永远无法点亮邻房, sim 实证 scout 任务恒 available 无人孵化)
 	 */
-	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender", "scout"] as readonly string[],
+	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender", "scout", "reserver"] as readonly string[],
 } as const;
 
-/**
- * 升级体体型参数 (specs/workforce-staffing「升级定编 WORK 口径目标」):
+/** 外矿预订线 (specs/race-remote「预订线」): 未预订源容量减半 */
+export const RESERVE_CONFIG = {
+	/** 预订续订线: 预订剩余刻数低于该值即重发 reserve 任务 (防裸奔减半期) */
+	refreshTicks: 2000,
+} as const;
+
+/** 升级体体型参数 (specs/workforce-staffing「升级定编 WORK 口径目标」):
  * 升级火力对齐采集收入, 体型按能量容量取**装得下的最大 WORK**。
  * 升级体常驻控制器工位就近取能, 移动占比极低, 故 MOVE 配给远低于移动型角色,
  * 使同预算下 WORK 密度最大化 (每 WORK 摊到的 MOVE/CARRY 越少, 能量越集中在 WORK)。

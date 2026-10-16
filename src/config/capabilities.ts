@@ -4,7 +4,7 @@
 // 官服 main.ts 不置位——全部按默认值（官服口径）旁路。
 // 单向依赖：共享代码只读本配置，不感知具体 variant。
 
-import type { RoomModeName } from '@/modules/strategy/roomModeAccess';
+import type { RoomModeName } from '@/modules/strategy';
 
 /** 服务器能力配置项（各服配置文件的数据结构，见 branch/<规则>/config.ts） */
 export type ServerCaps = {

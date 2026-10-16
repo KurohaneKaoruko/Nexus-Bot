@@ -96,8 +96,8 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 		return false;
 	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim: 本矿孵化 → 远程目标) 放行, 由评分的 travel 成本约束
-		if (task.kind !== "claim") {
+		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标) 放行, 由评分的 travel 成本约束
+		if (task.kind !== "claim" && task.kind !== "reserve") {
 			return false;
 		}
 	}
@@ -158,6 +158,7 @@ const UNIT_TASK_AFFINITY: Record<string, readonly string[]> = {
 	[UNIT_CODES.upgrader]: ["upgrade"],
 	[UNIT_CODES.worker]: ["build", "repair"],
 	[UNIT_CODES.harvester]: ["harvest"],
+	[UNIT_CODES.reserver]: ["reserve"],
 	[UNIT_CODES.carrier]: ["fill_spawn", "haul"],
 	[UNIT_CODES.defender]: ["defend"],
 };
@@ -205,8 +206,8 @@ export function scoreCandidate(
 
 function travelCostOf(profile: CapabilityProfile, task: NexusTask, world: WorldViewLike): number {
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim) 用房名线性距离折算, 不做无穷大排除
-		if (task.kind !== "claim") {
+		// 跨房任务 (claim/reserve) 用房名线性距离折算, 不做无穷大排除
+		if (task.kind !== "claim" && task.kind !== "reserve") {
 			return Number.POSITIVE_INFINITY;
 		}
 		const m1 = profile.roomName.match(/^([WE])(\d+)([NS])(\d+)$/);

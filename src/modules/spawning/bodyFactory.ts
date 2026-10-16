@@ -24,7 +24,7 @@ export type EconomyRole =
 	| "rush-courier"
 	| "scout";
 /** 战斗角色 (Phase 3: 防守型 defender, 远程为主) */
-export type CombatRole = "defender" | "claimer";
+export type CombatRole = "defender" | "claimer" | "reserver";
 export type SpawnUnit = EconomyRole | CombatRole;
 
 /** 地形编译提示 (spawnDirector 按房间地形画像填充): 慢地形 = 沼泽密度高且路网未达标 */
@@ -87,7 +87,7 @@ export function isEconomyRole(unit: string): unit is EconomyRole {
 }
 
 export function isSpawnUnit(unit: string): unit is SpawnUnit {
-	return ECONOMY_ROLES.has(unit) || unit === "defender";
+	return ECONOMY_ROLES.has(unit) || unit === "defender" || unit === "reserver";
 }
 
 function segmentCost(segment: BodyPartConstant[]): number {
@@ -183,6 +183,9 @@ export function buildBody(
 			return buildSegmented(ROAD_SEGMENTS.universal, budget);
 		case "defender":
 			return buildSegmented(ROAD_SEGMENTS.defender, budget);
+		case "reserver":
+			// 外矿预订件 (对齐 Rosmarin race): [CLAIM,MOVE]×n, 预订功率随预算放大
+			return buildSegmented({ segment: ["claim", "move"], min: 1, max: 3 }, budget);
 		case "claimer":
 			// 扩张占领件: 单组 [CLAIM, MOVE], 600 成本最低门槛
 			return buildSegmented({ segment: ["claim", "move"], min: 1, max: 1 }, budget) ?? ["claim", "move"];

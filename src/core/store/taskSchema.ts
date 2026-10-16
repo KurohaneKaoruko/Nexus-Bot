@@ -94,6 +94,8 @@ export const LEASE_POLICY = {
 		defend: 40,
 		retreat: 20,
 		repair: 80,
+		// 预订件跨房驻场: 到位后持续续订控制器, 短租约会反复踢掉重招
+		reserve: 500,
 	} as Partial<Record<TaskKind, number>>,
 	heartbeatGraceTicks: 20,
 	maxAttemptsByKind: {
@@ -132,6 +134,8 @@ export const TASK_PRIORITY = {
 	harvest: 70,
 	haul: 60,
 	scout: 55,
+	// 预订是外矿收入翻倍的前置 (未预订源容量 1500→3000), 与侦查同档
+	reserve: 55,
 	build: 50,
 	repair: 45,
 	upgrade: 30,

@@ -18,7 +18,7 @@ import type { TaskBoard } from "@/modules/tasks";
 import { atWorksite } from "@/modules/world";
 import { clearBlocked, congestionAction } from "@/modules/movement/trafficMonitor";
 import { ccUpgradeReserveOf, hasHungryUpgrader, recordTravelSample, registerUpgraderStarve } from "@/modules/economy";
-import { destinationQuotas } from "@/modules/economy/quota";
+import { destinationQuotas } from "@/modules/economy";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { relayHandoffAllowed, type RelayCreepView } from "@/utils/haulRelay";
 import { CARRIER_BEHAVIOR_CONFIG, RELAY_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
@@ -758,6 +758,57 @@ function runCreep(
 			}
 			return;
 		}
+		case "reserve": {
+			// 外矿预订 (对齐 Rosmarin race): 走到目标房控制器 → reserveController,
+			// 未预订源容量 1500→3000。预订在身即停发任务, 续订由租约过期后重发接替
+			const targetRoom = task.targetPos?.roomName;
+			if (!targetRoom) return;
+			const live = Game.creeps[creep.name];
+			if (!live) return;
+			const ctrl = live.room.controller;
+			if (creep.roomName !== targetRoom || !ctrl) {
+				broker.submit({
+					id: `${creep.name}-rsv-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "move" as const,
+					targetPos: {
+						x: task.targetPos?.x ?? 25,
+						y: task.targetPos?.y ?? 25,
+						roomName: targetRoom,
+					},
+					priority: task.priority,
+					pipeline: "move",
+					dedupeKey: `${creep.name}:move:${task.id}`,
+				});
+				return;
+			}
+			// 他人预订在身: 本件无法续订, 放弃任务 (生产端也不再对他订房发任务)
+			if (ctrl.reservation && ctrl.reservation.username !== live.owner?.username) {
+				delete (live.memory as Record<string, unknown>).taskId;
+				return;
+			}
+			// 驻场终身制 (对齐 Rosmarin reserver): 到位后持续 reserveController
+			// 续满, 预订不中断外矿恒满容量; 寿命耗尽由生产端在续订线下重发接替
+			const d = Math.max(Math.abs(creep.x - ctrl.pos.x), Math.abs(creep.y - ctrl.pos.y));
+			if (d <= 1) {
+				live.reserveController(ctrl);
+			} else {
+				broker.submit({
+					id: `${creep.name}-rsv-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "move" as const,
+					targetPos: { x: ctrl.pos.x, y: ctrl.pos.y, roomName: targetRoom },
+					priority: task.priority,
+					pipeline: "move",
+					dedupeKey: `${creep.name}:move:${task.id}`,
+				});
+			}
+			return;
+		}
 		case "retreat": {
 			// 撤退锚点保持: 距锚点超出半径持续移动, 到达后原地不动 (威胁解除由规划器 cancel)
 			const anchor = task.targetPos;
@@ -929,7 +980,6 @@ function runRemoteHarvest(
 ): void {
 	const targetRoom = task.targetPos?.roomName;
 	if (!targetRoom) return;
-	const _live = Game.creeps[creep.name]; void _live;
 
 	// 满载且不在本矿 → 走回本矿
 	if (creep.carryEnergy > 0 && creep.freeCapacity === 0 && creep.roomName !== task.roomName) {
@@ -1184,6 +1234,7 @@ const NEXUS_TASK_DRIVEN_CODES: ReadonlySet<string> = new Set([
 	UNIT_CODES.defender,
 	UNIT_CODES.scout,
 	UNIT_CODES.claimer,
+	UNIT_CODES.reserver,
 ]);
 
 export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoard): void {
@@ -1199,9 +1250,12 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 				continue;
 			}
 			// 原型角色执行体 (manager/transporter/miner): 无任务指针时走原型 exec()
+			// 注意: NEXUS_TASK_DRIVEN_CODES 是 Set, 成员判定必须用 has——
+			// `in` 是对象属性键检查, 对 Set 成员恒 false, 会让任务驱动角色
+			// 全部漏进 exec() (scout/claimer 无 registry 处理器, 刷屏空转)
 			const liveVendor = Game.creeps[creep.name];
 			if (
-				!(creep.unitCode in NEXUS_TASK_DRIVEN_CODES) &&
+				!NEXUS_TASK_DRIVEN_CODES.has(creep.unitCode) &&
 				liveVendor &&
 				!liveVendor.memory.taskId &&
 				typeof liveVendor.exec === "function"

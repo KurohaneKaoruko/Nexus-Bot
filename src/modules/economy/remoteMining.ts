@@ -7,7 +7,16 @@ import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
 import type { TaskBoard } from "@/modules/tasks";
 import { priorityFor } from "@/core/store/taskSchema";
+import { RESERVE_CONFIG } from "@/config/economy";
 import { roomModeProfileFor } from "@/modules/strategy";
+
+/** 己方用户名 (任一自有 spawn 的 owner; 无 spawn 的角落场景由调用侧兜底为不抢订) */
+function myUsername(): string | undefined {
+	for (const spawn of Object.values(Game.spawns)) {
+		return spawn.owner?.username;
+	}
+	return undefined;
+}
 
 /** 邻房名计算 (正角 4 向 + 对角 4 向)。Screeps 世界坐标: E1=1, W1=0, W2=-1 … (W 数字从 0 镜像) */
 function neighborRooms(roomName: string): string[] {
@@ -73,7 +82,30 @@ export function planRemoteHarvest(
 				continue;
 			}
 			if (remoteRoom.controller?.my) continue;
-			if (remoteRoom.controller?.owner || remoteRoom.controller?.reservation) continue;
+			if (remoteRoom.controller?.owner) continue;
+			// 预订线 (对齐 Rosmarin race): 未预订源容量减半 (1500 vs 3000),
+			// 收入翻倍的前置。衰减到续订线以下即重发 (防裸奔减半期);
+			// 他人预订不抢 (reserveController 对他订无效, 派件纯浪费)。
+			const reservation = remoteRoom.controller?.reservation;
+			const mine = myUsername() !== undefined && reservation?.username === myUsername();
+			if (
+				remoteRoom.controller &&
+				(!reservation || (mine && reservation.ticksToEnd < RESERVE_CONFIG.refreshTicks))
+			) {
+				board.upsert({
+					dedupeKey: `reserve:${room.roomName}:${targetRoomName}`,
+					kind: "reserve",
+					roomName: room.roomName,
+					targetId: remoteRoom.controller.id,
+					targetPos: {
+						x: remoteRoom.controller.pos.x,
+						y: remoteRoom.controller.pos.y,
+						roomName: targetRoomName,
+					},
+					priority: priorityFor("reserve"), // 预订是外矿收入翻倍的前置, 与侦查同档
+					requiredCapabilities: ["claim", "move"],
+				}, ctx.tick);
+			}
 			for (const source of remoteRoom.find(FIND_SOURCES)) {
 				board.upsert({
 					dedupeKey: `harvest:${room.roomName}:remote:${source.id}`,
@@ -114,10 +146,32 @@ export function planRemoteHarvest(
 			continue;
 		}
 		if (neighbor.controller?.my) continue; // 己方房跳过
-		if (neighbor.controller?.owner || neighbor.controller?.reservation) continue; // 有主之地不开矿
+		if (neighbor.controller?.owner) continue; // 有主之地不开矿
 		const sources = neighbor.find(FIND_SOURCES);
 		if (sources.length === 0) continue; // 无源房不占发展配额
 		budget -= 1;
+		// 预订线 (对齐 Rosmarin race): 未预订外矿先订后采, 容量 1500→3000。
+		// 衰减到续订线以下即重发; 他人预订不抢 (reserveController 对他订无效)。
+		const reservation = neighbor.controller?.reservation;
+		const mine = myUsername() !== undefined && reservation?.username === myUsername();
+		if (
+			neighbor.controller &&
+			(!reservation || (mine && reservation.ticksToEnd < RESERVE_CONFIG.refreshTicks))
+		) {
+			board.upsert({
+				dedupeKey: `reserve:${room.roomName}:${neighborName}`,
+				kind: "reserve",
+				roomName: room.roomName,
+				targetId: neighbor.controller.id,
+				targetPos: {
+					x: neighbor.controller.pos.x,
+					y: neighbor.controller.pos.y,
+					roomName: neighborName,
+				},
+				priority: priorityFor("reserve"), // 预订是外矿收入翻倍的前置, 与侦查同档
+				requiredCapabilities: ["claim", "move"],
+			}, ctx.tick);
+		}
 		for (const source of sources) {
 			board.upsert({
 				dedupeKey: `harvest:${room.roomName}:remote:${source.id}`,
@@ -152,14 +206,20 @@ export function activeScoutCount(ctx: TickContext, board: TaskBoard): number {
 }
 
 /**
- * 本矿登记在板的远程源数 (升级定编口径, bugs (十二)): kind=harvest 且目标房 ≠ 本矿。
+ * 本矿登记在板的远程源加权数 (升级定编口径, bugs (十二)): kind=harvest 且目标房 ≠ 本矿。
  * 直读 memory.tasks 原始记录 (升级定编每 tick 逐房调用, 不重复建板)。
+ * 预订口径 (对齐 Rosmarin race): 己方预订源满容量 3000 记 1; 未预订源容量减半记 0.5
+ * (防升级体按虚高收入超编, 外矿断供期反噬本地采集面)。
  */
 export function activeRemoteSourceCount(ctx: TickContext, roomName: string): number {
+	const me = myUsername();
 	let n = 0;
 	for (const task of Object.values(ctx.memory.tasks)) {
 		if (task.kind !== "harvest" || task.roomName !== roomName) continue;
-		if (task.targetPos?.roomName && task.targetPos.roomName !== roomName) n += 1;
+		const target = task.targetPos?.roomName;
+		if (!target || target === roomName) continue;
+		const reservation = Game.rooms[target]?.controller?.reservation;
+		n += reservation && reservation.username === me ? 1 : 0.5;
 	}
 	return n;
 }

@@ -4,6 +4,7 @@
  * 记录创建/重置的唯一入口, 保证形状与 memorySchema 一致。
  */
 import { PLANNER_CONFIG } from "@/config/planner";
+import { getSkipBuildTypes } from "@/config/capabilities";
 import type { LayoutMemory, LayoutRoomRecord } from "@/core/store/memorySchema";
 
 /** 布局持久化根 (Memory.Nexus.layout); 校准保证存在 */
@@ -67,7 +68,7 @@ export function dynamicBucketFloor(): number {
 
 /** 不自动建造的结构类型 (变体裁剪用, 如冲级服跳过 factory/nuker) */
 export function skipBuildTypes(): readonly string[] {
-	return [];
+	return getSkipBuildTypes();
 }
 
 /** 结构类型的最低建造 RCL 覆盖表 (road: 平地早期移动全速, RCL3 前产能优先投 extension 扩容) */
