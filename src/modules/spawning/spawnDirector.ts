@@ -6,7 +6,7 @@
  * Creep 死亡后回收 UnitRecord, 租约由任务对账释放。
  */
 import type { TickContext } from "@/core";
-import { directiveFor } from "@/modules/strategy";
+import { directiveFor, roomModeFor } from "@/modules/strategy";
 import { downgradeEmergency } from "@/core/world";
 import { STRATEGY_CONFIG } from "@/config/strategy";
 import { STAFFING_CONFIG } from "@/config/defense";
@@ -343,12 +343,23 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		// 常驻编制缺口 (bugs/P1-5): harvester/upgrader/carrier 的岗位与任务 available 状态解耦——
 		// 任务被租住或处于失败冷却期时缺口仍可见, 否则岗位长期空转;
 		// carrier 可按角色覆盖优先级 (物流骨干不被任务驱动请求永久压队)
+		const anyRush = Object.values(world.rooms).some(
+			(room) => roomModeFor(ctx, room.roomName) === "rush",
+		);
 		for (const unitName of SPAWN_CONFIG.standingRoles) {
 			if (!isSpawnUnit(unitName)) {
 				continue;
 			}
-			// 水位门: cc 存量低于升级抽水缓冲时暂停升级体孵化, 孵化槽让位物流
-			if (unitName === "upgrader" && !downgradeActive && ccBelowSpawnGate(ctx)) {
+			// 水位门: cc 存量低于升级抽水缓冲时暂停升级体孵化, 孵化槽让位物流。
+			// rush 档豁免 (冲级火力是主要目的): 涓流期 cc 频繁低于门槛会反复停孵
+			// 升级体, 升级链人力不足 → cc 更空 → 死循环 (sim 实锤 upgrade 6 任务
+			// 仅 3 只在岗, control 掉 25%)。
+			if (
+				unitName === "upgrader" &&
+				!downgradeActive &&
+				!anyRush &&
+				ccBelowSpawnGate(ctx)
+			) {
 				continue;
 			}
 			if (staffed(unitName) < effectiveTarget(ctx, unitName)) {
@@ -422,6 +433,18 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			return PRODUCTION_GATE_CONFIG.unsecuredAllowedRoles.includes(unit);
 		};
 		const gated = ordered.filter((r) => gateAllows(r.unit));
+		// 采集让位 (源饱和口径): harvester 请求未满足 (定编缺口) 时, 非生存角色
+		// 暂停孵化——能量集中攒给矿工的饱和体型 (RCL2 起 5W1M)。缺让位则攒能窗口
+		// 被 worker/universal 小体 (不等待) 逐次抽干, 矿工永远攒不齐, 采集面锁死
+		// 小体档 (sim 探针: t6000 双源房仅 1W 在岗)。
+		const spawnRoomObs = world.rooms[spawn.room.name];
+		const staffingFloor = spawnRoomObs ? harvesterTargetTotal(spawnRoomObs) : 0;
+		const harvesterShort =
+			gated.some((r) => r.unit === "harvester") &&
+			staffed("harvester") < Math.max(1, staffingFloor);
+		const pool = harvesterShort
+			? gated.filter((r) => r.unit === "harvester" || r.unit === "defender" || r.unit === "scout")
+			: gated;
 		// 体型按容量定档 (energyCapacityAvailable), 攒能等待: 涓流经济下按瞬时存量定档
 		// 会永远困在最小体型 (sim 实证: 5 万 tick 仍 3 部件);
 		// 高优先请求 (bootstrap/应急) 例外——按现有能量立即生产, 保开局速度;
@@ -455,7 +478,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			unit === "harvester" && SPAWN_CONFIG.harvestTierEnabled && harvestNoIncome
 				? Math.max(available, SPAWN_CONFIG.harvesterStarterBudget)
 				: fallback;
-		const urgent = gated.find(
+		const urgent = pool.find(
 			(r) =>
 				r.priority >= SPAWN_CONFIG.immediatePriority &&
 				(!SPAWN_CONFIG.capacityWaitRoles.includes(r.unit) ||
@@ -471,7 +494,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		const bootstrapHarvest =
 			urgent === undefined &&
 			staffed("harvester") === 0 &&
-			gated.find(
+			pool.find(
 				(r) =>
 					r.unit === "harvester" &&
 					buildBody(r.unit, r.budget ?? Math.max(available, SPAWN_CONFIG.harvesterStarterBudget), hints) !== null,
@@ -485,7 +508,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			request = urgent;
 			body = buildBody(urgent.unit, urgent.budget ?? available, hints);
 		} else {
-			request = gated.find((r) => buildBody(r.unit, r.budget ?? bodyBudget(r.unit, capacity), hints) !== null);
+			request = pool.find((r) => buildBody(r.unit, r.budget ?? bodyBudget(r.unit, capacity), hints) !== null);
 			if (request) {
 				const desired = buildBody(request.unit, request.budget ?? bodyBudget(request.unit, capacity), hints);
 				if (desired && bodyCost(desired) > available) {

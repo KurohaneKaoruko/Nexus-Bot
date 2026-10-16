@@ -84,8 +84,12 @@ export function accumulateTick(ctx: TickContext, world: WorldView): void {
 	}
 	accumulators.spawnIdleTicks += idleSpawns;
 
+	// 饥饿口径只看 spawn: spawn 为空 = 孵化链断供 (真饥饿)。ext 空位是涓流期
+	// 常态——按「任一能量结构为 0」计数时, ext 越多越容易误判, 基建改善反而
+	// 触发 survive 姿态暂停生产角色 (sim 实锤: ext 建成后 starvation 140>100
+	// 误触发, 种群塌方)。
 	for (const room of Object.values(world.rooms)) {
-		if (room.energyStructures.some((structure) => structure.energy === 0)) {
+		if (room.energyStructures.some((structure) => structure.structureType === "spawn" && structure.energy === 0)) {
 			accumulators.starvationTicks += 1;
 		}
 	}

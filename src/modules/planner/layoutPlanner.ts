@@ -985,10 +985,13 @@ function computeDynamic(roomName: string, layoutType: string): CachedLayout | nu
     const sources = room.find(FIND_SOURCES);
     const pa = sources[0]?.pos;
     const pb = sources[1]?.pos || pa;
-    const pm = room.find(FIND_MINERALS)[0]?.pos;
+    // mineral 可缺席: extractor 是 RCL6 解锁物, 布局键点只作枢纽选址参考——
+    // 缺席以控制器坐标代位 (仅选址权重参考, 不落任何矿石结构)。缺席锁死布局
+    // 会让 ext 永不放量, 容量锁 300, 采集面锁死最小体 (sim 场景实锤)
     const pc = room.controller?.pos;
-    if (!pa || !pb || !pc || !pm) {
-        log(`动态布局失败: 缺少关键对象 room=${roomName} layout=${layoutType} (controller/mineral/source)`);
+    const pm = room.find(FIND_MINERALS)[0]?.pos ?? pc;
+    if (!pa || !pb || !pc) {
+        log(`动态布局失败: 缺少关键对象 room=${roomName} layout=${layoutType} (controller/source)`);
         return null;
     }
 
