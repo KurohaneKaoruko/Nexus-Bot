@@ -2,55 +2,56 @@
 
 import { getOutMineData, getRoomData } from '@/core/store/accessor';
 
-export class HighwayMineVisual {
-    private static readonly MAP_DRAW_INTERVAL = 1;
-    private static readonly POWER_STYLE = {
+/** 高速公路矿可视化: 母房 → 公路矿房连线与开关状态 (地图层绘制) */
+export const HighwayMineVisual = {
+    MAP_DRAW_INTERVAL: 1,
+    POWER_STYLE: {
         stroke: '#ff4d4d',
         strokeWidth: 0.9,
         opacity: 0.75,
         lineStyle: 'solid' as const,
-    };
-    private static readonly DEPOSIT_STYLE = {
+    },
+    DEPOSIT_STYLE: {
         stroke: '#4d79ff',
         strokeWidth: 0.8,
         opacity: 0.7,
         lineStyle: 'dashed' as const,
-    };
-    private static readonly BOTH_STYLE = {
+    },
+    BOTH_STYLE: {
         stroke: '#a020f0',
         strokeWidth: 0.9,
         opacity: 0.75,
         lineStyle: 'solid' as const,
-    };
+    },
 
-    private static enabled: Record<string, boolean> = {};
-    private static globalEnabled = false;
-    private static lastRunTick = -1;
-    private static lastMapDrawTickBySource: Record<string, number> = {};
+    enabled: {} as Record<string, boolean>,
+    globalEnabled: false,
+    lastRunTick: -1,
+    lastMapDrawTickBySource: {} as Record<string, number>,
 
-    static enable(sourceRoom: string): void {
+    enable(sourceRoom: string): void {
         this.enabled[sourceRoom] = true;
-    }
+    },
 
-    static disable(sourceRoom: string): void {
+    disable(sourceRoom: string): void {
         delete this.enabled[sourceRoom];
-    }
+    },
 
-    static enableAll(): void {
+    enableAll(): void {
         this.globalEnabled = true;
-    }
+    },
 
-    static disableAll(): void {
+    disableAll(): void {
         this.globalEnabled = false;
         this.enabled = {};
-    }
+    },
 
-    static toggle(sourceRoom: string): boolean {
+    toggle(sourceRoom: string): boolean {
         this.enabled[sourceRoom] = !this.enabled[sourceRoom];
         return this.enabled[sourceRoom] || false;
-    }
+    },
 
-    static run(): void {
+    run(): void {
         if (this.lastRunTick === Game.time) return;
         this.lastRunTick = Game.time;
 
@@ -90,9 +91,9 @@ export class HighwayMineVisual {
                 this.visualizeOnMap(sourceRoom);
             }
         }
-    }
+    },
 
-    static visualizeOnMap(sourceRoom: string): void {
+    visualizeOnMap(sourceRoom: string): void {
         const powerEnabled = !!getRoomData()?.[sourceRoom]?.outminePower;
         const depositEnabled = !!getRoomData()?.[sourceRoom]?.outmineDeposit;
         if (!powerEnabled && !depositEnabled) return;
@@ -126,6 +127,5 @@ export class HighwayMineVisual {
                 strokeWidth: 0.25,
             });
         }
-    }
-}
-
+    },
+};

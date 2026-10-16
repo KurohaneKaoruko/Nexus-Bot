@@ -2,18 +2,22 @@
 /*
  * 冲级行数据 + spawn 标注: 只产出 HudLine[], 面板渲染统一在 core/boot drawHud。
  * 分段评估消费 utils/raceSegments (与主线单源), 判废快照仅最新单条入 Memory。
+ * 能量管线采集 (进账/消耗/接力/远矿积压) 由本文件独家结算, 记账点散在
+ * workFunction (源矿进账) 与 carrier (接力成交)。
  */
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 import { evaluateRaceSegments, applySegmentVerdicts, RUSH_SEGMENT_LEVELS } from "@/utils/raceSegments";
 import { CompoundColor } from "@/constant/ResourceConstant";
-import { getLabAB } from "@/modules/industry/labReservations";
+import { getLabAB } from "@/modules/industry";
 import { decompressBatch } from "@/utils/compress";
-import LayoutVisual from "@/modules/planner/layoutVisual";
+import { LayoutVisual } from "@/modules/planner";
+import { UNITS, UnitData } from "@/constant/CreepConstant";
+import { takeRaceEnergyMined } from "@/utils/rush";
+import { getOutMineData } from "@/core/store/accessor";
 
 type UnitId = keyof typeof UNIT_CODES;
 const isUnitId = (unit?: string): unit is UnitId => !!unit && unit in UNIT_CODES;
-const UNITS = { carrier: "carrier", upgrader: "upgrader" } as const;
 
 /**
  * 建筑可视化：孵化中 spawn 的数据标注 + lab 产物标注 + 布局规划图。
@@ -43,7 +47,7 @@ export function drawSpawnInfo(spawns: StructureSpawn[]): void {
 }
 
 /** lab：产物矿物文本 + A/B 源 lab 圈标记（A 粉圈 / B 蓝圈）；bucket < 1000 跳过 */
-export function drawLabInfo(labs: StructureLab[], room: Room): void {
+export function drawLabInfo(labs: StructureLab[] | undefined, room: Room): void {
 	if (Game.cpu.bucket < 1000) return;
 	const { labA, labB } = getLabAB(room.name, room);
 
@@ -105,6 +109,15 @@ type RaceMemory = {
 	samples: RaceSample[];
 	/** 各分段评估状态（逐 tick 刷新） */
 	segments?: SegmentStatus[];
+	/** 接力成交累计计数 */
+	relayAccum: number;
+	/** 接力速率采样环 {tick, 累计接力数} */
+	relaySamples: RaceSample[];
+	/** 能量收支：采集进账累计（窗口差分用） */
+	eInAcc?: number;
+	eSpawnAcc?: number;
+	/** 能量采样环 {tick, 进账累计, 孵化花费累计, 全房存量, 工地进度和, 防御hits和, 升级累计} */
+	energySamples?: { t: number; eIn: number; eSpawn: number; store: number; sites: number; hits: number; cum: number }[];
 };
 
 const SAMPLE_STEP = 10;
@@ -114,13 +127,18 @@ const raceMemStore = new Map<string, RaceMemory>();
 const getRaceMem = (roomName: string): RaceMemory => {
 	let mem = raceMemStore.get(roomName);
 	if (!mem) {
-		mem = { levels: {}, levelRates: {}, bars: {}, samples: [] };
+		mem = { levels: {}, levelRates: {}, bars: {}, samples: [], relayAccum: 0, relaySamples: [] };
 		raceMemStore.set(roomName, mem);
 	}
 	mem.levels ??= {};
 	mem.levelRates ??= {};
 	mem.bars ??= {};
 	mem.samples ??= [];
+	mem.relayAccum ??= 0;
+	mem.relaySamples ??= [];
+	mem.eInAcc ??= 0;
+	mem.eSpawnAcc ??= 0;
+	mem.energySamples ??= [];
 	return mem;
 };
 
@@ -188,6 +206,11 @@ export function raceHudLines(room: Room): HudLine[] {
 		mem.levelRates = {};
 		mem.bars = {};
 		mem.samples = [];
+		mem.energySamples = [];
+		mem.eInAcc = 0;
+		mem.eSpawnAcc = 0;
+		mem.relayAccum = 0;
+		mem.relaySamples = [];
 		mem.segments = undefined;
 		mem.baseline = now;
 	}
@@ -243,6 +266,7 @@ export function raceHudLines(room: Room): HudLine[] {
 		baseline: mem.baseline!,
 		now,
 		level,
+		progress,
 		rate,
 		levels: mem.levels,
 		pointsToReach,
@@ -250,14 +274,38 @@ export function raceHudLines(room: Room): HudLine[] {
 
 	// ── 冲级状态采集（读本方 unit 字段） ──
 	let ocTotal = 0;
+	let relayThisTick = 0;
 	let uWork = 0;
+	let ohTotal = 0;
+	let ohOnSite = 0;
 	const census: Record<string, number> = {};
 	for (const creep of Object.values(Game.creeps)) {
 		const unit = creep.memory?.unit ?? "?";
 		census[unit] = (census[unit] ?? 0) + 1;
-		if (unit === UNITS.carrier) ocTotal++;
-		else if (unit === UNITS.upgrader) uWork += creep.getActiveBodyparts(WORK);
+		if (unit === UNITS.carrier) {
+			ocTotal++;
+			if ((creep.memory as any).relayedTick === now) relayThisTick++;
+		} else if (unit === UNITS.harvester) {
+			ohTotal++;
+			if (creep.pos.roomName === (creep.memory as any).targetRoom) ohOnSite++;
+		} else if (unit === UNITS.upgrader) {
+			uWork += creep.getActiveBodyparts(WORK);
+		}
 	}
+	mem.relayAccum += relayThisTick;
+
+	const relaySamples = mem.relaySamples;
+	if (relaySamples.length === 0 || now - relaySamples[relaySamples.length - 1].t! >= SAMPLE_STEP) {
+		relaySamples.push({ t: now, p: mem.relayAccum });
+		while (relaySamples.length > SAMPLE_KEEP) relaySamples.shift();
+	}
+	let relayRate = 0;
+	if (relaySamples.length >= 2) {
+		const r0 = relaySamples[0];
+		const r1 = relaySamples[relaySamples.length - 1];
+		relayRate = (r1!.p! - r0!.p!) / Math.max(1, r1!.t! - r0!.t!);
+	}
+
 	// cc 存量 (判废归因: 升级直供链路是否断货)
 	const ccStructure = room.find(FIND_STRUCTURES, {
 		filter: (s) =>
@@ -265,6 +313,80 @@ export function raceHudLines(room: Room): HudLine[] {
 			s.pos.inRangeTo(controller.pos, CONTROLLER_BUFFER_CONFIG.adoptRange),
 	})[0];
 	const ccEnergy = ccStructure ? ccStructure.store.energy : -1;
+	// 控制器容器 + 丢落堆 (面板行用: 缺容器时显示丢落堆规模)
+	const ccHitRatio = ccStructure ? ccStructure.hits / ccStructure.hitsMax : -1;
+	const dropPile = controller.pos.findInRange(FIND_DROPPED_RESOURCES, 2)
+		.reduce((sum, d) => sum + d.amount, 0);
+
+	// ── 能量收支采样：进账=采集累加；消耗=升级+建造+孵化+维修；浪费=守恒差值（掉落/衰减） ──
+	mem.eInAcc = (mem.eInAcc || 0) + takeRaceEnergyMined(room.name);
+	let store = dropPile;
+	for (const s of room.find(FIND_STRUCTURES) as AnyStoreStructure[]) {
+		if (s.store) store += s.store[RESOURCE_ENERGY] || 0;
+	}
+	for (const creep of Object.values(Game.creeps)) {
+		if (creep.room.name === room.name) store += creep.store[RESOURCE_ENERGY] || 0;
+	}
+	let sitesProg = 0;
+	let hits = 0;
+	for (const s of room.find(FIND_MY_CONSTRUCTION_SITES)) sitesProg += s.progress;
+	for (const s of room.find(FIND_STRUCTURES) as AnyStructure[]) {
+		if (s.structureType === STRUCTURE_RAMPART || s.structureType === STRUCTURE_WALL) hits += s.hits;
+	}
+	const eSamples = mem.energySamples!;
+	if (eSamples.length === 0 || now - eSamples[eSamples.length - 1].t! >= SAMPLE_STEP) {
+		eSamples.push({ t: now, eIn: mem.eInAcc || 0, eSpawn: mem.eSpawnAcc || 0, store, sites: sitesProg, hits, cum: cumulative });
+		while (eSamples.length > SAMPLE_KEEP) eSamples.shift();
+		mem.eInAcc = 0;
+		mem.eSpawnAcc = 0;
+	}
+	let inRate = 0;
+	let upRate = 0;
+	let buildRate = 0;
+	let spawnRate = 0;
+	let repairRate = 0;
+	let storeRate = 0;
+	let wasteRate = 0;
+	let outRate = 0;
+	if (eSamples.length >= 2) {
+		const a = eSamples[0];
+		const b = eSamples[eSamples.length - 1];
+		const dt = Math.max(1, b!.t! - a!.t!);
+		inRate = (b!.eIn! - a!.eIn!) / dt;
+		spawnRate = (b!.eSpawn! - a!.eSpawn!) / dt;
+		buildRate = (b!.sites! - a!.sites!) / dt;
+		upRate = (b!.cum! - a!.cum!) / dt;
+		repairRate = (b!.hits! - a!.hits!) / dt;
+		storeRate = (b!.store! - a!.store!) / dt;
+		outRate = upRate + buildRate + spawnRate + Math.max(0, repairRate);
+		wasteRate = Math.max(0, inRate - outRate - storeRate);
+	}
+
+	// 远矿积压（有视野的托管房容器存量）
+	let backlog = 0;
+	const targets = getOutMineData()[room.name]?.energy || [];
+	for (const roomName of targets) {
+		const targetRoom = Game.rooms[roomName];
+		if (!targetRoom) continue;
+		const containers = targetRoom.find(FIND_STRUCTURES, {
+			filter: s => s.structureType === STRUCTURE_CONTAINER,
+		});
+		for (const container of containers) backlog += container.store[RESOURCE_ENERGY] || 0;
+	}
+
+	// 孵化队列角色摘要（角色代号大写：OH/OC/RSV…，按数量取前 4）
+	const pool = ((room as any).getAllMissionFromPool?.('spawn') || []) as Array<{ data?: { memory?: { unit?: string } } }>;
+	const poolCount: Record<string, number> = {};
+	for (const task of pool) {
+		const unit = task.data?.memory?.unit || '?';
+		const code = (UnitData as any)[unit]?.code || unit.toUpperCase();
+		poolCount[code] = (poolCount[code] || 0) + 1;
+	}
+	const poolText = Object.entries(poolCount)
+		.sort((a, b) => b[1] - a[1])
+		.slice(0, 4)
+		.map(([code, count]) => `${code}×${count}`)
+		.join(' ') || '空';
 
 	// ── 判废落账: 仅首次判废或判废段变化时写快照 (单条覆盖有界, specs 判废快照) ──
 	if (mem.segments.some((s) => s.failed)) {
@@ -326,7 +448,7 @@ export function raceHudLines(room: Room): HudLine[] {
 				seg.failed ? T.bad : seg.behind ? T.warn : T.good,
 			);
 		} else if (seg.failed) {
-			push(`${label}${limit}判废`, T.bad);
+			push(`${label}${limit}判废 @+${fmtTick(seg.elapsed || 0)}t`, T.bad);
 		} else {
 			const etaText = seg.eta !== undefined ? fmtTick(seg.eta) : "?";
 			push(
@@ -335,12 +457,24 @@ export function raceHudLines(room: Room): HudLine[] {
 			);
 		}
 	}
-	push(`── 能量/孵化 ────────`, T.section);
+	push(`── 能量管线 ─────────`, T.section);
 	push(
 		`孵化能量 ${hudBar(room.energyAvailable / Math.max(1, room.energyCapacityAvailable), 6)} ${room.energyAvailable}/${room.energyCapacityAvailable}`,
 		T.text,
 	);
+	push(
+		ccStructure
+			? `控制容器 ${fmtTick(ccEnergy)}  耐久 ${(ccHitRatio * 100).toFixed(0)}%`
+			: `控制容器 缺位 → 丢落堆 ${fmtTick(dropPile)}`,
+		ccStructure ? (ccEnergy > 500 ? T.good : T.warn) : T.bad,
+	);
+	push(`能量进账 ${inRate.toFixed(1)}/t  能量消耗 ${outRate.toFixed(1)}/t`, inRate >= outRate ? T.good : T.warn);
+	push(`└ 升 ${upRate.toFixed(1)} 建 ${buildRate.toFixed(1)} 孵 ${spawnRate.toFixed(1)} 修 ${Math.max(0, repairRate).toFixed(1)}`, T.text);
+	push(`能量浪费 ${wasteRate.toFixed(1)}/t（掉落/衰减）`, wasteRate > 2 ? T.bad : wasteRate > 0.5 ? T.warn : T.text);
 	push(`升级火力 ${uWork}W  搬运工 ${ocTotal}`, T.text);
+	push(`接力成交 ${relayRate.toFixed(2)}/t${relayRate < 0.2 ? " ⚠" : ""}`, relayRate < 0.2 ? T.bad : T.good);
+	if (ohTotal > 0) push(`外矿在位 ${ohOnSite}/${ohTotal}  积压 ${fmtTick(backlog)}`, ohOnSite >= ohTotal ? T.good : T.warn);
+	push(`孵化队列 ${poolText}`, T.text);
 	// 孵化状态直读 spawn 结构体（room.spunning 等临时属性不可靠）
 	const spawnStructures = room.find(FIND_MY_SPAWNS) as StructureSpawn[];
 	const spawningInfo = spawnStructures.map((s) => s.spawning).find(Boolean) || null;

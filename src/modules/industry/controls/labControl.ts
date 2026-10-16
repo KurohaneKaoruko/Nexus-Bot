@@ -3,7 +3,7 @@ import { isWarMode } from '@/core/store/accessor';
 import { ensureLabAB, getLabAB } from '@/modules/industry/labReservations';
 import { getStructData } from '@/core/store/accessor';
 import { isRoomTickAligned } from '@/utils/roomPhase';
-import { drawLabInfo } from '@/modules/visuals/roomPanels';
+import { drawLabInfo } from '@/modules/visuals';
 
 /** Lab 工作主入口: labAB 预留 + 可视化 + 战争豁免 + 反应 (原 LabWork 原型方法改写) */
 export function labWork(room: Room): void {
