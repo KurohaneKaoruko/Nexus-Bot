@@ -75,8 +75,11 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		upgraderForageOnStarve: false,
 		// 冲级档自动发展外矿: 外矿收入直接喂升级进度 (用户口径 2026-10-15)
 		remoteMining: "auto",
-		// 同时在发展的外矿房上限: 定编任务数驱动, 不设限会淹没孵化队列 (控制冻结机理)
-		remoteAutoMaxRooms: 2,
+		// 同时在发展的外矿房上限: 定编任务数驱动, 不设限会淹没孵化队列 (控制冻结机理)。
+		// 3 房 (2026-10-18 race-speedrun 任务5.2): 10kt RCL4 门需均速 ~12.5/t 升级,
+		// 本矿天花板 20/t 采集要同时覆盖孵化+建造+升级——外矿第 3 房是收入缺口的
+		// 唯一来源; 密度排序保证先吃近房, 定编闸 (isProductionSecured) 保证不掏空本矿
+		remoteAutoMaxRooms: 3,
 		// 冲级底线 (bugs/P1-14): RCL4 前升级提前到保级档 (L5, 压过建造 L8), 到 RCL4 后回落
 		upgradeBias: { amount: -1, belowRcl: 4 },
 	},

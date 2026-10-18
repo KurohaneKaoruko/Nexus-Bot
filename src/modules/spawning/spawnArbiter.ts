@@ -54,6 +54,10 @@ export function arbitrateForSpawn(
 	// 产出就绪闸 (specs/production-readiness-gate): 本房采集面未铺满时,
 	// ① 起步序列闸——只受理采集面/生存角色; ② 搬运开局闸——在岗搬运体
 	// 不得超过采集面规模 (防「3 搬运 : 1 矿工」倒挂吃光孵化槽)
+	// 开局序列实验记录 (race-speedrun 任务5.1, 2026-10-18): rush 档收紧
+	// (首采集体前 carrier 恒不放行) 实测 L3 12977→13824 回退——ext 填充
+	// 延迟 (carrier 是孵化能量通道) 比升级早启 400t 更值钱, carrier 前置
+	// 是容量复利的一部分, 维持现行序列 (universal→carrier→harvester 交替)。
 	const secured = spawnRoom ? isProductionSecured(ctx, spawnRoom) : true;
 	const gateAllows = (unit: SpawnUnit): boolean => {
 		if (secured) {

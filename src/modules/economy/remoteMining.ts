@@ -19,7 +19,7 @@ function myUsername(): string | undefined {
 }
 
 /** 邻房名计算: 已抽公共 utils/roomCoord (bugs/P1-17), 此处仅再导出兼容本文件内引用 */
-import { neighborRooms } from "@/utils/roomCoord";
+import { neighborRooms, roomWorldCoord } from "@/utils/roomCoord";
 import { REMOTE_HAUL_CONFIG } from "@/config/economy";
 import { remoteSourceWeightOf } from "@/modules/economy/income";
 import { isProductionSecured } from "@/modules/economy/productionGate";
@@ -161,13 +161,31 @@ export function planRemoteHarvest(
 		return;
 	}
 
-	// auto 档发展房上限: 按 neighborRooms 固定顺序确定性选取, 防止 8 邻房全开
-	// 抬高定编淹没孵化队列 (历史 rush 控制冻结机理)。产出任务 (scout/harvest)
-	// 的房才消耗配额; 有主/无源的房跳过不占坑。
-	let budget = profile.remoteAutoMaxRooms ?? Number.POSITIVE_INFINITY;
-	for (const neighborName of neighborRooms(room.roomName)) {
-		if (budget <= 0) break;
-		const neighbor = Game.rooms[neighborName];
+	// auto 档发展房选取 (race-speedrun 任务5.2): 价值密度排序 + 预算贪心。
+	// 密度 = 源数 / (1 + 线性房距)——近而多源的房先发展 (高密度 = 单位搬运腿
+	// 的收入高); 侦查期无源数据, 按邻房缺省密度 (双源对称地图) 参与排序。
+	// 固定顺序 → 密度排序消除了「列表头部恰好是远房/无源房」的浪费;
+	// 产出任务 (scout/harvest) 的房才消耗配额; 有主/无源的房跳过不占坑。
+	const budget = profile.remoteAutoMaxRooms ?? Number.POSITIVE_INFINITY;
+	const home = roomWorldCoord(room.roomName);
+	const candidates = neighborRooms(room.roomName)
+		.map((neighborName) => {
+			const neighbor = Game.rooms[neighborName];
+			const coord = roomWorldCoord(neighborName);
+			const distance =
+				home && coord
+					? Math.max(
+							Math.abs(home.x - coord.x),
+							Math.abs(home.y - coord.y),
+						)
+					: 1;
+			const sources = neighbor?.find(FIND_SOURCES).length ?? 2;
+			return { neighborName, neighbor, density: sources / (1 + distance) };
+		})
+		.sort((a, b) => b.density - a.density || (a.neighborName < b.neighborName ? -1 : 1));
+	let remaining = budget;
+	for (const { neighborName, neighbor } of candidates) {
+		if (remaining <= 0) break;
 		// 无视野邻房: 派侦查 (到达获视野后由采集任务自然接替)
 		if (!neighbor) {
 			board.upsert({
@@ -178,14 +196,14 @@ export function planRemoteHarvest(
 				priority: priorityFor("scout"),
 				requiredCapabilities: ["move"],
 			}, ctx.tick);
-			budget -= 1;
+			remaining -= 1;
 			continue;
 		}
 		if (neighbor.controller?.my) continue; // 己方房跳过
 		if (neighbor.controller?.owner) continue; // 有主之地不开矿
 		const sources = neighbor.find(FIND_SOURCES);
 		if (sources.length === 0) continue; // 无源房不占发展配额
-		budget -= 1;
+		remaining -= 1;
 		// 预订线 (对齐 Rosmarin race): 未预订外矿先订后采, 容量 1500→3000。
 		// 衰减到续订线以下即重发; 他人预订不抢 (reserveController 对他订无效)。
 		const reservation = neighbor.controller?.reservation;
