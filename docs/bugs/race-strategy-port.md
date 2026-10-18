@@ -302,3 +302,44 @@ carrier 前置是容量复利 (300→550→800) 的一部分。撤销改造, 序
 |---|---|---|
 | 5.1 序列分档 | 负, 撤销 | L3 13824 vs 12977; ext 填充通道 > 升级早启 |
 | 5.2 密度排序+预算3房 | 正, 落地 | 升级 +3%, 人口 9→12, 三场景绿 |
+
+## 批次 C 冲刺第一轮 (2026-10-18, race-speedrun 任务6.1)
+
+### 瓶颈定位: 交付记账缺陷链 (delivered EMA ≈ 0)
+
+三层数据实锤 (dump-memory + record-intents 取证):
+1. **记账户头错位**: 旧口径 `recordDelivery(creep.carryEnergy)` 在 intent 延迟应用架构下
+   记的是「意图时刻携带量」且大量 transfer 从未入账——delivered EMA 实测 0.000017
+   (produced 15.3) → 诊断器恒判 "transport" → carrierMultiplier 恒顶格 3。
+2. **意图分相执行**: sim 引擎 intent 在引擎相统一应用, JS 相内 creep.store 不变,
+   差分法 (before-after) 恒 0——修复须按引擎应用口径折算 `min(携带, 目标空余)` (OK 时)。
+3. **remoteUnits 漏账**: recordActionRates 只扫 world.rooms (己方房), 远程采集件
+   在 remoteUnits——远程 produced 整体丢失。
+
+修复: ActionResult 加 movedEnergy (broker 执行侧引擎应用口径折算), model 侧
+unitIndex 索引含 remoteUnits。修复后 delivered EMA 40.3 > produced 26.8 →
+诊断回 "none", 乘数回落 2。
+
+### 远程运力入编两轮全负 (C1 任务口径 / C3 公式口径)
+
+- C1 (活跃远程 haul 任务各折 1 只 + maxCarriers 8→14 + carriersPerRcl 4→6):
+  采集 +30k 但升级 170k→151k, 建造 25.6k→11.2k, 存活 12→6, upgrader 末态 0。
+- C3 (race bot maxCarryPower 逐源公式: 2×房距×速率): 同样种群塌方。
+- C5/C6 二分 (仅记账修复/pileBoost 连续化): 与 B4 基线逐位一致——
+  上限 8 钳住了乘数差, 塌方元凶确证为远程入编本身。
+- 根因: 远程 6 源折 ~132 CARRY 部件需求 → carrier 编制恒 14 → 单 spawn 串行
+  吞吐 (部件数×3t/只) 被 carrier 置换流占满 → harvester/upgrader 孵化饿死。
+  **结论: 远程运力不做公式入编, 由 pileBoost 阶梯 + 诊断乘数自适应承接** (留档勿重试)。
+
+### 环境事故: sim 引擎 off-by-one (C5-C7 数据作废)
+
+22:18-22:29 引擎工作区改动 (controller_levels_override 支持) 重编二进制时,
+next_req 索引曾为 `level_costs[ctrl_level]` (L1→2 取 45,000, 应取 200)——
+RCL1→2 需 45k 进度, C7 实测 L2@25936 (vs 真基线 1117)。源码工作区已是修正版
+(`ctrl_level - 1`), 重编后 C5-C7 的 A/B 对照需在新引擎下重跑。
+**教训: 引擎与 bundle 任何一侧变动, 历史基线必须重锚。**
+
+### 待重验 (新引擎)
+
+- 记账修复 (movedEnergy) 对 speedrun 三轴的净效应——诊断回 "none" 后乘数 2,
+  RCL1 期 carrier 编制减半的副作用需数据确认。

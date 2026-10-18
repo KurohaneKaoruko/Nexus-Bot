@@ -164,6 +164,8 @@ export interface ActionResult {
 	reason?: string;
 	/** 在途意图的场景标签 (任务 5.1 理由回投): 来自 ActionPlan.reason, 供遥测归因 */
 	intentReason?: string | undefined;
+	/** 本 tick 实际转移的能量 (transfer 交付量记账口径, 执行侧 carry 差分) */
+	movedEnergy?: number;
 }
 
 export interface BrokerDeps {
@@ -373,9 +375,15 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 						reason: "carry-empty",
 					};
 				}
+				const before = creep.store[plan.resourceType ?? RESOURCE_ENERGY];
 				const code = creep.transfer(target, plan.resourceType ?? RESOURCE_ENERGY);
 				const t = triage(code);
-				return { ...base, accepted: t.accepted, nativeReturnCode: code, category: t.category };
+				// 实际转移量按引擎应用口径折算: min(携带量, 目标空余)。
+				// intent 在引擎相统一应用, JS 相内 store 不变, 差分法恒 0
+				const free = target.store.getFreeCapacity(plan.resourceType ?? RESOURCE_ENERGY) ?? 0;
+				const moved =
+					code === OK ? Math.min(before, Math.max(0, free)) : 0;
+				return { ...base, accepted: t.accepted, nativeReturnCode: code, category: t.category, movedEnergy: moved };
 			}
 			case "build": {
 				const site = resolve<ConstructionSite>(plan.targetId);

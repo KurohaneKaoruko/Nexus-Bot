@@ -476,6 +476,10 @@ export function carryPartsPerBody(ctx: TickContext, roomName: string): number {
  * 搬运体只数目标 (specs/workforce-staffing 运力下界):
  * Σ(源采集速率 × 2 × 实测单程路程) × 冗余 ÷ 单件运力, 向上取整;
  * 任一源路程未实测 → 返回 null (调用方回退保守基线, 不按猜测路程编队)。
+ * 远程源入编实验 (race-speedrun 任务6.1): race bot maxCarryPower 口径的
+ * 逐源折算 (2×房距路程×速率) 实测种群塌方 (见 race-strategy-port.md C 轮
+ * 二分记录)——单 spawn 串行吞吐被 carrier 置换流占满, 采集/升级体饿死。
+ * 远程运力由 pileBoost 阶梯与诊断乘数自适应承接, 不做公式入编。
  */
 export function carrierCountTargetOf(ctx: TickContext, room: RoomObservation): number | null {
 	const timing = ctx.memory.rooms[room.roomName]?.sourceTiming;

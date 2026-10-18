@@ -112,31 +112,35 @@ export function accumulateTick(ctx: TickContext, world: WorldView): void {
 	updateHungerVitals(ctx, world);
 }
 
-/** Broker 提交结果回填账本速率: harvest 产出 (work×2/tick), transfer 交付 (按携带量) */
+/** Broker 提交结果回填账本速率: harvest 产出 (work×2/tick), transfer 交付 (实际转移量) */
 export function recordActionRates(ctx: TickContext, results: readonly ActionResult[]): void {
 	const world = ctx.world.current;
 	if (!world) {
 		return;
 	}
+	// 单位索引含 remoteUnits (远程采集件在非己方房, world.rooms 不收):
+	// 漏索引会把远程采集/交付整体丢出账本, 诊断口径系统性失真
+	const unitIndex = new Map<string, { roomName: string; bodyWork: number }>();
+	for (const room of Object.values(world.rooms)) {
+		for (const creep of room.creeps) {
+			unitIndex.set(creep.name, { roomName: creep.roomName, bodyWork: creep.bodyWork });
+		}
+	}
+	for (const creep of world.remoteUnits ?? []) {
+		unitIndex.set(creep.name, { roomName: creep.roomName, bodyWork: creep.bodyWork });
+	}
 	for (const result of results) {
 		if (result.kind !== "harvest" && result.kind !== "transfer") {
 			continue;
 		}
-		let creep;
-		for (const room of Object.values(world.rooms)) {
-			const found = room.creeps.find((candidate) => candidate.name === result.actorName);
-			if (found) {
-				creep = found;
-				break;
-			}
-		}
+		const creep = unitIndex.get(result.actorName);
 		if (!creep || !result.accepted) {
 			continue;
 		}
 		if (result.kind === "harvest") {
 			recordProduction(ctx, creep.roomName, creep.bodyWork * 2);
-		} else {
-			recordDelivery(ctx, creep.roomName, creep.carryEnergy);
+		} else if (result.movedEnergy && result.movedEnergy > 0) {
+			recordDelivery(ctx, creep.roomName, result.movedEnergy);
 		}
 	}
 }
