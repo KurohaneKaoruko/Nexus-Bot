@@ -14,6 +14,7 @@ import {
 	DOWNGRADE_CONFIG,
 	HAUL_CONFIG,
 	SPAWN_CONFIG,
+	SPAWN_SUPPLY_CONFIG,
 } from "@/config/economy";
 import { STRATEGY_CONFIG } from "@/config/strategy";
 import { directiveFor, roomModeProfileFor } from "@/modules/strategy";
@@ -274,7 +275,17 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				targetId: structure.id,
 				targetPos: { x: structure.x, y: structure.y, roomName: room.roomName },
 				amount: structure.energyCapacity - structure.energy,
-				priority: priorityFor("fill_spawn") + bias("fill_spawn"),
+				// 孵化槽空闲前瞻 (race-speedrun 任务3.2): 孵化收尾期的 spawn 补能提级——
+				// 出槽前 carrier 往返赛跑, 等出槽才补则下一只孵化至少晚一个往返;
+				// remainingTime 进入前瞻窗即提级, 让分配器先派这只活。
+				priority:
+					priorityFor("fill_spawn") +
+					bias("fill_spawn") +
+					(structure.structureType === "spawn" &&
+					structure.spawnRemainingTicks !== null &&
+					structure.spawnRemainingTicks <= SPAWN_SUPPLY_CONFIG.lookaheadTicks
+						? SPAWN_SUPPLY_CONFIG.lookaheadBoost
+						: 0),
 				requiredCapabilities: ["carry", "move"],
 				deadline: ctx.tick + 200,
 			},

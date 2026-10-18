@@ -21,6 +21,8 @@ export interface EnergyStructureSummary {
 	y: number;
 	energy: number;
 	energyCapacity: number;
+	/** 孵化剩余 tick (spawn 专属, 空闲/extension 为 null)——孵化槽空闲前瞻用 */
+	spawnRemainingTicks: number | null;
 }
 
 export interface SiteSummary {

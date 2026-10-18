@@ -224,3 +224,42 @@ t33k:8 t34k:6 t35k:8 t36k:9 t37k:9 t38k:12 t39k:15 t40k:22 t41k:23 t42k:14 t43k:
 | 10 | carryRatio | manageUpgrade.ts L120-129 | 实际调用 **carryRatio=1** (覆盖 spawnUtils 缺省 4); 仅 RCL≥6 且 tightCpu 时 5 | 需逐档复核 | **注意: 与 spawnUtils 签名缺省不同, 以调用点为准** |
 | 11 | CONTROLLER_DOWNGRADE 表 | 引擎常量 (sim src/js/screeps.js L246) | {1:20000, 2:10000, 3:20000, 4:40000, 5:80000, 6:120000, 7:150000, 8:200000}; SAFEMODE_THRESHOLD=5000 | 引擎常量直读 | ✅ 无需表 |
 | 12 | getMaxWork 三分支 | utils/roomUtils.ts L54-105 | terminal: `clamp(energyLevel−90,lower,upper)` / storage: <90 `income×eL/100`, >120 `income+eL−90`, 中档 `income` / 无仓: `income×multiplier` (spawnBalance) | workforce 同构但无仓分支缺 multiplier | **待补 (任务3.3)** |
+
+## 批次 B2 实验记录 (2026-10-18, race-speedrun-10-20-40)
+
+### fill_spawn 认领即锁定 (任务3.1): 两轮全负, 撤销留档
+
+| 变体 | 实现 | speedrun L3 | 结论 |
+|---|---|---|---|
+| 全额预留 | 发布 Tick reserve(全额缺口) | 25393 (对照 12977) | **负**——fill_spawn 任务孵化期常驻 (缺口在孵化中持续存在), 全额承诺是 phantom: 配额表 headroom 恒 0, 建造 23k→6.3k 崩, available 被吃光 |
+| 认领运力预留 | reserve(指派者 carry 容量) | 17714 | **负**——与交付循环双计, carrier 满载交付后预留仍在账上, 等价小额 phantom |
+| (撤销) 无预留 | 现状 | 12977 | 基线——配额表本来就把 fill_spawn 任务的交付视为在途 (allocator 亲和), 账本化是重复记账 |
+
+**教训**: 「认领即锁定」的前提是任务有确定取货点与一次性金额 (haul 满足); fill_spawn 是持续缺口型任务 (孵化中每 tick 都有缺口), 不适用账本预留语义。
+
+### 孵化槽空闲前瞻 (任务3.2): 落地, 中性
+
+实现: perception 的 EnergyStructureSummary 加 spawnRemainingTicks; planner 对 remainingTime ≤ 50t 的 spawn fill_spawn 提级 (-2)。
+speedrun 实测中性 (L3/升级量与 B1 一致)——探针显示 45k 内能量池 (spawn+ext) 满仓仅 30t/12 段, **池子从来不满, 蓄能延迟不是瓶颈**, 提级无活可提。保留: 语义正确 (race bot 口径), 池满场景 (外矿起量后) 会生效。
+
+### spawnBalance EMA (任务3.3): Wave 3 已移植, 逐项核对等价
+
+workforce.ts rush 分支 (L353-377) 与 race bot 逐项对照:
+- 信号: upgradersStarved −1 / logisticsIdle +1 ↔ race bot 断粮 − / 搬运有请求 + (同源)
+- α = 1−2^(−1/50) ↔ SPAWN_BALANCE_RATIO 半衰期 50t (一致)
+- multiplier = clamp(ema/2+0.8, 1, 1.2) ↔ race bot clamp(balance/2+0.8, 1, 1.2) (一致)
+- 作用域: Nexus rush 档无仓分支 ↔ race bot 无仓期+storage 建成即删 (等价: rush 冲级期即无仓期)
+
+### 能量去向大发现 (任务3.4 探针副产物): 54% 落地腐烂
+
+45k 能量守恒: 采集 635k = 建造 23k + 升级 161k + 孵化 108k + **缺口 343k (54%)**——
+drop 采集架构 (矿工满载落地成堆) 的堆清理跟不上产出, 能量在地面腐烂。
+**这是 L3 后速率平台 (2.7-3 e/t) 的真正主瓶颈**, 比 fill_spawn 动力学大一个数量级。
+race bot 对策: porter 直供链 (manageLogistics requests/idlers 匹配, 无仓期 builder/upgrader 进 creepsToFill 由 porter 直供) + 搬运定编公式 maxCarryPower = 2×distance×(ept−loss)。
+**评估结论: porter 直供链升级为冲刺批次 C 的头号候选** (B3 定编对齐后实施)。
+
+### remote-mine 回退修复记录 (B1 引入, 本批修复)
+
+B1 将死体剔除全局生效 → remote-mine (main 档涓流, cpu 20) 10→9→8 三轮回退:
+涓流期替补孵化间隔长, 提前剔死让编制长期虚低。修复: 剔除仅 rush 档生效 (anyRoomRush 门)。
+修复后: remote-mine 11 存活绿, speedrun 增益保持 (L3@12977)。

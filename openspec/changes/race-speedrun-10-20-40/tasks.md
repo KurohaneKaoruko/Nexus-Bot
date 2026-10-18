@@ -13,10 +13,10 @@
 
 ## 3. 批次 B2：填充动力学 + spawnBalance
 
-- [ ] 3.1 fill_spawn 认领即锁定：孵化需求任务发布 Tick 内完成能量认领（账本 reserve 即时生效，TTL 兜底），消除跨 Tick 认领延迟；验证：sim 探针显示孵化槽空闲→蓄能开始间隔显著缩短，涓流场景孵化节律 ≤120t/只
-- [ ] 3.2 孵化槽空闲前瞻：spawn 空闲前 N tick 预备能量（N=最小体型孵化时间，config 化），spawn 出槽即有能量可孵；验证：speedrun 冲级期孵化节律统计达标
-- [ ] 3.3 spawnBalance EMA 移植：两路信号（搬运需求未满足 → +1 目标 / 搬运空转或建造断粮 → 0 目标）驱动 EMA（α=1−2^(−1/50)），无仓期（RCL1–3）升级定编乘数 `clamp(balance/2+0.8, 1, 1.2)`；storage 建成后停用；信号源映射 Nexus 的 fill/haul 任务队列状态；验证：无仓期定编动态可见（sim 探针），storage 期行为不变（回归）
-- [ ] 3.4 porter 直供收益评估（不实施）：用 3.1–3.3 落地后的探针对比 race bot manageLogistics 体系覆盖面，评估结论（含数据）记入 race-strategy-port.md；验证：评估结论有 sim 数据支撑，明确"移植/不移植"决策
+- [x] 3.1 fill_spawn 认领即锁定：孵化需求任务发布 Tick 内完成能量认领（账本 reserve 即时生效，TTL 兜底），消除跨 Tick 认领延迟；验证：sim 探针显示孵化槽空闲→蓄能开始间隔显著缩短，涓流场景孵化节律 ≤120t/只
+- [x] 3.2 孵化槽空闲前瞻：spawn 空闲前 N tick 预备能量（N=最小体型孵化时间，config 化），spawn 出槽即有能量可孵；验证：speedrun 冲级期孵化节律统计达标
+- [x] 3.3 spawnBalance EMA 移植：两路信号（搬运需求未满足 → +1 目标 / 搬运空转或建造断粮 → 0 目标）驱动 EMA（α=1−2^(−1/50)），无仓期（RCL1–3）升级定编乘数 `clamp(balance/2+0.8, 1, 1.2)`；storage 建成后停用；信号源映射 Nexus 的 fill/haul 任务队列状态；验证：无仓期定编动态可见（sim 探针），storage 期行为不变（回归）
+- [x] 3.4 porter 直供收益评估（不实施）：用 3.1–3.3 落地后的探针对比 race bot manageLogistics 体系覆盖面，评估结论（含数据）记入 race-strategy-port.md；验证：评估结论有 sim 数据支撑，明确"移植/不移植"决策
 
 ## 4. 批次 B3：升级定编四口径对齐
 

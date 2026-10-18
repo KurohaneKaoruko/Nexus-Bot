@@ -144,6 +144,10 @@ export const Perception: TickModule = {
 					y: structure.pos.y,
 					energy: structure.store.energy,
 					energyCapacity: structure.store.getCapacity(RESOURCE_ENERGY),
+					spawnRemainingTicks:
+						structure.structureType === STRUCTURE_SPAWN && structure.spawning
+							? structure.spawning.remainingTime
+							: null,
 				}));
 			const sites = room.find(FIND_MY_CONSTRUCTION_SITES).map((site) => ({
 				id: site.id,

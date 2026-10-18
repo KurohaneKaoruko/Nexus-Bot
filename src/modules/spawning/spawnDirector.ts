@@ -214,7 +214,9 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			}
 		});
 		// 替补窗口 (docs/nexus-design/07 §7.5): TTL 低于 lead = 生产 + 实测路程 P95 + 余量 时提前补位;
-		// 关键岗位允许短暂在编重叠 (staffed ≤ target), 廉价岗位严格不超编 (staffed < target)
+		// 关键岗位允许短暂在编重叠 (staffed ≤ target), 廉价岗位严格不超编 (staffed < target)。
+		// staffed 已在 staffingCount 内剔除将死体 (race-speedrun 任务2.2)——替补天然
+		// 允许与将死体重叠, 死亡潮窗口内提前发出替补请求。
 		safeSource("replacement", () => {
 			if (!targets) {
 				return;

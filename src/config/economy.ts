@@ -18,6 +18,17 @@ export const HAUL_CONFIG = {
 	storageFloorAmount: 2000,
 } as const;
 
+/** 孵化供能链 (specs/workforce-staffing / race-speedrun D3) */
+export const SPAWN_SUPPLY_CONFIG = {
+	/** 孵化槽空闲前瞻窗口 (tick): spawn 出槽前该值内提前补能——
+	 *  carrier 往返 (取货+运送) 与 spawn 剩余时间赛跑, 等出槽才发任务
+	 *  则蓄能至少晚一个往返; 提前发让 spawn 出槽即满 (race bot 口径的
+	 *  "spawn 空闲前预备能量", race-speedrun 任务3.2) */
+	lookaheadTicks: 50,
+	/** 前瞻窗内 fill_spawn 的优先级提额: 压过常规物流让分配器先派补能活 */
+	lookaheadBoost: -2,
+} as const;
+
 /** 资源账本 (docs/nexus-design/06 §6.1/§6.6) */
 export const LEDGER_CONFIG = {
 	/** 速率窗口长度 (tick): 累加器每窗口折叠一次 EMA */

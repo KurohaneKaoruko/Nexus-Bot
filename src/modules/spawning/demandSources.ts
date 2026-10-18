@@ -97,18 +97,15 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 	// ticksToLive ≤ 剩余孵化时间 (body.length × CREEP_SPAWN_TIME) 的单位不再
 	// 计入在岗——否则其占编使替补请求因「staffed ≥ target」被拒, 替补要等
 	// 尸体消失才发出, 加上孵化耗时形成人口空窗 (同龄批死亡潮放大器)。
+	// 仅 rush 档启用: main 档涓流经济 (cpu 20) 下替补孵化间隔长, 提前剔死
+	// 让编制长期虚低、孵化线空转 (remote-mine 10→9→8 三轮回退实锤)。
 	// 出视野的远程件拿不到 Game.creeps 条目, 保持计入 (保守口径)。
+	const excludeDying = anyRoomRush(ctx);
 	const aliveRoles = new Map<string, number>();
 	let aliveTotal = 0;
 	for (const record of Object.values(ctx.memory.units)) {
 		const code = unitCode(record.unitCode);
-		const engineCreep = Game.creeps[record.name];
-		if (
-			engineCreep &&
-			!engineCreep.spawning &&
-			(engineCreep.ticksToLive ?? CREEP_LIFE_TIME) <=
-				engineCreep.body.length * CREEP_SPAWN_TIME
-		) {
+		if (excludeDying && dyingCreep(record.name)) {
 			continue;
 		}
 		aliveRoles.set(code, (aliveRoles.get(code) ?? 0) + 1);
@@ -130,6 +127,18 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 		staffed: (unit: string): number =>
 			(aliveRoles.get(unitCode(unit)) ?? 0) + (inflightRoles.get(unit) ?? 0),
 	};
+}
+
+/** 将死体判定 (race-speedrun 任务2.2, 对齐 race bot manageUpgrade 口径):
+ *  ticksToLive ≤ 剩余孵化时间 (body.length × CREEP_SPAWN_TIME) 的单位。
+ *  用于在岗统计剔除——将死体占编使替补被「不超编」闸拒掉, 替补要等尸体
+ *  消失才发出, 人口空窗 = 死亡→孵化全程。替补允许与将死体重叠。 */
+export function dyingCreep(name: string): boolean {
+	const engineCreep = Game.creeps[name];
+	if (!engineCreep || engineCreep.spawning) {
+		return false;
+	}
+	return (engineCreep.ticksToLive ?? CREEP_LIFE_TIME) <= engineCreep.body.length * CREEP_SPAWN_TIME;
 }
 
 /**
