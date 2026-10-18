@@ -160,3 +160,67 @@
 - speedrun L2 后中段 (t2-13k) 速率仍 ~2.8/t 平台: 同龄批死亡潮 (t13k 人口 22→13) 未根治, 替补错峰 (jitterRatio 0.1) 不足
 - main 档涓流场景 (cpu 20) 孵化节律 180t/只 vs 旧体系 94t: 涓流钳已救活编制 (6→10 只), 深层差距在 ext 填充动力学 (fill_spawn 认领延迟), 未动
 - remote-mine 场景升级量 6.7k vs 旧体系 18.4k: 仍是上述 ext 填充链
+
+## 三轴基线探针 (2026-10-18, race-speedrun-10-20-40 批次 A, 基线 02c55e6)
+
+口径: speedrun 场景 45k tick (seed 7), 引擎 `--csv` 逐 tick 指标 (tick,creeps,rcl,progress), 升级量用 progress 单调累计法 (跨级回退修正)。复现: `../Screeps-Simulation/target/release/screeps-sim --scenario /tmp/opencode/speedrun-probe.json --bundle dist/main.js --csv <out> --quiet` (场景 JSON 与 sim/speedrun.sim.ts wire 同构)。
+
+### 轴1 升级均速曲线 (每 1k tick, e/t)
+
+| 窗口 | 速率 | | 窗口 | 速率 | | 窗口 | 速率 |
+|---|---|---|---|---|---|---|---|
+| t1-2k | 2.5 | | t11-12k | 2.7 | | t21-22k | 7.3 |
+| t2-3k | 2.5 | | t12-13k | **9.5** | | t22-23k | 1.0 |
+| t3-4k | 2.8 | | t13-14k | 5.2 | | t23-24k | 0.1 |
+| t4-5k | 2.8 | | t14-15k | 3.8 | | t24-25k | 1.2 |
+| t5-6k | 2.9 | | t15-16k | 1.7 | | t25-26k | 0.3 |
+| t6-7k | 2.7 | | t16-17k | 9.4 | | t26-27k | 3.2 |
+| t7-8k | 2.7 | | t17-18k | 5.2 | | t27-28k | 2.4 |
+| t8-9k | 2.7 | | t18-19k | 7.3 | | t28-29k | 0.5 |
+| t9-10k | 2.9 | | t19-20k | 2.7 | | t29-30k | 0.2 |
+| t10-11k | 2.5 | | t20-21k | 6.6 | | t30-45k | 0.0-2.8 (反复停滞) |
+
+**RCL 时间线: L2@1117 / L3@14089 / L4=None (45k 内未达)。** 累计升级 121k, 采集 643k, 孵化消耗 110k。
+
+### 轴2 人口曲线 (每 1k 存活)
+
+```
+t1k:10 t2k:22 t3k:22 t4k:22 t5k:22 t6k:22 t7k:21 t8k:21 t9k:22 t10k:21 t11k:22
+t12k:21 t13k:20 t14k:13 t15k:11 t16k:16 t17k:18 t18k:16 t19k:14 t20k:12 t21k:19
+t22k:11 t23k:7 t24k:7 t25k:8 t26k:8 t27k:12 t28k:9 t29k:7 t30k:7 t31k:6 t32k:7
+t33k:8 t34k:6 t35k:8 t36k:9 t37k:9 t38k:12 t39k:15 t40k:22 t41k:23 t42k:14 t43k:12 t44k:10 t45k:10
+```
+
+峰值 25 (t2-13k 平台 22), 塌陷三次: t13-15k (22→13→11), t21-23k (19→11→7), t38-42k (15→22→23→10)。V 型谷: t14k 22→11 (-50%), t23k 19→7 (-63%)。**同龄批死亡潮实锤与 tasks 2.1 预期一致。**
+
+### 轴3 孵化节律 (相邻出生间隔, CSV creeps 递增点近似)
+
+- 全程: 均值 108t/只 (n=418), P50 87t, 最大 319t
+- 冲级期 (t1.2k-14k): **均值 73t/只** (n=175) —— 注意: 冲级期节律本身不差 (73t ≤ 120t 目标)
+- L3 后 (t14k+): 均值 137t/只 (n=227) —— 节律劣化近一倍, 与人口塌陷段重合
+
+### 瓶颈轴判读 (L4=None 的主因定位)
+
+1. **主瓶颈 = 升级定编不足 (非孵化节律)**: t2-11k 人口 22 孵化正常但速率锁死 2.7/t —— 升级定编远低于采集面 (采集 643k vs 升级 121k, 升级只吃掉 19% 采集能量)。对照 race bot: 无仓期 maxWork = income × multiplier (×1.0-1.2), 而 Nexus 当前 upgrader 定编静态偏低。**这是 B3 批次 (定编四口径) 的主战场, 优先级高于预期。**
+2. **次瓶颈 = 同龄批死亡潮**: t13-15k / t21-23k / t38-42k 三次塌陷直接造成升级停滞段 (t23-26k, t28-32k)。B1 批次 (错峰离散) 消除后 L3 后速率平台应从 137t 节律恢复。
+3. **孵化节律 (B2) 在冲级期不是瓶颈** (73t 已达标), 但 L3 后 137t 与死亡潮耦合 —— B1/B2 需联合验证。
+4. 采集面 643k/45k = 14.3/t, 已达单房天花板 20/t 的 71%, 外矿已激活 (remoteMining auto) 但收入未上探 —— B4 批次 (外矿评分) 有空间。
+
+## Rosmarin race bot 口径核对清单 (2026-10-18, race-speedrun-10-20-40 批次 A)
+
+参考本体: `../Rosmarin-Bot-dev/src/branch/race/bot/` (105 文件完整 race bot, 1wt/2wt/4wt 成绩本体)。逐项核对 (行号为当日源码):
+
+| # | 口径 | race bot 源码 | 值/语义 | Nexus 现状 | 结论 |
+|---|---|---|---|---|---|
+| 1 | energyStandard 表 | core/config.ts L83-92 | {1:10000, 2:10000, 3:10000, 4:20000, 5:40000, 6:80000, 7:160000, 8:320000} | energyLevelOf 档位同构 | ✅ 一致 (L4.4 复核) |
+| 2 | energyLevel 公式 | utils/roomUtils.ts getEnergyLevel L1135+ | `<standard`: `100×total/standard`; `≥standard`: `100+(total−standard)/1500` | 同构 | ✅ |
+| 3 | upgradeNeeded 触发线 | room/manageUpgrade.ts shouldUpgradeFirst L259-263 | `ticksToDowngrade < CONTROLLER_DOWNGRADE[level]/2 − 5000 + 1500` (buffer 缺省 1500; 恢复线 `>= CONTROLLER_DOWNGRADE[level]` L80) | 无此机制 | **待移植 (任务4.2)** |
+| 4 | building 标志语义 | room/manageBuild.ts L28-46 | `building=true`: 有工地且非 upgradeNeeded; 工地清零或 upgradeNeeded → false 并把 builder 转 idler | 无此联动 | **待移植 (任务4.2)** |
+| 5 | 止升让位 | manageUpgrade.ts L85-88 | `building && !upgradeNeeded` → controllerNumCarry=0 且不孵 upgrader (定编归零) | 无 | **待移植 (任务4.2)** |
+| 6 | numWork 剔将死体 | manageUpgrade.ts L69-75 | `ticksToLive > body.length×CREEP_SPAWN_TIME` 才计入 numWork | 定编统计全量计入 | **待移植 (任务2.2)** |
+| 7 | 半缺口不孵闸 | manageUpgrade.ts L133 | `!upgradeNeeded && 2×(maxWork−numWork) < bodyNumWork` → 不孵 (防小体 churn) | 无 | **待移植 (任务4.3)** |
+| 8 | link 吞吐封顶 | utils/roomUtils.ts getUpgradeCapacity L430-453 | controller link 期 `floor(800/(range+1))` (range=两 link 切比雪夫距离); 无 link 期 90 | 几何吞吐公式族 | **待对齐 (T4.1)** |
+| 9 | spawnBalance EMA | room/spawnManager.ts L17,85-87 + roomUtils L974-985 | α=1−2^(−1/50) (50t 半衰期); add: 搬运有请求未满足; sub: 搬运空转 (L232,268) / 建造断粮 (manageBuild L183,198) / 升级断供 (manageUpgrade L326); storage 建成即删 (spawnManager L45-47); 无仓期 multiplier=`clamp(balance/2+0.8,1,1.2)` | 无此反馈 | **待移植 (任务3.3)** |
+| 10 | carryRatio | manageUpgrade.ts L120-129 | 实际调用 **carryRatio=1** (覆盖 spawnUtils 缺省 4); 仅 RCL≥6 且 tightCpu 时 5 | 需逐档复核 | **注意: 与 spawnUtils 签名缺省不同, 以调用点为准** |
+| 11 | CONTROLLER_DOWNGRADE 表 | 引擎常量 (sim src/js/screeps.js L246) | {1:20000, 2:10000, 3:20000, 4:40000, 5:80000, 6:120000, 7:150000, 8:200000}; SAFEMODE_THRESHOLD=5000 | 引擎常量直读 | ✅ 无需表 |
+| 12 | getMaxWork 三分支 | utils/roomUtils.ts L54-105 | terminal: `clamp(energyLevel−90,lower,upper)` / storage: <90 `income×eL/100`, >120 `income+eL−90`, 中档 `income` / 无仓: `income×multiplier` (spawnBalance) | workforce 同构但无仓分支缺 multiplier | **待补 (任务3.3)** |

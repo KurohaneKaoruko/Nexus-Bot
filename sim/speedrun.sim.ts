@@ -30,9 +30,9 @@ const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9
 
 export default defineSim({
 	name: 'speedrun',
-	description: '私服冲级分段门: RCL2≤500 / RCL3≤3k / RCL4≤5k / RCL5≤15k / RCL6≤30k',
+	description: '私服冲级分段门: RCL4≤10k / RCL5≤20k / RCL6≤40k',
 	seed: 7,
-	ticks: 31000,
+	ticks: 45000,
 	cpu: { limit: 100, bucket: 10000 },
 	deterministicRandom: true,
 	rooms: [
@@ -48,12 +48,11 @@ export default defineSim({
 		...neighbors,
 	],
 	asserts: [
-		// ── 分段目标 (对齐私服 speedrun 榜口径, 从落地 tick 0 起算) ──
-		{ kind: 'rclReachedBy', value: 2, tick: 500 },
-		{ kind: 'rclReachedBy', value: 3, tick: 3000 },
-		{ kind: 'rclReachedBy', value: 4, tick: 5000 },
-		{ kind: 'rclReachedBy', value: 5, tick: 15000 },
-		{ kind: 'rclReachedBy', value: 6, tick: 30000 },
+		// ── 三档目标 (对齐私服 speedrun 榜口径 1wt/2wt/4wt, 从落地 tick 0 起算) ──
+		// 中间档 (L2/L3) 已废止: 榜口径只看 4/5/6; 未达标时红是冲刺状态的诚实呈现 (D1)
+		{ kind: 'rclReachedBy', value: 4, tick: 10000 },
+		{ kind: 'rclReachedBy', value: 5, tick: 20000 },
+		{ kind: 'rclReachedBy', value: 6, tick: 40000 },
 		// ── 回归护栏 ──
 		{ kind: 'cpuP95Below', value: 20 },
 		{ kind: 'noErrors' },
