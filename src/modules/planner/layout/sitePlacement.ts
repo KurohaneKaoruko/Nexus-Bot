@@ -1,11 +1,14 @@
 // @ts-nocheck
 /**
  * 工地放置域: RCL 过滤、占位判断、核心枢纽(storage/terminal)占位换位、按布局放量工地。
+ * 原生调用经 intentQueue 提交 (api/17 命令边界): 返回值是"本pass提交的意图数"。
  */
 import { decompress } from '@/utils/compress';
+import { PLANNER_CONFIG } from '@/config/planner';
 import { getLayoutRecord, skipBuildTypes, rampartMinRcl } from '../memory';
 import { roomLevel, getCoreDepotPointFromLayout } from './roomContext';
 import type { LayoutMemoryMap } from './types';
+import { submitIntent } from '@/runtime/intentQueue';
 
 /**
  * 根据房间等级（RCL）过滤某些结构类型的点位列表。
@@ -19,9 +22,11 @@ import type { LayoutMemoryMap } from './types';
 export function getLayoutPointsForRcl(room: Room, structureType: string, layoutArray: number[]): number[] {
     const level = roomLevel(room);
     if (structureType === STRUCTURE_ROAD) {
-        // 主干道 (spawn↔source↔controller) 是物流命脉, RCL2 起放——沼泽房无路网时
-        // 搬运 10t/格, 交付速率封死 (bugs/P1-14 sim 实证 50k 零道路)
-        if (level < 2) return [];
+        // 主干道 (spawn↔source↔controller) 是物流命脉——沼泽房无路网时
+        // 搬运 10t/格, 交付速率封死 (bugs/P1-14 sim 实证 50k 零道路)。
+        // RCL 门接 roadMinRcl (此前 buildMinLevels 为无消费方的死配置):
+        // RCL3 起布局路网进场, RCL2 产能优先 ext 扩容
+        if (level < PLANNER_CONFIG.roadMinRcl) return [];
         const layoutType = getLayoutRecord(room.name)?.type;
         switch (layoutType) {
             case 'tea':
@@ -127,9 +132,11 @@ export function handleCoreDepotSite(
     const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES) as ConstructionSite[];
     const structures = pos.lookFor(LOOK_STRUCTURES) as Structure<StructureConstant>[];
 
-    if (buildMax > 0) {
-        const containerSite = sites.find((site) => site.structureType === STRUCTURE_CONTAINER);
-        if (containerSite) containerSite.remove();
+    if (buildMax > 0) {        const containerSite = sites.find((site) => site.structureType === STRUCTURE_CONTAINER);
+        if (containerSite) submitIntent(Game.time, {
+            actorName: room.name, kind: 'removeSite', pipeline: 'construction', priority: 30,
+            targetId: containerSite.id, dedupeKey: `core-depot-remove-site:${containerSite.id}`,
+        });
 
         const placeholder = structures.find((structure) => structure.structureType === STRUCTURE_CONTAINER) as StructureContainer | undefined;
         if (placeholder) {
@@ -144,7 +151,10 @@ export function handleCoreDepotSite(
             if (energy > CORE_DEPOT_SWAP_DRAIN_LIMIT && waited < CORE_DEPOT_SWAP_FORCE_TICKS) {
                 return 0;
             }
-            placeholder.destroy();
+            submitIntent(Game.time, {
+                actorName: room.name, kind: 'destroyStructure', pipeline: 'construction', priority: 30,
+                targetId: placeholder.id, dedupeKey: `core-depot-destroy:${placeholder.id}`,
+            });
             delete record.coreDepotSwapSince[structureType];
         } else {
             delete record.coreDepotSwapSince?.[structureType];
@@ -155,7 +165,13 @@ export function handleCoreDepotSite(
         if (nextSites.length > 0) return 0;
         if (shouldSkipBuildAtPos(room, structureType, nextStructures, pos)) return 0;
 
-        return room.createConstructionSite(point.x, point.y, structureType) === OK ? 1 : 0;
+        submitIntent(Game.time, {
+            actorName: room.name, kind: 'createSite', pipeline: 'construction', priority: 30,
+            targetPos: { x: point.x, y: point.y, roomName: room.name },
+            payload: { structureType },
+            dedupeKey: `core-depot-site:${room.name}:${point.x}:${point.y}:${structureType}`,
+        });
+        return 1;
     }
 
     if (sites.some((site) => site.structureType === STRUCTURE_CONTAINER)) return 0;
@@ -165,8 +181,18 @@ export function handleCoreDepotSite(
     // （历史实录：hub 点位 roll 到 controller 旁 2 格，占位×2 + cc 反复放量 = 控制器边一圈容器）。
     // 此时不放占位——缓冲职责由 cc 承担（物流/升级取能本就认 controller 旁 3 格内的容器）
     if (room.controller && pos.inRangeTo(room.controller.pos, 3)) return 0;
+    // 占位 RCL 门 (bugs/P2-20): 占位贴着起建门槛才放 (storage RCL4 / terminal RCL6)。
+    // RCL2 就放 5000 占位 = 死积压卡槽位 40k tick, 拆换又是三轮吞吐
+    // (sim 实锤 2 占位 + ext/源容器塞满 10 槽, road 永无预算 → 沼泽 50k 零道路)。
+    if (roomLevel(room) < PLANNER_CONFIG.coreDepotPlaceholderMinRcl) return 0;
 
-    return room.createConstructionSite(point.x, point.y, STRUCTURE_CONTAINER) === OK ? 1 : 0;
+    submitIntent(Game.time, {
+        actorName: room.name, kind: 'createSite', pipeline: 'construction', priority: 30,
+        targetPos: { x: point.x, y: point.y, roomName: room.name },
+        payload: { structureType: STRUCTURE_CONTAINER },
+        dedupeKey: `core-depot-placeholder:${room.name}:${point.x}:${point.y}`,
+    });
+    return 1;
 }
 
 /**
@@ -179,18 +205,22 @@ export function handleCoreDepotSite(
 export function plannerCreateSite(
     room: Room,
     layoutMemory: LayoutMemoryMap,
-    options?: { structType?: string; maxSites?: number }
+    options?: { structType?: string; maxSites?: number; rushMode?: boolean }
 ): number {
     const only = options?.structType;
     const allSite = room.find(FIND_CONSTRUCTION_SITES);
     const level = roomLevel(room);
 
-    // 建造放置优先级：功能建筑靠前，road 垫底——
-    // 开局产能优先转化为 ext/容器（容量与物流先起来），道路网随后补
-    const PLACEMENT_ORDER: Record<string, number> = {
-        spawn: 0, tower: 1, storage: 2, terminal: 3, extension: 4,
-        container: 5, link: 6, road: 8, rampart: 9, extractor: 10,
-        lab: 11, wall: 12, observer: 13, factory: 14, powerSpawn: 15, nuker: 16,
+    // 建造放置优先级 (bugs/P2-20 配置化): 顺序表进 PLANNER_CONFIG.placementOrder——
+    // 沼泽房路网是建造吞吐的命脉, road 压过 container (占位/源容器/cc 独立放量不经此序)
+    // 冲级期产业让位 (任务 6.5): rush 档产业类 (lab/factory/powerSpawn/nuker/extractor)
+    // 顺序统一压到尾部——冲级火力是主要目的, 产业能量锁不挤占升级链
+    const rush = options?.rushMode === true;
+    const rushDeprioritize = PLANNER_CONFIG.rushIndustrialTypes;
+    const PLACEMENT_ORDER = PLANNER_CONFIG.placementOrder;
+    const orderOf = (structureType: string): number => {
+        const base = PLACEMENT_ORDER[structureType] ?? 7;
+        return rush && rushDeprioritize.includes(structureType) ? base + 100 : base;
     };
 
     const maxSites = options?.maxSites;
@@ -202,7 +232,7 @@ export function plannerCreateSite(
     const keys = only ? [only] : Object.keys(layoutMemory);
     const coreDepotKeys = keys.filter((structureType) => isCoreDepotStructure(structureType));
     const regularKeys = keys.filter((structureType) => !isCoreDepotStructure(structureType) && !skipSet?.has(structureType));
-    regularKeys.sort((a, b) => (PLACEMENT_ORDER[a] ?? 7) - (PLACEMENT_ORDER[b] ?? 7));
+    regularKeys.sort((a, b) => orderOf(a) - orderOf(b));
     let budget = Math.max(0, cap - allSite.length);
 
     let created = 0;
@@ -227,15 +257,20 @@ export function plannerCreateSite(
         count += sites.length;
         if (count >= buildMax) continue;
 
-        // RCL<6 容器每源限一个（源容器存量计数，见下方放置过滤）
+        // RCL<6 容器每源限一个（源容器存量+在途工地计数，见下方放置过滤）
         const placedContainerPerSource = new Map<string, number>();
         if (s === STRUCTURE_CONTAINER) {
             const roomSources = room.find(FIND_SOURCES);
-            const roomContainers = room.find(FIND_STRUCTURES, { filter: (o) => o.structureType == STRUCTURE_CONTAINER });
-            for (const src of roomSources) {
-                const near = roomContainers.filter((c) => c.pos.inRangeTo(src.pos, 2)).length;
-                if (near > 0) placedContainerPerSource.set(src.id, near);
-            }
+            // 计数含在途工地 (bugs/P2-20): 只数建成会让未完工工地每 pass 在同源旁
+            // 再放一个, 槽位被同源多容器挤占 (sim 实锤双源房 5 容器工地)
+            const nearCounter = (list: Array<Source | Structure | ConstructionSite>) => {
+                for (const src of roomSources) {
+                    const near = list.filter((c: any) => c.pos.inRangeTo(src.pos, 2)).length;
+                    if (near > 0) placedContainerPerSource.set(src.id, near);
+                }
+            };
+            nearCounter(room.find(FIND_STRUCTURES, { filter: (o) => o.structureType == STRUCTURE_CONTAINER }));
+            nearCounter(allSite.filter((o) => o.structureType == STRUCTURE_CONTAINER));
         }
 
         const points = getLayoutPointsForRcl(room, s, layoutArray);
@@ -265,13 +300,16 @@ export function plannerCreateSite(
             if (Pos.lookFor(LOOK_CONSTRUCTION_SITES).length) continue;
             const S = Pos.lookFor(LOOK_STRUCTURES);
             if (shouldSkipBuildAtPos(room, s, S, Pos)) continue;
-            const result = room.createConstructionSite(x, y, s as any);
-            if (result === OK) {
-                created++;
-                regularCreated++;
-                count++;
-            }
-            if (result == ERR_FULL) return created;
+            submitIntent(Game.time, {
+                actorName: room.name, kind: 'createSite', pipeline: 'construction', priority: 30,
+                targetPos: { x, y, roomName: room.name },
+                payload: { structureType: s },
+                dedupeKey: `layout-site:${room.name}:${x}:${y}:${s}`,
+            });
+            // 意图提交即计入本 pass 预算 (broker 同 Tick 执行; ERR_FULL 由下一 pass 的工地水位兜底)
+            created++;
+            regularCreated++;
+            count++;
         }
     }
     return created;

@@ -52,6 +52,7 @@ export interface NexusTask {
 	destPos?: SerializedPosition;
 	resourceType?: ResourceConstant;
 	amount?: number;
+	/** 排队等级 (Rosmarin race 同源: 小者优先, 档距 1; taskLevels.LEVELS 定义档位) */
 	priority: number;
 	createdAt: number;
 	updatedAt: number;
@@ -76,6 +77,7 @@ export interface NewTaskInput {
 	destPos?: SerializedPosition;
 	resourceType?: ResourceConstant;
 	amount?: number;
+	/** 排队等级 (小者优先, 见 NexusTask.priority) */
 	priority: number;
 	deadline?: number;
 	requiredCapabilities: string[];
@@ -124,31 +126,36 @@ export function maxAttemptsFor(kind: TaskKind): number {
 }
 
 /**
- * 任务优先级政策 (docs/nexus-design/06 §6.2 能源序 + docs/nexus-design/09 §9.3 防御序):
- * 供能 > 防御 (defend 92 / retreat 90 达抢占线, 撤退优先于经济滞回) > 采集 > 搬运 > 建造/维修 > 升级。
+ * 任务等级政策 (RosmarinBot race 等级表同源, 2026-10-18 race 复盘全面移植):
+ * 小者优先, 档距 1, 语义分层见 taskLevels.ts 文件头。
+ * 收入链严格前置 (采集 > 搬运 > 升级 > 建造), 建造殿后 (race L8 语义)。
+ * 数值只表达档位序, 不承载幅度语义——旧 0-100 跑步机数值体系废弃。
  */
 export const TASK_PRIORITY = {
-	fill_spawn: 95,
-	defend: 92,
-	retreat: 90,
-	harvest: 70,
-	haul: 60,
-	scout: 55,
-	// 预订是外矿收入翻倍的前置 (未预订源容量 1500→3000), 与侦查同档
-	reserve: 55,
-	build: 50,
-	repair: 45,
-	upgrade: 30,
+	fill_spawn: 1,
+	defend: 2,
+	retreat: 2,
+	harvest: 5,
+	haul: 4,
+	reserve: 5,
+	upgrade: 4,
+	claim: 10,
+	build: 8,
+	repair: 8,
+	scout: 9,
 } as const satisfies Partial<Record<TaskKind, number>>;
 
+/** 任务种类的默认等级 (小者优先); 未知种类落替补档 */
 export function priorityFor(kind: TaskKind): number {
-	return (TASK_PRIORITY as Record<string, number | undefined>)[kind] ?? 50;
+	return (TASK_PRIORITY as Record<string, number | undefined>)[kind] ?? 11;
 }
 
 export interface TaskQuery {
 	roomName?: string;
 	kinds?: TaskKind[];
 	statuses?: TaskStatus[];
+	/** 按执行者回查 (任务 5.3: TaskIndex assignee 维度) */
+	assignedTo?: string;
 	minPriority?: number;
 	unassignedOnly?: boolean;
 }

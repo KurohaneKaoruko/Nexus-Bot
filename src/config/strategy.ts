@@ -63,12 +63,14 @@ export const STRATEGY_CONFIG: StrategyConfig = {
 		war: { reserveFloorFactor: 3, riskTolerance: 0.1, targetStockFactor: 3 },
 	},
 	postureBias: {
-		survive: { fill_spawn: 20, harvest: 10, haul: 5, build: -20, upgrade: -25 },
+		/** 等级偏置 (小者优先): survive 提前供能/采集、推后建造/升级 */
+		survive: { fill_spawn: -1, harvest: -1, haul: 0, build: 2, upgrade: 2 },
 		develop: {},
 		expand: {},
-		war: { fill_spawn: 10, defend: 10, repair: 5, build: -20, upgrade: -25 },
+		war: { fill_spawn: -1, defend: -1, repair: 0, build: 2, upgrade: 2 },
 	},
-	suppressPenalty: 40,
+	/** 节流期 upgrade/build 既有任务的降级幅度 (等级数, 正数 = 排后) */
+	suppressPenalty: 3,
 	surviveSpawnPauseRoles: ["upgrader", "worker"],
 };
 

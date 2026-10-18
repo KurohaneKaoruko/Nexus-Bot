@@ -62,7 +62,7 @@ export const SCORE_WEIGHTS = {
 /** 切换阈值: 新任务须比当前任务高出的分数 (除非紧急抢占) */
 export const SWITCH_MARGIN = 15;
 /** 紧急抢占线: 任务优先级达到该值可无视滞回直接抢占 */
-export const CRITICAL_PRIORITY = 90;
+export const CRITICAL_PRIORITY = 2;
 /** 最低剩余寿命: 低于此值不接新任务 */
 const MIN_TTL = 150;
 
@@ -96,8 +96,9 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 		return false;
 	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标) 放行, 由评分的 travel 成本约束
-		if (task.kind !== "claim" && task.kind !== "reserve") {
+		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标; harvest/haul: 本矿登记的外矿源/容器) 放行,
+		// 由评分的 travel 成本约束
+		if (task.kind !== "claim" && task.kind !== "reserve" && task.kind !== "harvest" && task.kind !== "haul") {
 			return false;
 		}
 	}
@@ -156,8 +157,10 @@ const KIND_UTILITY: Record<string, number> = {
  */
 const UNIT_TASK_AFFINITY: Record<string, readonly string[]> = {
 	[UNIT_CODES.upgrader]: ["upgrade"],
+	// worker 缺位期 cc/ext 建造由 harvester 兼 (race 换班制语义: 工地存在
+	// 全员转建造; 无亲和时 build 恒无人认领, cc 不成 → 升级体长腿死循环)
 	[UNIT_CODES.worker]: ["build", "repair"],
-	[UNIT_CODES.harvester]: ["harvest"],
+	[UNIT_CODES.harvester]: ["harvest", "build"],
 	[UNIT_CODES.reserver]: ["reserve"],
 	[UNIT_CODES.carrier]: ["fill_spawn", "haul"],
 	[UNIT_CODES.defender]: ["defend"],
@@ -175,7 +178,7 @@ export function scoreCandidate(
 	switchCost: number,
 	now: number,
 ): number {
-	const criticality = task.priority / 100;
+	const criticality = Math.max(0, (11 - task.priority) / 11);
 	const urgency =
 		task.deadline !== undefined ? Math.max(0, Math.min(1, 1 - (task.deadline - now) / 300)) : 0.3;
 	const utility = KIND_UTILITY[task.kind] ?? 0.4;
@@ -205,9 +208,21 @@ export function scoreCandidate(
 }
 
 function travelCostOf(profile: CapabilityProfile, task: NexusTask, world: WorldViewLike): number {
+	// 目标在异房 (外矿 harvest 的 targetPos 指向邻房源): 距离按房名坐标差折算,
+	// 不能拿异房坐标当同房切比雪夫算——那会把 25 格惩罚错加到本矿爬头上
+	const targetRoom = task.targetPos?.roomName;
+	if (targetRoom !== undefined && targetRoom !== task.roomName) {
+		const m1 = task.roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+		const m2 = targetRoom.match(/^([WE])(\d+)([NS])(\d+)$/);
+		if (!m1 || !m2) return Number.POSITIVE_INFINITY;
+		const dist =
+			Math.abs((parseInt(m2[2] ?? "0", 10) || 0) - (parseInt(m1[2] ?? "0", 10) || 0)) +
+			Math.abs((parseInt(m2[4] ?? "0", 10) || 0) - (parseInt(m1[4] ?? "0", 10) || 0));
+		return 50 + dist * 50;
+	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim/reserve) 用房名线性距离折算, 不做无穷大排除
-		if (task.kind !== "claim" && task.kind !== "reserve") {
+		// 跨房任务 (claim/reserve/harvest/haul) 用房名线性距离折算, 不做无穷大排除
+		if (task.kind !== "claim" && task.kind !== "reserve" && task.kind !== "harvest" && task.kind !== "haul") {
 			return Number.POSITIVE_INFINITY;
 		}
 		const m1 = profile.roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
@@ -300,7 +315,7 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 
 	const byPriority = [...input.tasks]
 		.filter((task) => task.status === "available")
-		.sort((a, b) => b.priority - a.priority || a.createdAt - b.createdAt);
+		.sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt);
 
 	for (const task of byPriority) {
 		let best: { profile: CapabilityProfile; score: number } | null = null;
@@ -326,7 +341,7 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			const isSwitch = currentTaskId !== undefined && currentTaskId !== task.id;
 			const switchCost = isSwitch ? 1 : 0;
 			const candidateScore = scoreCandidate(profile, task, travel, switchCost, input.now);
-			if (isSwitch && task.priority < CRITICAL_PRIORITY) {
+			if (isSwitch && task.priority > CRITICAL_PRIORITY) {
 				const current = input.getTask(currentTaskId);
 				if (current) {
 					const currentScore = scoreCandidate(profile, current, 0, 0, input.now);

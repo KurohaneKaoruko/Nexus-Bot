@@ -3,6 +3,7 @@ import TeamCalc from "@/modules/teams/core/TeamCalc"
 import TeamCache from "@/modules/teams/core/TeamCache";
 import TeamAction from "@/modules/teams/core/TeamAction";
 import TeamUtils from "@/modules/teams/core/TeamUtils";
+import { combatAttack, combatHeal, combatRangedAttack, combatRangedMassAttack } from "@/modules/combat";
 
 /**
  * 战斗类
@@ -191,7 +192,7 @@ const TeamBattle = {
 
             // tick 为 0 时才是真实情况，其他情况只是模拟未来的，而治疗需要根据真实情况
             if (canIssueHealOrder) {
-                creep.heal(maxNeedHealCreep)
+                combatHeal(creep, maxNeedHealCreep)
                 maxNeedHealCreep._been_heal = true;
             }
 
@@ -398,9 +399,9 @@ const TeamBattle = {
 
                 // 与目标相邻且有 owner 属性
                 if (creep.pos.isNearTo(target) && 'owner' in target) {
-                    creep.rangedMassAttack()
+                    combatRangedMassAttack(creep)
                 } else {
-                    creep.rangedAttack(target)
+                    combatRangedAttack(creep, target)
                 }
                 team._attackTargets!.push(target)
                 ordered = true
@@ -437,7 +438,7 @@ const TeamBattle = {
                 }
 
                 const target = attackableTargets.reduce((pre, cur) => (pre.hits < cur.hits ? pre : cur))
-                creep.attack(target)
+                combatAttack(creep, target)
                 team._attackTargets?.push(target)
                 ordered = true
             }

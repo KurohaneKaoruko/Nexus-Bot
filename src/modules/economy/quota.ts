@@ -22,17 +22,17 @@ export interface QuotaDestination {
 	headroom: number;
 }
 
-/** 供能专线优先级序 (specs/controller-supply-line): 孵化线 > 受威胁塔 > 控制器线 > 常态塔 > 储备库 */
+/** 供能专线等级序 (specs/controller-supply-line, 小者优先): 孵化线 > 受威胁塔 > 控制器线 > 常态塔 > 储备库 */
 export const SUPPLY_LINE_PRIORITY = {
 	/** 孵化线: spawn/extension 供能是出生引擎, 恒最高 */
-	spawn: 5,
-	extension: 4.7,
-	/** 受威胁塔 (房内可见敌人): 提权至孵化线之下、控制器线之上 */
-	towerThreatened: 4.5,
+	spawn: 1,
+	extension: 1,
+	/** 受威胁塔 (房内可见敌人): 提级至孵化线之下、控制器线之上 */
+	towerThreatened: 2,
 	/** 常态塔 (无敌情): 让位控制器线, 仍高于储备库 */
-	towerNormal: 3.5,
+	towerNormal: 4,
 	/** 储备库兜底 */
-	storage: 1,
+	storage: 5,
 } as const;
 
 /** 目的地优先级表: 统一走 SUPPLY_LINE_PRIORITY (specs/controller-supply-line),
@@ -164,14 +164,15 @@ export function pickDestination(
 	fromY: number,
 ): QuotaDestination | undefined {
 	let best: QuotaDestination | undefined;
-	let bestScore = -Infinity;
+	let bestScore = Infinity;
 	for (const destination of destinations) {
 		if (destination.headroom < HAUL_MIN_DEST_AMOUNT) {
 			continue;
 		}
+		// 等级小者优先, 同级 (1000 内合并) 近者优先
 		const score =
-			destination.priority * 1000 - chebyshev(fromX, fromY, destination.x, destination.y);
-		if (score > bestScore) {
+			destination.priority * 1000 + chebyshev(fromX, fromY, destination.x, destination.y);
+		if (score < bestScore) {
 			best = destination;
 			bestScore = score;
 		}

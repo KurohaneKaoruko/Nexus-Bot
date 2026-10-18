@@ -1,6 +1,6 @@
 
 import { directSpawn } from '@/modules/spawning';
-import { MISSION_POOLS } from '@/constant/MissionConstant';
+
 import { UNITS } from '@/constant/CreepConstant';
 import { UnitData } from '@/constant/CreepConstant';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
@@ -169,14 +169,20 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
                         // [MOVE]: ['XZHO2', 'ZHO2', 'ZO']
                     } as any;
                     if (room.CheckBoostRes(boostBody, healOnlyBoostmap)) {
-                        const ret = directSpawn(room, UNITS['pc-heal'], {
-                            targetPcName: pc.name,
-                            home: idleRoom,
-                            boostmap: healOnlyBoostmap,
-                            boostOwnerId,
-                            mustBoost: true,
-                            boosted: false
-                        }, boostBody as unknown as BodyPartConstant[], `智械护工·${pc.name}`);
+                        const ret = directSpawn(room, {
+                            mode: "emergency",
+                            unit: UNITS['pc-heal'],
+                            memory: {
+                                targetPcName: pc.name,
+                                home: idleRoom,
+                                boostmap: healOnlyBoostmap,
+                                boostOwnerId,
+                                mustBoost: true,
+                                boosted: false,
+                            },
+                            body: boostBody as unknown as BodyPartConstant[],
+                            bodyNameOverride: `智械护工·${pc.name}`,
+                        });
                         if (ret === OK) {
                             room.AssignBoostTaskByBody(boostBody, healOnlyBoostmap, boostOwnerId);
                             mem.healerBoostOwnerId = boostOwnerId;
@@ -257,6 +263,8 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
 function hasPendingHealer(room: Room, targetPcName: string): boolean {
     if (findAssignedHealerName(targetPcName)) return true;
 
+    // 蛋期判定: pc-heal 经 directSpawn 下蛋后不在 Game.creeps,
+    // 只在 Memory.creeps (spawn.spawning.name) 里可见
     const spawns = (room as any).spawn as StructureSpawn[] | undefined;
     if (spawns) {
         for (const spawn of spawns) {
@@ -266,10 +274,7 @@ function hasPendingHealer(room: Room, targetPcName: string): boolean {
             if (mem?.unit === UNITS['pc-heal'] && mem.targetPcName === targetPcName) return true;
         }
     }
-
-    const tasks = room.getAllMissionFromPool?.(MISSION_POOLS.spawn) as any[] | undefined;
-    if (!tasks || tasks.length <= 0) return false;
-    return tasks.some(t => t?.type === 'spawn' && t?.data?.memory?.unit === UNITS['pc-heal'] && t.data.memory.targetPcName === targetPcName);
+    return false;
 }
 
 const getAssignedHealerNameByPc = (() => {

@@ -6,10 +6,11 @@
  */
 import { ECONOMY_MODEL_CONFIG, REPLACEMENT_CONFIG } from "@/config/economy";
 import type { TickContext } from "@/core";
+import { busySpawnCount } from "@/modules/spawning/spawningRoster";
 
 import type { WorldView } from "@/core/world";
 import { decayHotspots } from "@/modules/movement/trafficMonitor";
-import { foldRates, recordDelivery, recordProduction } from "@/modules/economy/ledger";
+import { foldRates, recordDelivery, recordProduction, updateHungerVitals } from "@/modules/economy/ledger";
 import type { ActionResult } from "@/modules/agents";
 
 /* ── 实测路程样本 (替补窗口) ── */
@@ -76,11 +77,8 @@ export function accumulateTick(ctx: TickContext, world: WorldView): void {
 	const accumulators = ctx.memory.economy.accumulators;
 	let idleSpawns = 0;
 	if (typeof Game !== "undefined") {
-		for (const spawn of Object.values(Game.spawns)) {
-			if (!spawn.spawning) {
-				idleSpawns += 1;
-			}
-		}
+		// spawn 忙闲统计走统一接口 (6.3): 判据单源
+		idleSpawns = Math.max(0, Object.keys(Game.spawns).length - busySpawnCount());
 	}
 	accumulators.spawnIdleTicks += idleSpawns;
 
@@ -110,6 +108,8 @@ export function accumulateTick(ctx: TickContext, world: WorldView): void {
 	accumulators.energyStockDelta += total - ctx.memory.economy.lastStockTotal;
 	ctx.memory.economy.lastStockTotal = total;
 	ctx.memory.economy.lastStockTick = ctx.tick;
+	// 饥饿生命体征 (specs/resource-ledger): 与 starvation 累加器同拍维护, 有界
+	updateHungerVitals(ctx, world);
 }
 
 /** Broker 提交结果回填账本速率: harvest 产出 (work×2/tick), transfer 交付 (按携带量) */
@@ -226,6 +226,10 @@ export interface EconomyIndicators {
 	sourceHarvestEfficiency: number;
 	/** 预留与可用库存比值 */
 	reservedVsAvailable: number;
+	/** 超龄强制回收累计 (预留泄漏告警, >0 即有泄漏发生过) */
+	overdueReclaimed: number;
+	/** 当前饥饿房间: 房名 → { 链路, 持续 tick, 缺口 } (有界, 每房一条) */
+	hunger: Record<string, { kind: string; duration: number; deficit: number }>;
 	updatedAt: number;
 }
 
@@ -248,6 +252,14 @@ export function economyIndicators(ctx: TickContext): EconomyIndicators {
 		reserved += reservation.amount;
 	}
 	const haulSamples = accumulators.haulBusyTicks + accumulators.haulIdleTicks;
+	const hunger: EconomyIndicators["hunger"] = {};
+	for (const [roomName, vitals] of Object.entries(ctx.memory.ledger.hunger)) {
+		hunger[roomName] = {
+			kind: vitals.kind,
+			duration: ctx.tick - vitals.sinceTick,
+			deficit: vitals.deficit,
+		};
+	}
 	return {
 		energyNetDelta: accumulators.energyStockDelta,
 		spawnIdleTicks: accumulators.spawnIdleTicks,
@@ -255,6 +267,8 @@ export function economyIndicators(ctx: TickContext): EconomyIndicators {
 		haulUtilization: haulSamples > 0 ? accumulators.haulBusyTicks / haulSamples : -1,
 		sourceHarvestEfficiency: sourceCount > 0 ? production / (sourceCount * 10) : -1,
 		reservedVsAvailable: stock > 0 ? reserved / stock : 0,
+		overdueReclaimed: ctx.memory.ledger.overdueCount,
+		hunger,
 		updatedAt: ctx.memory.economy.lastStockTick,
 	};
 }

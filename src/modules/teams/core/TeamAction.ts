@@ -6,6 +6,7 @@ import TeamCalc from '@/modules/teams/core/TeamCalc';
 import TeamVisual from '@/modules/teams/core/TeamVisual';
 import RoomArray from '@/modules/teams/core/RoomArray'
 import { formationTemplate, sectorToward, shapeOfCount, type TowardName } from '@/modules/teams/core/FormationTables';
+import { combatMove, combatMoveTo } from '@/modules/combat';
 
 const emptyCostMatrix = new PathFinder.CostMatrix()
 const tempRoomArray = new RoomArray()
@@ -69,7 +70,7 @@ const TeamAction = {
             const dir = creep.pos.getDirection(target) as DirectionConstant
             if (dir) {
                 team.cache.lastCreepMoveDirections[creep.id] = dir
-                creep.move(dir)
+                combatMove(creep, dir)
             }
         }
 
@@ -151,10 +152,10 @@ const TeamAction = {
         if (GaterFlag) {
             const pos = GaterFlag.pos;
             if (!creeps[0].pos.isEqual! (pos))
-                creeps[0].moveTo! (pos);
+                combatMoveTo(creeps[0], pos);
             for (let i = 1; i < creeps.length; i++) {
                 if (creeps[i].pos.isNearTo! (creeps[i - 1].pos!)) continue;
-                creeps[i].moveTo! (creeps[i - 1]);
+                combatMoveTo(creeps[i], creeps[i - 1]);
             }
             return true;
         }
@@ -163,7 +164,7 @@ const TeamAction = {
         let head = creeps[0];
         if (head!.room.name == team.targetRoom) {
             // 已在目标房：有旗收敛到旗，无旗按数据目标房中心推进
-            head!.moveTo(team.flag ? team.flag : new RoomPosition(25, 25, team.targetRoom));
+            combatMoveTo(head!, team.flag ? team.flag : new RoomPosition(25, 25, team.targetRoom));
         } else if (head!.room.name == team.homeRoom) {
             let tarPos = team.flag ? team.flag.pos :
                         team.targetRoom ?
@@ -173,10 +174,10 @@ const TeamAction = {
             const crossRoom = tarPos!.roomName !== team.homeRoom;
             const inBand = !(head!.pos.x > 4 && head!.pos.y > 4 && head!.pos.x < 45 && head!.pos.y < 45);
             if (inBand && !crossRoom) return true;
-            head!.moveTo(tarPos);
+            combatMoveTo(head!, tarPos);
             for (let i = 1; i < creeps.length; i++) {
                 if (creeps[i].pos.inRangeTo! (tarPos, 2)) continue;
-                creeps[i].moveTo! (tarPos);
+                combatMoveTo(creeps[i], tarPos);
             }
             return true;
         } 
@@ -184,7 +185,7 @@ const TeamAction = {
         // 通用跟随：后续成员尽量贴近前一名成员
         for (let i = 1; i < creeps.length; i++) {
             if (creeps[i].pos.isNearTo! (creeps[i - 1].pos!)) continue;
-            creeps[i].moveTo! (creeps[i - 1]);
+            combatMoveTo(creeps[i], creeps[i - 1]);
         }
         return true;
     },
@@ -265,11 +266,11 @@ const TeamAction = {
             if (typeof (creep as any).move === 'function' && typeof creep.pos.getDirectionTo === 'function') {
                 const dir = creep.pos.getDirectionTo(target) as DirectionConstant | 0
                 if (dir) {
-                    ;(creep as any).move(dir)
+                    combatMove(creep, dir)
                     return
                 }
             }
-            creep.moveTo(target)
+            combatMoveTo(creep, target)
         }
 
         const moveExact = (p: RoomPosition) => {
@@ -493,7 +494,7 @@ const TeamAction = {
         creeps.forEach((creep) => {
             const targetPos = result[creep.name]
             if (!creep.pos.isEqualTo(targetPos)) {
-                creep.move(creep.pos.getDirectionTo(targetPos))
+                combatMove(creep, creep.pos.getDirectionTo(targetPos))
             }
         })
         return true
@@ -532,7 +533,7 @@ const TeamAction = {
             const dir = creep!.pos.getDirectionTo(pos) as DirectionConstant | 0
             team.cache.lastMoveDirection = dir ? dir : undefined
             if (dir) team.cache.lastCreepMoveDirections = { [creep!.id]: dir }
-            creep!.moveTo(pos);
+            combatMoveTo(creep!, pos);
             return;
         }
 
@@ -573,7 +574,7 @@ const TeamAction = {
         let moved = [false, false, false, false];
         if (headMove) {
             if (headDirection) creepDirections[creeps[0].id!] = headDirection
-            creeps[0].moveTo! (pos, { ignoreCreeps: false });
+            combatMoveTo(creeps[0], pos, { ignoreCreeps: false });
             moved[0] = true;
         }
 
@@ -585,7 +586,7 @@ const TeamAction = {
                 const dir = creep!.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
                 if (dir) {
                     creepDirections[creep!.id] = dir
-                    creep!.move(dir);
+                    combatMove(creep!, dir);
                 }
                 continue;
             }
@@ -593,13 +594,13 @@ const TeamAction = {
             if (!creep!.pos.isNearTo(prevCreep)) {
                 const dir = creep!.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
                 if (dir) creepDirections[creep!.id] = dir
-                creep!.moveTo(prevCreep, { ignoreCreeps: false });
+                combatMoveTo(creep!, prevCreep, { ignoreCreeps: false });
                 moved[i] = true;
             } else if (moved[i - 1]) {
                 const dir = creep!.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
                 if (dir) {
                     creepDirections[creep!.id] = dir
-                    creep!.move(dir);
+                    combatMove(creep!, dir);
                 }
                 moved[i] = true;
             }
@@ -666,26 +667,26 @@ const TeamAction = {
                         return
                     }
                 }
-                creeps.forEach((creep) => creep.move(direction))
+                creeps.forEach((creep) => combatMove(creep, direction))
                 return
             }
         }
 
         if (creeps.length >= 3) {
-            creeps.forEach((creep) => creep.move(direction))
+            creeps.forEach((creep) => combatMove(creep, direction))
         } else if (creeps.length === 1) {
-            creeps[0].move! (direction)
+            combatMove(creeps[0], direction)
         } else {
             // 二人小队，如果是躲避或者逃跑，反过来移动
             if (team.status === 'avoid' || team.status === 'flee') {
-                creeps[1].move! (direction)
+                combatMove(creeps[1], direction)
                 if (creeps[0]) {
-                    creeps[0].move(creeps[0].pos.getDirectionTo(creeps[1]))
+                    combatMove(creeps[0], creeps[0].pos.getDirectionTo(creeps[1]))
                 }
             } else {
-                creeps[0].move! (direction)
+                combatMove(creeps[0], direction)
                 if (creeps[1]) {
-                    creeps[1].move(creeps[1].pos.getDirectionTo(creeps[0]))
+                    combatMove(creeps[1], creeps[1].pos.getDirectionTo(creeps[0]))
                 }
             }
         }
@@ -803,10 +804,10 @@ const TeamAction = {
                 if (c.fatigue > 0) continue;                    // 疲劳自然滞留
                 // 跨房用 findRoute 出口方向步进（moveTo 不支持跨房）；同房向队首聚拢
                 if (c.room.name === leader.room.name) {
-                    if (!c.pos.inRangeTo(leader.pos, 2)) c.moveTo(leader.pos, { range: 2 });
+                    if (!c.pos.inRangeTo(leader.pos, 2)) combatMoveTo(c, leader.pos, { range: 2 });
                 } else {
                     const dir = TeamUtils.routeExitDir(c.room.name, leader.room.name);
-                    if (dir) c.move(dir);
+                    if (dir) combatMove(c, dir);
                 }
             }
             say('split-rally');
@@ -934,11 +935,11 @@ const TeamAction = {
             if (heals.indexOf(best) >= 0) heals.splice(heals.indexOf(best), 1);
             if (attackers.indexOf(best) >= 0) attackers.splice(attackers.indexOf(best), 1);
             remaining.splice(remaining.indexOf(best), 1);
-            if (!best.pos.isEqualTo(target)) best.moveTo(target);
+            if (!best.pos.isEqualTo(target)) combatMoveTo(best, target);
         }
         // 剩余成员（槽位已满）：就近跟随
         for (const c of remaining) {
-            c.moveTo(new RoomPosition(clamp(cx), clamp(cy), roomName));
+            combatMoveTo(c, new RoomPosition(clamp(cx), clamp(cy), roomName));
         }
         return true;
     },
@@ -1565,7 +1566,7 @@ const TeamAction = {
     moveOuterBorder(creep: Creep, nearCreep: Creep) {
         const targetPos = creep.pos.nearPos(1).find((pos) => pos.walkable(true) && nearCreep.pos.isNearTo(pos))
         if (targetPos) {
-            creep.move(creep.pos.getDirectionTo(targetPos))
+            combatMove(creep, creep.pos.getDirectionTo(targetPos))
         }
     },
 

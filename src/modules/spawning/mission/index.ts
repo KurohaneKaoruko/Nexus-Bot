@@ -8,7 +8,6 @@ import { getRoomPhase } from '@/utils/roomPhase';
 import { getRoomModeProfile } from '@/modules/strategy';
 
 export default class Mission extends Room {
-    declare UpdateSpawnMission: (offset?: number) => void;
     declare UpdateTransportMission: (offset?: number) => void;
     declare UpdateBoostMission: (offset?: number) => void;
     declare UpdateManageMission: (offset?: number) => void;
@@ -25,11 +24,9 @@ export default class Mission extends Room {
      */
     override MissionUpdate() {
         const profile = getRoomModeProfile(this);
-        const spawnInterval = profile.spawnMissionInterval;
         const transportInterval = profile.transportMissionInterval;
 
         const schedule: Array<{ interval: number; offset: number; run: (offset: number) => void }> = [
-                { interval: spawnInterval, offset: 0, run: (offset) => this.UpdateSpawnMission(offset) },
             { interval: transportInterval, offset: 1, run: (offset) => this.UpdateTransportMission(offset) },
             { interval: 20, offset: 2, run: (offset) => this.UpdateBoostMission(offset) },
             { interval: 30, offset: 3, run: (offset) => this.UpdateManageMission(offset) },

@@ -2,6 +2,7 @@
 import { UNITS } from '@/constant/CreepConstant';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { type CombatHealPriority, resolveBoundPartner, runHealAndFollow, tryBindNearestPartner } from '@/modules/teams/core/boundPartner';
+import { combatHeal, combatMoveTo, combatRangedHeal } from '@/modules/combat';
 
 /**
  * 治疗型角色的统一实现。
@@ -98,7 +99,7 @@ const runUnboundFallback = (creep: Creep, unit: string, unbound: UnboundBehavior
     if (unbound === 'none') return;
 
     if (creep.hits < creep.hitsMax) {
-        creep.heal(creep);
+        combatHeal(creep, creep);
     }
     if (unbound === 'selfHeal') return;
 
@@ -112,12 +113,12 @@ const runUnboundFallback = (creep: Creep, unit: string, unbound: UnboundBehavior
     if (!needHeal) return;
 
     if (creep.pos.isNearTo(needHeal)) {
-        creep.heal(needHeal);
+        combatHeal(creep, needHeal);
     } else if (creep.pos.inRangeTo(needHeal, 3)) {
-        creep.rangedHeal(needHeal);
+        combatRangedHeal(creep, needHeal);
     }
     if (!creep.pos.isNearTo(needHeal)) {
-        creep.moveTo(needHeal);
+        combatMoveTo(creep, needHeal);
     }
 };
 

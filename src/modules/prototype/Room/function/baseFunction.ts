@@ -29,7 +29,7 @@ const getMyCreepsByRoleByRoom = (() => {
     };
 })();
 
-const LEGACY_SHARED_SOURCE_ROLE_SET = new Set<string>([UNITS.worker, UNITS.upgrader, UNITS.universal, UNITS['aid-upgrade']]);
+const LEGACY_SHARED_SOURCE_ROLE_SET = new Set<string>([UNITS.worker, UNITS.upgrader, UNITS.universal]);
 const STRICT_SOURCE_ROLE_SET = new Set<string>([UNITS.harvester]);
 const SOURCE_PRIORITY_MAP = {
     harvester: 0,

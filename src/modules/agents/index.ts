@@ -12,6 +12,7 @@ import { betterMoveApi } from "@/modules/movement";
 import { noteMoveIntent, updateCongestion } from "@/modules/movement/trafficMonitor";
 import { recordActionRates } from "@/modules/economy";
 import { recordTowerSpend } from "@/modules/defense";
+import { takeIntents } from "@/runtime/intentQueue";
 import type { NexusMemory } from "@/core/store/memorySchema";
 
 export { ensureBroker };
@@ -54,11 +55,38 @@ export const Broker: TickModule = {
 	band: "P1",
 	run(ctx: TickContext): void {
 		betterMoveApi.preTickBetterMove();
-		const results = ensureBroker(ctx).commit(ctx.tick);
-		// 有移动意图的单位登记 (结果分类: 已接受或在重试中的移动)
+		// 意图队列 → broker: planner/spawning/market 等系统级命令统一入站 (api/17)
+		const broker = ensureBroker(ctx);
+		const intents = takeIntents(ctx.tick);
+		for (const intent of intents) {
+			broker.submit({
+				id: intent.id,
+				tick: ctx.tick,
+				actorName: intent.actorName,
+				kind: intent.kind,
+				pipeline: intent.pipeline,
+				priority: intent.priority,
+				targetId: intent.targetId,
+				targetPos: intent.targetPos,
+				resourceType: intent.resourceType as ResourceConstant | undefined,
+				amount: intent.amount,
+				payload: intent.payload,
+				dedupeKey: intent.dedupeKey,
+			});
+		}
+		const results = broker.commit(ctx.tick);
+		// 结果回投: 提交方注册的强一致回调 (预约核销/簿记等)
+		const byPlanId = new Map(results.map((r) => [r.planId, r]));
+		for (const intent of intents) {
+			const result = byPlanId.get(intent.id);
+			if (intent.onResult) {
+				intent.onResult(result?.accepted ?? false, result?.nativeReturnCode);
+			}
+		}
+		// 有移动意图的单位登记 (结果分类: 已接受或在重试中的移动); reason 供 5.1 场景归因
 		for (const result of results) {
 			if (result.kind === "move" && (result.accepted || result.category === "retryable")) {
-				noteMoveIntent(ctx, result.actorName);
+				noteMoveIntent(ctx, result.actorName, result.intentReason);
 			}
 		}
 		// 速率回填: 采集/交付实际发生量 → 账本滚动速率 (docs/nexus-design/06 §6.8)

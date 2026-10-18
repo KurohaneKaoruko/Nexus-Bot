@@ -469,11 +469,6 @@ interface Room {
      */
     StructureWork(): void;
     
-    /** 
-     * Spawn工作
-     * @description 执行孵化器的孵化逻辑
-     */
-    SpawnWork(): void;
     
     /** 
      * Tower工作
@@ -612,35 +607,8 @@ interface Room {
 
 
     // ==================== Spawn控制 ====================
-    /** 
-     * 孵化信息可视化
-     * @description 在spawn位置显示当前孵化进度和队列信息
-     */
-    VisualSpawnInfo(): void;
     
-    /** 
-     * 获取孵化任务的相关数据
-     * @returns 孵化任务数据对象，包含bodypart、name、memory、taskId、cost，无任务返回null
-     * @description 从spawn任务池获取下一个要孵化的任务
-     */
-    GetSpawnTaskData(): { 
-        /** 展开后的body数组 */
-        bodypart: BodyPartConstant[], 
-        /** creep名称 */
-        name: string, 
-        /** creep初始memory */
-        memory: CreepMemory, 
-        /** 任务ID */
-        taskId: string, 
-        /** 孵化能量消耗 */
-        cost: number 
-    } | null;
     
-    /** 
-     * 孵化Creep
-     * @description 执行孵化逻辑，从任务池获取任务并孵化
-     */
-    SpawnCreep(): void;
 
     // ==================== Lab控制 ====================
     /** 

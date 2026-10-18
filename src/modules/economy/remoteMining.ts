@@ -18,31 +18,61 @@ function myUsername(): string | undefined {
 	return undefined;
 }
 
-/** 邻房名计算 (正角 4 向 + 对角 4 向)。Screeps 世界坐标: E1=1, W1=0, W2=-1 … (W 数字从 0 镜像) */
-function neighborRooms(roomName: string): string[] {
-	const match = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
-	if (!match) return [];
-	const xDir = match[1] ?? "W";
-	const xDigits = match[2] ?? "0";
-	const yDir = match[3] ?? "N";
-	const yDigits = match[4] ?? "0";
-	// W 数字转世界坐标须按 0 点镜像: W1=0, W2=-1, W(n)=-(n-1); E 数字即本身
-	const toWorldX = (dir: string, digits: string) =>
-		dir === "E" ? parseInt(digits, 10) : -(parseInt(digits, 10) - 1);
-	const toWorldY = (dir: string, digits: string) =>
-		dir === "N" ? parseInt(digits, 10) : -(parseInt(digits, 10) - 1);
-	const x = toWorldX(xDir, xDigits);
-	const y = toWorldY(yDir, yDigits);
-	const toRoomX = (worldX: number) => (worldX >= 0 ? `E${worldX}` : `W${-worldX + 1}`);
-	const toRoomY = (worldY: number) => (worldY >= 0 ? `N${worldY}` : `S${-worldY + 1}`);
-	const rooms: string[] = [];
-	for (let dx = -1; dx <= 1; dx++) {
-		for (let dy = -1; dy <= 1; dy++) {
-			if (dx === 0 && dy === 0) continue;
-			rooms.push(`${toRoomX(x + dx)}${toRoomY(y + dy)}`);
-		}
+/** 邻房名计算: 已抽公共 utils/roomCoord (bugs/P1-17), 此处仅再导出兼容本文件内引用 */
+import { neighborRooms } from "@/utils/roomCoord";
+import { REMOTE_HAUL_CONFIG } from "@/config/economy";
+import { remoteSourceWeightOf } from "@/modules/economy/income";
+import { isProductionSecured } from "@/modules/economy/productionGate";
+
+/** 远程源旁容器 (可见房直查): 距源 ≤ containerRange 的第一个容器 */
+function remoteSourceContainer(
+	room: Room,
+	source: Source,
+): StructureContainer | undefined {
+	return room
+		.find(FIND_STRUCTURES, {
+			filter: (s): s is StructureContainer =>
+				s.structureType === STRUCTURE_CONTAINER &&
+				s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange),
+		})
+		.find((c) => c.store.getFreeCapacity(RESOURCE_ENERGY) > 0 || c.store.energy > 0);
+}
+
+/**
+ * 远程容器回运任务 (bugs/race-strategy-port W1-2): 源旁容器存量过阈值即产
+ * haul (容器→本矿), 远程矿工驻源卸容器、本矿 carrier 跨房拉回——
+ * 5W 矿工自回运的长途往返是采集面塌陷主因 (2×路程 tick 全程 0 采集)。
+ */
+function upsertRemoteHaul(
+	ctx: TickContext,
+	board: TaskBoard,
+	homeRoomName: string,
+	remoteRoom: Room,
+	source: Source,
+): void {
+	const container = remoteSourceContainer(remoteRoom, source);
+	if (
+		!container ||
+		container.store.energy < container.store.getCapacity(RESOURCE_ENERGY) * REMOTE_HAUL_CONFIG.haulTriggerRatio
+	) {
+		return;
 	}
-	return rooms;
+	board.upsert(
+		{
+			dedupeKey: `haul:${homeRoomName}:remote:${container.id}`,
+			kind: "haul",
+			roomName: homeRoomName,
+			targetId: container.id,
+			targetPos: {
+				x: container.pos.x,
+				y: container.pos.y,
+				roomName: remoteRoom.name,
+			},
+			priority: REMOTE_HAUL_CONFIG.haulPriority,
+			requiredCapabilities: ["carry", "move"],
+		},
+		ctx.tick,
+	);
 }
 
 /**
@@ -59,11 +89,16 @@ export function planRemoteHarvest(
 ): void {
 	const profile = roomModeProfileFor(ctx, room.roomName);
 	if (profile.remoteMining === "off") return;
-	// RCL3 起才开外矿 (含 auto 档): ① harvester 体型要到 RCL3 预算档 (≥650) 才带
-	// 1-CARRY 下限, 无 carry 的远程件只会在外矿 drop 堆积、永不返程 (sim 实证采集
-	// 167k→150k 净负); ② 低 RCL 孵化槽紧, 外矿件会掏空本地采集面。冲级收入靠
-	// RCL3 后的外矿增量 (L4 段), 不抢 L3 前的本地窗口。
-	if (room.rcl < 3) return;
+	// 外矿开门条件 (对齐 Rosmarin race productionGate 语义, 2026-10-18 race 复盘):
+	// ① 采集面铺满 (isProductionSecured) —— 本矿收入稳住才放外矿, 掏空本地采集面
+	//    的老顾虑由该闸承接, 不再用 RCL3 一刀切 (sim 实证 L3@19049 → 外矿永不启动,
+	//    收入上限锁死 20/t, 升级速率 2.65/t);
+	// ② rush auto 档才低门放行; manual 档维持 RCL3 (显式登记房由用户自己把关)。
+	// 外矿采集件无 CARRY 的 drop 风险由外矿 haul 任务闭环承接 (upsertRemoteHaul),
+	// 不再依赖 harvester 体型档。
+	if (room.rcl < 3 && !(profile.remoteMining === "auto" && isProductionSecured(ctx, room))) {
+		return;
+	}
 
 	if (profile.remoteMining === "manual") {
 		const targets = ctx.memory.economy.remoteTargets ?? [];
@@ -120,6 +155,7 @@ export function planRemoteHarvest(
 					priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
 					requiredCapabilities: ["work", "move"],
 				}, ctx.tick);
+				upsertRemoteHaul(ctx, board, room.roomName, remoteRoom, source);
 			}
 		}
 		return;
@@ -186,6 +222,7 @@ export function planRemoteHarvest(
 				priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
 				requiredCapabilities: ["work", "move"],
 			}, ctx.tick);
+			upsertRemoteHaul(ctx, board, room.roomName, neighbor, source);
 		}
 	}
 }
@@ -210,16 +247,9 @@ export function activeScoutCount(ctx: TickContext, board: TaskBoard): number {
  * 直读 memory.tasks 原始记录 (升级定编每 tick 逐房调用, 不重复建板)。
  * 预订口径 (对齐 Rosmarin race): 己方预订源满容量 3000 记 1; 未预订源容量减半记 0.5
  * (防升级体按虚高收入超编, 外矿断供期反噬本地采集面)。
+ * @deprecated 收入口径统一 (specs/resource-ledger): 折算逻辑迁 income.ts 的
+ * remoteSourceWeightOf, 本包装仅供旧引用过渡, 随 legacy 清理移除。
  */
 export function activeRemoteSourceCount(ctx: TickContext, roomName: string): number {
-	const me = myUsername();
-	let n = 0;
-	for (const task of Object.values(ctx.memory.tasks)) {
-		if (task.kind !== "harvest" || task.roomName !== roomName) continue;
-		const target = task.targetPos?.roomName;
-		if (!target || target === roomName) continue;
-		const reservation = Game.rooms[target]?.controller?.reservation;
-		n += reservation && reservation.username === me ? 1 : 0.5;
-	}
-	return n;
+	return remoteSourceWeightOf(ctx, roomName);
 }

@@ -2,6 +2,7 @@
 import { createFsmStorage, createLayeredRunner } from '@/core/ai/adapters';
 import { StateMachine } from '@/core/ai/stateMachine';
 import { writeMoveWorkTileCandidates } from '@/utils/moveWork';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
 export const MINERAL_LAYERS = {
     FLOW: 'mineral:flow',
@@ -108,7 +109,18 @@ const runMineralMaintenance = (creep: Creep) => {
     const hasContainerSite = creep.pos.findInRange(FIND_CONSTRUCTION_SITES, 2)
         .some((site) => site.structureType === STRUCTURE_CONTAINER);
     if (!hasContainerSite) {
-        creep.pos.createConstructionSite(STRUCTURE_CONTAINER);
+        // 经建造管线提交 (任务 6.6): 矿工自放容器收编, 无 ctx 走 sharedBroker 同步通道
+        sharedBrokerForDirectCommands().executeNow({
+            id: `miner-container:${creep.room.name}:${Game.time}`,
+            tick: Game.time,
+            actorName: creep.room.name,
+            kind: "createSite",
+            pipeline: "construction",
+            priority: 35,
+            targetPos: { x: creep.pos.x, y: creep.pos.y, roomName: creep.room.name },
+            payload: { structureType: STRUCTURE_CONTAINER },
+            dedupeKey: `miner-container:${creep.room.name}:${creep.pos.x}:${creep.pos.y}`,
+        });
     }
     syncMineralMoveWork(creep);
 };

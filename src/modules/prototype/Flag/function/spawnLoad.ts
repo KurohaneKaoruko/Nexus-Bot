@@ -34,6 +34,16 @@ export const getFlagSpawnLoad = (
         }
     }
 
+    // 孵化中的蛋: 不在 Game.creeps, 但 spawnCreep 已写入 Memory.creeps——
+    // directSpawn 同步下蛋后, 蛋期是重复派单窗口, 必须计入负载
+    let eggs = 0;
+    for (const spawn of spawnRoom.find(FIND_MY_SPAWNS)) {
+        const eggName = spawn.spawning?.name;
+        if (!eggName) continue;
+        const eggMemory = Memory.creeps?.[eggName];
+        if (matchesFlagSpawnMemory(eggMemory, flagName, unit, legacyMatch)) eggs++;
+    }
+
     let queued = 0;
     const tasks = getAllMissionFromPool(spawnRoom.name, MISSION_POOLS.spawn) || [];
     for (const task of tasks as any[]) {
@@ -43,9 +53,9 @@ export const getFlagSpawnLoad = (
     }
 
     return {
-        live,
+        live: live + eggs,
         queued,
-        total: live + queued,
+        total: live + eggs + queued,
     };
 };
 

@@ -1,5 +1,6 @@
 
 import { inWhitelist } from '@/utils/whitelist';
+import { pcEnableRoom } from './powerAdapter';
 import { getStructData } from '@/core/store/accessor';
 
 export default class BaseFunction extends PowerCreep {
@@ -19,7 +20,7 @@ export default class BaseFunction extends PowerCreep {
     override PowerEnabled(): boolean {
         const controller = this.room?.controller;
         if(!controller!.isPowerEnabled) {
-            if(this.pos.isNearTo(controller!)) this.enableRoom(controller!);
+            if(this.pos.isNearTo(controller!)) pcEnableRoom(this, controller!);
             else this.moveTo(controller!)
             return true;
         }

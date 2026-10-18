@@ -7,6 +7,7 @@
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
+import { submitIntent } from "@/runtime/intentQueue";
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
@@ -106,6 +107,11 @@ export function runControllerBufferPlacement(
 	if (retryAt !== undefined && ctx.tick < retryAt) {
 		return;
 	}
+	const pending = ccPending.get(room.roomName);
+	if (pending !== undefined && ctx.tick - pending < CONTROLLER_BUFFER_CONFIG.siteRetryInterval) {
+		// 在途意图未超时: 等待 broker 执行落地, 不重复提交
+		return;
+	}
 	const spawn = roomObj.find(FIND_MY_SPAWNS)[0];
 	const spot = pickControllerBufferSpot(
 		roomObj,
@@ -115,16 +121,21 @@ export function runControllerBufferPlacement(
 	if (!spot) {
 		return;
 	}
-	const code = roomObj.createConstructionSite(spot.x, spot.y, STRUCTURE_CONTAINER);
-	if (code === OK) {
-		ctx.logger.info(
-			`cc-site:${room.roomName}:${ctx.tick} 控制器缓冲站点落位 (${spot.x},${spot.y})`,
-		);
-		return;
-	}
-	ccRetryAt.set(room.roomName, ctx.tick + CONTROLLER_BUFFER_CONFIG.siteRetryInterval);
-	ctx.logger.warn(
-		`cc-site:${code}`,
-		`cc 站点创建失败 code=${code}, 冷却 ${CONTROLLER_BUFFER_CONFIG.siteRetryInterval}t`,
+	// 经命令边界提交工地创建 (api/17); 原生调用权收编进 broker
+	submitIntent(ctx.tick, {
+		actorName: room.roomName,
+		kind: "createSite",
+		pipeline: "construction",
+		priority: 40,
+		targetPos: { x: spot.x, y: spot.y, roomName: room.roomName },
+		payload: { structureType: STRUCTURE_CONTAINER },
+		dedupeKey: `cc-site:${room.roomName}`,
+	});
+	ccPending.set(room.roomName, ctx.tick);
+	ctx.logger.info(
+		`cc-site:${room.roomName}:${ctx.tick} 控制器缓冲站点意图提交 (${spot.x},${spot.y})`,
 	);
 }
+
+/** cc 工地在途意图 tick (房间 → 提交 tick; 超时未成站视为失败) */
+const ccPending = new Map<string, number>();

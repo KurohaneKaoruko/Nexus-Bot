@@ -179,6 +179,30 @@ export function worksiteFor(
 }
 
 /**
+ * 采集槽位序列: [主驻点 (worksiteFor, 兼容器合一), 其余按 walkableAdjacents 评分序]。
+ * 低容量多只期每只一个槽位 (任务 i ↔ slots[i], 同 upgrade 工位先例);
+ * count=1 时即主驻点, 与单座期完全一致。
+ */
+export function harvestSlotsFor(
+	intel: RoomIntelRecord,
+	room: RoomObservation,
+	source: SourceSummary,
+	count: number,
+): Array<{ x: number; y: number }> {
+	const primary = worksiteFor(intel, room, source);
+	if (!primary || count <= 1) {
+		return primary ? [{ x: primary.x, y: primary.y }] : [];
+	}
+	const slots = [{ x: primary.x, y: primary.y }];
+	for (const candidate of walkableAdjacents(source, room)) {
+		if (slots.length >= count) break;
+		if (candidate.x === primary.x && candidate.y === primary.y) continue;
+		slots.push(candidate);
+	}
+	return slots;
+}
+
+/**
  * 落点重算 (Agent 不可达反馈兜底): 清除缓存, 下次 worksiteFor 重新选址。
  * 返回是否确实清除了缓存。
  */

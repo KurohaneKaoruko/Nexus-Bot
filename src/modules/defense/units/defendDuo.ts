@@ -1,6 +1,7 @@
 
 import { pickDefenseAnchorRampart } from '@/utils/defenseUtils';
 import { tryBindNearestPartner } from '@/modules/teams/core/boundPartner';
+import { combatAttack, combatMoveTo } from '@/modules/combat';
 
 const runDefend2Attack = (creep: Creep) => {
     creep.disableAttackNotificationsOnce();
@@ -27,7 +28,7 @@ const runDefend2Attack = (creep: Creep) => {
     const targetRampart = pickDefenseAnchorRampart(creep.room, 'melee', creep.name, minHits);
     if (targetRampart && !creep.pos.isEqualTo(targetRampart.pos)) {
         const costCallback = creep.room.getDefenseCreepCostCallback(creep.name);
-        creep.moveTo(targetRampart.pos, {
+        combatMoveTo(creep, targetRampart.pos, {
             visualizePathStyle: { stroke: '#ff0000' },
             range: 0,
             costCallback
@@ -43,7 +44,7 @@ const runDefend2Attack = (creep: Creep) => {
     if (!target) return;
 
     if (creep.pos.isNearTo(target)) {
-        const result = creep.attack(target);
+        const result = combatAttack(creep, target);
         if (result === OK) creep.room.CallTowerAttack(target);
         return;
     }
@@ -51,7 +52,7 @@ const runDefend2Attack = (creep: Creep) => {
     const state = creep.room.memory['defenseState'];
     const hasRamparts = Array.isArray(creep.room[STRUCTURE_RAMPART]) && creep.room[STRUCTURE_RAMPART].length > 0;
     if (state === 'breached' || !hasRamparts) {
-        creep.moveTo(target, {
+        combatMoveTo(creep, target, {
             visualizePathStyle: { stroke: '#ff0000' },
             range: 1,
             costCallback: creep.room.getDefenseCreepCostCallback(creep.name)
@@ -63,7 +64,7 @@ const runDefend2Attack = (creep: Creep) => {
     creep.room.CallTowerAttack(target);
 
     if (!creep.pos.isNearTo(bindcreep)) {
-        creep.moveTo(bindcreep, {
+        combatMoveTo(creep, bindcreep, {
             range: 1,
             costCallback: creep.room.getDefenseCreepCostCallback(creep.name)
         });

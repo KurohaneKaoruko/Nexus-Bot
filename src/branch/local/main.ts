@@ -5,6 +5,7 @@ import "../compat";
 import { LOCAL_PROFILE } from "./profile";
 import { createNexus } from "@/core/nexus";
 import { Perception } from "@/modules/world";
+import { ActorOwnershipSweep, ActorOwnershipPersist } from "@/runtime/actorOwnershipModule";
 import { Defense } from "@/modules/defense";
 import { StrategyCore } from "@/modules/strategy";
 import { Economy } from "@/modules/economy";
@@ -21,7 +22,8 @@ import { EventBus } from "@/core/event";
 import { Nukes } from "@/modules/industry";
 import { InterShard } from "@/modules/intershard";
 import { Expansion } from "@/modules/external";
-import { EndPhase } from "@/core/endPhase";
+import { FunnelEnd, InterShardEnd, ClearEnd, StatisticsEnd } from "@/core/endPhase";
+import { EventBusEnd } from "@/core/event";
 import { Visuals } from "@/modules/visuals";
 import { Pixel } from "@/modules/economy";
 
@@ -29,6 +31,7 @@ const nexus = createNexus(LOCAL_PROFILE);
 
 nexus.use(
 	Perception,
+	ActorOwnershipSweep,
 	Defense,
 	StrategyCore,
 	Economy,
@@ -37,8 +40,8 @@ nexus.use(
 	Tasks,
 	Spawning,
 	Agents,
-	Broker,
 	Planner,
+	Broker,
 	RoomFeatures,
 	Industry,
 	Teams,
@@ -47,7 +50,12 @@ nexus.use(
 	Nukes,
 	InterShard,
 	Expansion,
-	EndPhase,
+	EventBusEnd,
+	FunnelEnd,
+	InterShardEnd,
+	ClearEnd,
+	StatisticsEnd,
+	ActorOwnershipPersist,
 	Visuals,
 	Pixel,
 );

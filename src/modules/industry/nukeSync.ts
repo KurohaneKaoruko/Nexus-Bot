@@ -1,6 +1,7 @@
 
 import { qos } from '@/core/qos';
 import { getNukerData } from "@/core/store/accessor";
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
 /**
  * 核弹请求同步模块。
@@ -44,16 +45,27 @@ export const NukeModule = {
             const room = Game.rooms[req.roomName];
             if (!room) continue;
 
-            const pos = new RoomPosition(req.x, req.y, req.roomName);
-            const created = room.createFlag(pos, flagName);
-            if (typeof created === 'string') {
-                const flag = Game.flags[created];
+            // 经命令边界同步执行 (flag 管线): 原生调用权收编进 broker
+            const createdResult = sharedBrokerForDirectCommands().executeNow({
+                id: `nuke-flag:${flagName}:${now}`,
+                tick: now,
+                actorName: req.roomName,
+                kind: "createFlag",
+                pipeline: "flag",
+                priority: 50,
+                targetPos: { x: req.x, y: req.y, roomName: req.roomName },
+                payload: { flagName },
+                dedupeKey: `nuke-flag:${flagName}:${now}`,
+            });
+            if (createdResult.accepted) {
+                const flag = Game.flags[flagName];
                 if (!flag) continue;
                 flag.memory['amount'] = Math.max(1, req.amount || 1);
                 if (Array.isArray(req.rooms) && req.rooms.length > 0) flag.memory['rooms'] = req.rooms;
                 flag.memory['requestId'] = req.id;
             } else {
                 // 记录最近一次失败码，供上层可观测。
+                const created = createdResult.nativeReturnCode ?? ERR_INVALID_ARGS;
                 req.lastError = created;
                 req.lastErrorTick = now;
             }

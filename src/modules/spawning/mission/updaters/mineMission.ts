@@ -5,7 +5,8 @@ import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';
 import { OUTMINE_CONFIG } from '@/constant/BaseConstant';
 import { getOutMineData, getRoomData } from '@/core/store/accessor';
-import { getCreepByTargetRoom } from '@/utils/creepTickIndex';
+import { getCreepByTargetRoom, getUnitCountByTargetRoom } from '@/utils/creepTickIndex';
+import { directSpawn } from '@/modules/spawning/spawnDirector';
 import { isRoomTickAligned } from '@/utils/roomPhase';
 
 const SURROUNDING_OFFSETS: Array<[number, number]> = [
@@ -20,7 +21,6 @@ type IndexedTargetRoomCreep = {
     spawning: boolean;
 };
 
-type SpawnMissionCounts = { [unit: string]: number };
 type PowerMineMissionConfig = Omit<PowerMineTask, 'targetRoom'>;
 
 const countActiveCreeps = (creeps: IndexedTargetRoomCreep[] | undefined, minTicksToLive: number) => {
@@ -43,10 +43,6 @@ const getPowerBankInRoom = (room: Room) => {
     return room.powerBank?.[0] ?? room.find(FIND_STRUCTURES, {
         filter: (structure) => structure.structureType === STRUCTURE_POWER_BANK,
     })[0] as StructurePowerBank | undefined;
-};
-
-const getSpawnMissionCount = (spawnMissionNum: SpawnMissionCounts, unit: string) => {
-    return spawnMissionNum[unit] || 0;
 };
 
 const createMineCreepMemory = (sourceRoom: string, targetRoom: string, extra: Record<string, unknown> = {}) => {
@@ -80,7 +76,7 @@ const getPowerCarryThreshold = (room: Room, targetRoom: string, maxPc: number, m
 
 // ==================== Mine Update Helpers ====================
 
-const handlePowerMine = (room: Room, task: Task, mineData: PowerMineTask, spawnMissionNum: SpawnMissionCounts) => {
+const handlePowerMine = (room: Room, task: Task, mineData: PowerMineTask) => {
     const targetRoom = mineData.targetRoom;
     const targetRoomObj = Game.rooms[targetRoom];
     const powerBank = targetRoomObj ? getPowerBankInRoom(targetRoomObj) : undefined;
@@ -107,8 +103,8 @@ const handlePowerMine = (room: Room, task: Task, mineData: PowerMineTask, spawnM
     // 第一阶段：维持攻坚队（PA / PH）与可选 ranged 队列。
     if (!mineData.count) mineData.count = 0;
     if (mineData.count < mineData.max) {
-        const panum = pa + getSpawnMissionCount(spawnMissionNum, UNITS['power-attack']);
-        const phnum = ph + getSpawnMissionCount(spawnMissionNum, UNITS['power-heal']);
+        const panum = pa + getUnitCountByTargetRoom(targetRoom, UNITS['power-attack']);
+        const phnum = ph + getUnitCountByTargetRoom(targetRoom, UNITS['power-heal']);
         let needUpdate = false;
         
         for (let i = Math.min(panum, phnum); i < powerTeamNum; i++) {
@@ -118,15 +114,25 @@ const handlePowerMine = (room: Room, task: Task, mineData: PowerMineTask, spawnM
                 boostOwnerId,
             });
 
-            const paRet = room.SpawnMissionAdd('PA', [], -1, UNITS['power-attack'], memory);
-            const phRet = room.SpawnMissionAdd('PH', [], -1, UNITS['power-heal'], memory);
-            if (paRet !== OK || phRet !== OK) break;
+            // PA/PH 成对下蛋保原子性: directSpawn 同步孵化, 单空闲 spawn 时只下
+            // 一只会让 boost 悬空 (AssignBoostTask 按对偶派资源)——两个空闲才成对
+            const freeSpawns = room.find(FIND_MY_SPAWNS).filter((s) => !s.spawning).length;
+            if (freeSpawns < 2) break;
+
+            const paRet = directSpawn(room, { mode: "direct", unit: UNITS['power-attack'], memory: { ...memory } as any });
+            if (paRet !== OK) break;
+            const phRet = directSpawn(room, { mode: "direct", unit: UNITS['power-heal'], memory: { ...memory } as any });
+            if (phRet !== OK) {
+                // PA 已下蛋而 PH 失败: 补救——PA 单体无法攻坚, 不再补 PH,
+                // boost 资源会在 80t 退化窗口自动回收 (ensureBoosted 口径)
+                break;
+            }
 
             assignPowerBoostTasks(room, mineData.boostLevel, boostOwnerId);
 
             mineData.count = mineData.count + 1;
             needUpdate = true;
-            
+
             if (mineData.count >= mineData.max) break;
         }
 
@@ -136,12 +142,12 @@ const handlePowerMine = (room: Room, task: Task, mineData: PowerMineTask, spawnM
     if (!mineData.prCount) mineData.prCount = 0;
     if (mineData.prCount < mineData.prMax && mineData.prNum > 0) {
         const prnum = (creepByTargetRoom[UNITS['power-ranged']] || []).length +
-            getSpawnMissionCount(spawnMissionNum, UNITS['power-ranged']);
+            getUnitCountByTargetRoom(targetRoom, UNITS['power-ranged']);
         let needUpdate = false;
         
         for (let i = prnum; i < mineData.prNum; i++) {
             const memory = createMineCreepMemory(room.name, targetRoom);
-            room.SpawnMissionAdd('PR', [], -1, UNITS['power-ranged'], memory);
+            directSpawn(room, { mode: 'direct', unit: UNITS['power-ranged'], memory: { ...memory } as any });
             mineData.prCount = mineData.prCount + 1;
             needUpdate = true;
         }
@@ -161,15 +167,15 @@ const handlePowerMine = (room: Room, task: Task, mineData: PowerMineTask, spawnM
         
         if (pa < 1 || ph < 1) return;
 
-        const pcnum = pc + getSpawnMissionCount(spawnMissionNum, UNITS['power-carry']);
+        const pcnum = pc + getUnitCountByTargetRoom(targetRoom, UNITS['power-carry']);
         for (let i = pcnum; i < maxPc; i++) {
             const memory = createMineCreepMemory(room.name, targetRoom);
-            room.SpawnMissionAdd('PC', [], -1, UNITS['power-carry'], memory);
+            directSpawn(room, { mode: 'direct', unit: UNITS['power-carry'], memory: { ...memory } as any });
         }
     }
 };
 
-const handleDepositMine = (room: Room, task: Task, mineData: DepositMineTask, spawnMissionNum: SpawnMissionCounts) => {
+const handleDepositMine = (room: Room, task: Task, mineData: DepositMineTask) => {
     const targetRoom = mineData.targetRoom;
     const lookInterval = OUTMINE_CONFIG.LOOK_INTERVAL;
 
@@ -198,17 +204,17 @@ const handleDepositMine = (room: Room, task: Task, mineData: DepositMineTask, sp
     const creepByTargetRoom = getCreepByTargetRoom(targetRoom);
 
     const dh = countActiveCreeps((creepByTargetRoom[UNITS['deposit-harvest']] ?? []) as never, 200);
-    const dhnum = dh + getSpawnMissionCount(spawnMissionNum, UNITS['deposit-harvest']);
+    const dhnum = dh + getUnitCountByTargetRoom(targetRoom, UNITS['deposit-harvest']);
     if (dhnum < depositWorkerNum) {
         const memory = createMineCreepMemory(room.name, targetRoom);
-        room.SpawnMissionAdd('DH', [], -1, UNITS['deposit-harvest'], memory);
+        directSpawn(room, { mode: 'direct', unit: UNITS['deposit-harvest'], memory: { ...memory } as any });
     }
 
     const dt = countActiveCreeps((creepByTargetRoom[UNITS['deposit-transfer']] ?? []) as never, 150);
-    const dtnum = dt + getSpawnMissionCount(spawnMissionNum, UNITS['deposit-transfer']);
+    const dtnum = dt + getUnitCountByTargetRoom(targetRoom, UNITS['deposit-transfer']);
     if (dtnum < depositWorkerNum / 2) {
         const memory = createMineCreepMemory(room.name, targetRoom);
-        room.SpawnMissionAdd('DT', [], -1, UNITS['deposit-transfer'], memory);
+        directSpawn(room, { mode: 'direct', unit: UNITS['deposit-transfer'], memory: { ...memory } as any });
     }
 };
 
@@ -407,13 +413,12 @@ export default class MineMission extends Room {
         const lookInterval = OUTMINE_CONFIG.LOOK_INTERVAL;
         if (!isRoomTickAligned(this.name, lookInterval, lookInterval - 1)) return;
 
-        const spawnMissionNum = this.getSpawnMissionNum() || {};
 
         for (const task of tasks) {
             if (task.type === 'power') {
-                handlePowerMine(this, task, task.data as PowerMineTask, spawnMissionNum);
+                handlePowerMine(this, task, task.data as PowerMineTask);
             } else if (task.type === 'deposit') {
-                handleDepositMine(this, task, task.data as DepositMineTask, spawnMissionNum);
+                handleDepositMine(this, task, task.data as DepositMineTask);
             }
         }
     }

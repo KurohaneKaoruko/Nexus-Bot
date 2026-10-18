@@ -32,9 +32,11 @@ export function maxHarvestWork(): number {
 	return Math.max(1, Math.floor(perTick / HARVEST_POWER));
 }
 
-/** harvester 最低孵化预算: [W1,M1] = 150 (W2 硬底线实验负收益已撤销——涓流期换代
- *  等待断收入; 采集体型的正解是收入感知定档, 见 docs/bugs 校准实录) */
-export const RUSH_HARVESTER_MIN_BUDGET = BODYPART_COST[WORK] + BODYPART_COST[MOVE];
+/** harvester 最低孵化预算: [W2,M1] = 250——双 WORK 起步, 单源收入 4/t。
+ *  W1 起步把双源房经济锁死在 2/t (sprint sim 实锤 50k 仅 L2, 源能量 2500+ 堆积);
+ *  能量不足 250 时攒能等待, 攒不齐由 replacement 短窗超时降档与 bootstrap
+ *  (starterBudget 300) 兜底, 不设 W2 硬跳闸 (docs/bugs 涓流断采教训)。 */
+export const RUSH_HARVESTER_MIN_BUDGET = BODYPART_COST[WORK] * 2 + BODYPART_COST[MOVE];
 /** upgrader 最低孵化预算: [W1,C1,M1] */
 export const RUSH_UPGRADER_MIN_BUDGET =
 	BODYPART_COST[WORK] + BODYPART_COST[CARRY] + BODYPART_COST[MOVE];

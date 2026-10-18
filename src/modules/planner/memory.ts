@@ -70,8 +70,3 @@ export function dynamicBucketFloor(): number {
 export function skipBuildTypes(): readonly string[] {
 	return getSkipBuildTypes();
 }
-
-/** 结构类型的最低建造 RCL 覆盖表 (road: 平地早期移动全速, RCL3 前产能优先投 extension 扩容) */
-export function buildMinLevels(): Readonly<Record<string, number>> {
-	return { road: PLANNER_CONFIG.roadMinRcl };
-}

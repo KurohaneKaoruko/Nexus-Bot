@@ -13,8 +13,6 @@ import mountRoomVisual from '@/modules/visuals/proto'
 import { ConsoleExtension } from '@/console'
 import { qos } from '@/core/qos'
 import '@/core/structureCache'
-import { registerFillRequestProvider } from '@/modules/economy'
-import { buildFillRequests } from '@/modules/economy'
 import { registerOutMineIncomeProvider } from '@/modules/external'
 import { updateBucketGovernor } from '@/core/bucketGovernor'
 import type { TickContext, TickModule } from '@/core'
@@ -29,7 +27,6 @@ function ensureMounted(): void {
 	mountRoomPosition();
 	mountRoomVisual();
 	ConsoleExtension();
-	registerFillRequestProvider(buildFillRequests);
 	registerOutMineIncomeProvider();
 	mounted = true;
 }
@@ -38,14 +35,15 @@ function runRoomFeatures(room: Room): void {
 	const tier = qos.getQoS()?.level ?? 'normal'
 
 	// ── 基础结构状态 (每 tick, 不可延迟) ──
-	// 孵化池 spawn 链已退役 (directSpawn 主线化), MissionUpdate 仅维护任务池产出
+	// 孵化池 spawn 链已退役 (directSpawn 主线化): 生产端 UpdateSpawnMission 连带
+	// spawnRules/spawnMission Getter 已删 (5.6 批次二, 挂单零消费者实证);
+	// MissionUpdate 仅维护 transport/boost/manage/buildRepair/mine 池
 	// 工业结构链由 Industry 域驱动; 塔控/主动防御由主线 Defense (broker) 独家驱动,
 	// legacy TowerWork/activeDefense 退役——装配回收期 qos.getRoomQosLevel 从不存在,
 	// 特性链实际静默死亡期间主线单轨已验证
 	// 孵化消费端 (SpawnWork → spawnControl.SpawnCreep) 已退役: 与主线 spawnDirector
 	// 双孵化器分治——攒能/让位政策只约束主线, legacy 按平行定编静默孵化 (sim 实证
 	// 全场 179 只中 139 只无日志孵化, 让位期仍孵 upgrader/worker 把攒能窗口抽干)。
-	// 生产端 (UpdateSpawnMission) 保留: 池内挂单计入 pending 有自然上界; 消费走主线。
 	room.MissionUpdate?.()
 	room.updateEnergyState?.(false)
 

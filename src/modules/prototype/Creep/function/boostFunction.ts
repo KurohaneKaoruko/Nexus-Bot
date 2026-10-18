@@ -8,11 +8,6 @@ import { UNITS } from '@/constant/CreepConstant';
 // 仍由调用方显式传入。新增需要 boost 的角色：在这里加一行，角色里调 ensureBoosted()。
 export const ROLE_BOOST_CONFIGS: Record<string, Record<string, MineralBoostConstant[]>> = {
     [UNITS.worker]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
-    [UNITS['up-repair']]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
-    [UNITS['up-upgrade']]: { [WORK]: ['XGH2O', 'GH2O', 'GH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [UNITS['aid-build']]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
-    [UNITS['aid-upgrade']]: { [WORK]: ['XGH2O', 'GH2O', 'GH'] },
-    [UNITS['aid-carry']]: { [CARRY]: ['XKH2O', 'KH2O', 'KH'] },
     [UNITS.dismantle]: { [WORK]: ['XZH2O', 'ZH2O', 'ZH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
     [UNITS.aio]: { [TOUGH]: ['XGHO2'], [HEAL]: ['XLHO2'], [RANGED_ATTACK]: ['XKHO2'], [MOVE]: ['XZHO2'] },
     [UNITS['one-ranged']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },

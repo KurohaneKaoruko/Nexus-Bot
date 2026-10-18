@@ -4,6 +4,7 @@ import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { log } from '@/utils/log';
 import { THRESHOLDS } from "@/constant/Thresholds";
 import { isRoomTickAligned } from '@/utils/roomPhase';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
 /** 终端发送任务执行: 相位错峰 + 发送任务消费 (原 TerminalWork 改写) */
 export function terminalWork(room: Room): void {
@@ -51,8 +52,21 @@ export function terminalWork(room: Room): void {
             }
         }
         if (sendAmount <= 0) return;
-        
-        const result = terminal.send(resourceType, sendAmount, targetRoom);
+
+        // 经命令边界同步执行 (api/17 market 管线): 原生调用权收编进 broker
+        const sendResult = sharedBrokerForDirectCommands().executeNow({
+            id: `terminal-send:${room.name}:${Game.time}:${resourceType}:${targetRoom}`,
+            tick: Game.time,
+            actorName: room.name,
+            kind: "terminalSend",
+            pipeline: "market",
+            priority: 50,
+            resourceType,
+            amount: sendAmount,
+            payload: { destinationRoom: targetRoom },
+            dedupeKey: `terminal-send:${room.name}:${Game.time}:${resourceType}:${targetRoom}`,
+        });
+        const result = sendResult.accepted ? OK : (sendResult.nativeReturnCode ?? ERR_INVALID_ARGS);
         if (result === OK) {
             const remaining = amount - sendAmount;
             if (remaining > 0) {

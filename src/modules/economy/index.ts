@@ -36,7 +36,14 @@ export {
 	recordTravelSample,
 	recordActionRates,
 } from "@/modules/economy/model";
-export { maintainLedger, commit as commitReservation, release as releaseReservation, reserve } from "@/modules/economy/ledger";
+export { droppedPileEnergy } from "@/modules/economy/workforce";
+export { maintainLedger, updateHungerVitals, commit as commitReservation, release as releaseReservation, reserve, createLedger } from "@/modules/economy/ledger";
+export {
+	reservationFactor,
+	remoteSourceWeightOf,
+	remoteCapPerTick,
+	incomeWithRemoteOf,
+} from "@/modules/economy/income";
 export {
 	harvestIncomeOf,
 	harvestTimeSplitOf,
@@ -58,15 +65,10 @@ export { Pixel } from "@/modules/economy/pixel";
 export { hasHungryUpgrader } from "@/modules/economy/courier";
 export { ccUpgradeReserveOf } from "@/modules/economy/workforce";
 
-// ── 公共面: 角色单位 (原型角色注册表消费) ──
-export { default as carrier } from "@/modules/economy/units/carrier";
-export { default as harvester } from "@/modules/economy/units/harvester";
+// ── 公共面: 原型角色单位 (任务驱动角色 handler 已裁撤, 见 bugs/role-registry-executor-gap) ──
 export { default as manager } from "@/modules/economy/units/manager";
 export { default as miner } from "@/modules/economy/units/miner";
 export { default as transporter } from "@/modules/economy/units/transporter";
-export { default as universal } from "@/modules/economy/units/universal";
-export { default as upgrader } from "@/modules/economy/units/upgrader";
-export { default as worker } from "@/modules/economy/units/worker";
 
 // ── 公共面: 生产门控 / 劳动力 / 物流配额 / 调度基准 / 终末钩子 ──
 export {
@@ -76,32 +78,6 @@ export {
 	isRoomProductionSecured,
 	isRoomRemoteUnlocked,
 } from "@/modules/economy/productionGateAccess";
-export {
-	UPGRADE_NEEDED_TTD,
-	UPGRADE_URGENT_SPAWN_LEVEL,
-	estimateRoomEnergyIncome,
-	getDroppedPileEnergy,
-	getDroppedPileWorkerBoost,
-	getDowngradeUniversalSpawnMissing,
-	getDowngradeUniversalTarget,
-	getMyConstructionSites,
-	getRoomEnergyState,
-	getRushCarrierTarget,
-	getStoredEnergy,
-	getUpgradeWorkTarget,
-	getUpgraderSuccessionNeeds,
-	getUpgraderTarget,
-	getWorkerBuildTarget,
-	getWorkerPopulationCap,
-	getWorkerUpgradeTarget,
-	getWorkerWallTarget,
-	hasControllerEnergyBuffer,
-	isUpgraderSpawnUrgent,
-	registerFillRequestProvider,
-	registerRemoteIncomeProvider,
-	shouldDelayUpgraderForPrimaryBuild,
-} from "@/modules/economy/roomWorkforce";
-export { buildFillRequests, getControllerCarryQuota } from "@/modules/economy/energyLogistics";
 export { destinationQuotas } from "@/modules/economy/quota";
 export { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy/remoteMining";
 export { getCoreDepotContainer, isCoreDepotContainer, isCoreDepotContainerDraining } from "@/modules/economy/coreDepot";

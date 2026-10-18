@@ -293,29 +293,8 @@ interface Room {
      */
     getSendMissionTotalAmount(): { [type: string]: number };
 
-    /**
-     * 获取孵化任务
-     * @returns 孵化任务对象，无任务返回null
-     * @description 从spawn任务池获取优先级最高的任务
-     * @example const task = room.getSpawnMission();
-     */
-    getSpawnMission(): Task | null;
 
-    /**
-     * 获取孵化任务的数量统计
-     * @returns 以角色为key，数量为value的对象
-     * @description 统计各角色的待孵化任务数量
-     * @example const nums = room.getSpawnMissionNum(); // { harvester: 1, upgrader: 2 }
-     */
-    getSpawnMissionNum(): { [unit: string]: number };
 
-    /**
-     * 根据角色列表获取孵化任务总数
-     * @param units - 角色名称数组
-     * @returns 指定角色的孵化任务总数
-     * @example const total = room.getSpawnMissionTotalByRoles(['harvester', 'carrier']); // 3
-     */
-    getSpawnMissionTotalByRoles(units: string[]): number;
 
     // ==================== 任务提交方法 ====================
     /**
@@ -357,7 +336,6 @@ interface Room {
      */
     MissionUpdate(): void;
 
-    UpdateSpawnMission(offset?: number): void;
     UpdateTransportMission(offset?: number): void;
     UpdateManageMission(offset?: number): void;
     UpdateBuildRepairMission(offset?: number): void;

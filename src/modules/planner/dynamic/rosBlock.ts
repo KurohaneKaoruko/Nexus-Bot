@@ -8,6 +8,7 @@ import { UnionFind } from '@/utils/unionFind'
 import { RoomArray } from '@/utils/roomArray'
 import { numAt, DIR4 } from '../shared/plannerUtils'
 import {
+	visited,
 	roomWalkable,
 	nearWall,
 	routeDistance,
@@ -64,7 +65,7 @@ export const ManagerPlanner = {
 	 */
 	getBlockPutAbleCnt(
 		walkable: RoomArray,
-		visited: RoomArray,
+		visitedBuf: RoomArray,
 		queMin: { push: Function; clear: Function; isEmpty: Function; pop: Function; whileNoEmpty: Function },
 		unionFind: UnionFind,
 		tarRoot: number,

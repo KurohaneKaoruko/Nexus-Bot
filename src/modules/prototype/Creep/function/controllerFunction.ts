@@ -14,7 +14,7 @@ const CONTROLLER_LANE_PASSABLE_STRUCTURES = new Set<StructureConstant>([
 
 // 允许参与控制器工位“让前排”判断的角色。
 // 这里仅纳入会长期围绕 controller 工作的 creep。
-const CONTROLLER_FRONT_FOLLOWER_ROLES = new Set<string>([UNITS.upgrader, UNITS.worker, UNITS['aid-upgrade']]);
+const CONTROLLER_FRONT_FOLLOWER_ROLES = new Set<string>([UNITS.upgrader, UNITS.worker]);
 
 type ControllerEnergyKind = 'link' | 'dropped' | 'container' | 'terminal' | 'storage';
 

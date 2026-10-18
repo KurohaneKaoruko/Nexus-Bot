@@ -13,13 +13,11 @@ export const UnitData = {
         bodypart: [[WORK, 2], [MOVE, 2]],
         level: 3,
         code: 'H',
-        executor: 'harvester',
     }, // 采集
     'carrier': {
         bodypart: [[CARRY, 3], [MOVE, 3]],
         level: 4,
         code: 'C',
-        executor: 'carrier',
     }, // 通用搬运——严格排在 harvester 之后（同层级并列时按入队序会冒出搬运先于采集）
     'transporter': {
         bodypart: [[CARRY, 4], [MOVE, 2]],
@@ -37,13 +35,11 @@ export const UnitData = {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 7,
         code: 'U',
-        executor: 'upgrader',
-    }, // 专人升级：high 单独配人减 worker 负担，rush 走冲级策略（定编见 shared/roomWorkforce.getUpgraderTarget）
+    }, // 专人升级：high 单独配人减 worker 负担，rush 走冲级策略（定编见 workforce.upgraderCountTargetOf 快照口径）
     'worker': {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 8,
         code: 'W',
-        executor: 'worker',
     }, // 建造、维修、刷墙
     'miner': {
         bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]],
@@ -55,7 +51,6 @@ export const UnitData = {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 0,
         code: 'UNIV',
-        executor: 'universal',
     }, // 采集搬运通用机，处理停摆与新房起步
     // 自爆拉能快递：由 rush-courier 任务链驱动（spawn 满仓盈余 → 满载自爆留墓碑给 upgrader），
     // 无执行器（exec 跳过），也不进 UnitSpawnCheck（永不占用常规孵化队列）
@@ -92,18 +87,6 @@ export const UnitData = {
         code: 'DIS',
         executor: 'dismantle',
     }, // 拆除者
-    'up-upgrade': {
-        bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]],
-        level: 11,
-        code: 'UUP',
-        executor: 'up-upgrade',
-    }, // 加速升级（跨房 AID-UUP）
-    'up-repair': {
-        bodypart: [[WORK, 30], [CARRY, 5], [MOVE, 15]],
-        level: 11,
-        code: 'URE',
-        executor: 'up-repair',
-    }, // 加速维修
 
     /* 占领房间 */
     'claimer': {
@@ -117,26 +100,6 @@ export const UnitData = {
         level: 10,
         code: 'ACL',
         executor: 'attack-claimer',
-    },
-
-    /* 援建 */
-    'aid-build': {
-        bodypart: [[WORK, 20], [CARRY, 5], [MOVE, 25]],
-        level: 10,
-        code: 'AIDB',
-        executor: 'aid-build',
-    },
-    'aid-carry': {
-        bodypart: [[CARRY, 25], [MOVE, 25]],
-        level: 10,
-        code: 'AIDC',
-        executor: 'aid-carry',
-    },
-    'aid-upgrade': {
-        bodypart: [[WORK, 20], [CARRY, 5], [MOVE, 25]],
-        level: 10,
-        code: 'AIDU',
-        executor: 'aid-upgrade',
     },
 
     /* 战斗相关 */
@@ -428,7 +391,7 @@ export const UnitLevelData = {
         7: { bodypart: [[CARRY, 25], [MOVE, 1]], num: 1 },
         8: { bodypart: [[CARRY, 39], [MOVE, 1]], num: 1 },
     },
-    // 等级制体型表，由 getUpgraderTarget 决定每个模式下孵几只：
+    // 等级制体型表，定编 (upgraderCountTargetOf) 决定每个模式下孵几只：
     // low/main 为 0（worker 兼任升级），high/rush 才有独立升级工。
     'upgrader': {
         1: { bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]], num: 3 },
@@ -541,16 +504,6 @@ export const UnitLevelData = {
         7: { bodypart: [[MOVE, 18], [HEAL, 18]], num: 0 },
         8: { bodypart: [[MOVE, 25], [HEAL, 25]], num: 0 },
     },
-    "up-upgrade": {
-        1: { bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]], num: 0 },
-        2: { bodypart: [[WORK, 3], [CARRY, 2], [MOVE, 2]], num: 0 },
-        3: { bodypart: [[WORK, 4], [CARRY, 2], [MOVE, 6]], num: 0 },
-        4: { bodypart: [[WORK, 8], [CARRY, 2], [MOVE, 5]], num: 0 },
-        5: { bodypart: [[WORK, 10], [CARRY, 5], [MOVE, 5]], num: 0 },
-        6: { bodypart: [[WORK, 20], [CARRY, 1], [MOVE, 5]], num: 0 },
-        7: { bodypart: [[WORK, 39], [CARRY, 1], [MOVE, 10]], num: 0 },
-        8: { bodypart: [[WORK, 32], [CARRY, 1], [MOVE, 16]], num: 0 }
-    },
     "defend-attack": {
         1: { bodypart: [[ATTACK, 2], [MOVE, 2]], num: 0 },
         2: { bodypart: [[ATTACK, 4], [MOVE, 4]], num: 0 },
@@ -573,51 +526,9 @@ export const UnitLevelData = {
     "defend-2heal": {
         7: { bodypart: [[TOUGH, 5], [HEAL, 20], [MOVE, 10]], num: 0 },
         8: { bodypart: [[TOUGH, 5], [HEAL, 35], [MOVE, 10]], num: 0 },
-    },
-    "aid-build": {
-        1: { bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]], num: 0 },
-        2: { bodypart: [[WORK, 3], [CARRY, 2], [MOVE, 3]], num: 0 },
-        3: { bodypart: [[WORK, 4], [CARRY, 3], [MOVE, 4]], num: 0 },
-        4: { bodypart: [[WORK, 5], [CARRY, 4], [MOVE, 9]], num: 0 },
-        5: { bodypart: [[WORK, 6], [CARRY, 6], [MOVE, 12]], num: 0 },
-        6: { bodypart: [[WORK, 10], [CARRY, 10], [MOVE, 10]], num: 0 },
-        7: { bodypart: [[WORK, 15], [CARRY, 15], [MOVE, 15]], num: 0 },
-        8: { bodypart: [[WORK, 16], [CARRY, 16], [MOVE, 16]], num: 0 },
-    },
-    "aid-upgrade": {
-        1: { bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 1]], num: 0 },
-        2: { bodypart: [[WORK, 2], [CARRY, 2], [MOVE, 2]], num: 0 },
-        3: { bodypart: [[WORK, 4], [CARRY, 3], [MOVE, 4]], num: 0 },
-        4: { bodypart: [[WORK, 6], [CARRY, 4], [MOVE, 6]], num: 0 },
-        5: { bodypart: [[WORK, 10], [CARRY, 5], [MOVE, 10]], num: 0 },
-        6: { bodypart: [[WORK, 12], [CARRY, 5], [MOVE, 12]], num: 0 },
-        7: { bodypart: [[WORK, 20], [CARRY, 5], [MOVE, 13]], num: 0 },
-        8: { bodypart: [[WORK, 25], [CARRY, 5], [MOVE, 15]], num: 0 },
     }
 }
 
 // 配置选项
 export const UnitBodys = {
-    'aid-build': {
-        'T3': {
-            bodypart: [[WORK, 35], [CARRY, 5], [MOVE, 10]],
-            boostmap: { [WORK]: 'XLH2O', [CARRY]: 'XKH2O', [MOVE]: 'XZHO2' }
-        }
-    },
-    'aid-upgrade': {
-        'T3': {
-            bodypart: [[WORK, 35], [CARRY, 5], [MOVE, 10]],
-            boostmap: { [WORK]: 'XGH2O', [CARRY]: 'XKH2O', [MOVE]: 'XZHO2' }
-        }
-    },
-    'aid-carry': {
-        'T3': {
-            bodypart: [[CARRY, 25], [MOVE, 25]],
-            boostmap: { [CARRY]: 'XKH2O' }
-        },
-        'BIG': {
-            bodypart: [[CARRY, 40], [MOVE, 10]],
-            boostmap: { [CARRY]: 'XKH2O', [MOVE]: 'XZHO2' }
-        }
-    }
 }

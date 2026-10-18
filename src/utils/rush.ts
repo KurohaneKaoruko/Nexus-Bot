@@ -53,8 +53,9 @@ const maxHarvestWork = (): number => {
     return Math.max(1, Math.floor(perTick / 2));
 };
 
-/** harvester 最低孵化预算: [W1,M1] = 150 (W2 底线实验负收益已撤销, 见 docs/bugs 校准实录) */
-export const RUSH_HARVESTER_MIN_BUDGET = 150;
+/** harvester 最低孵化预算: [W2,M1] = 250——双 WORK 起步, 单源收入 4/t
+ *  (W1 起步把双源房经济锁死 2/t, sprint sim 实锤; 与 rushBodies 主线口径一致) */
+export const RUSH_HARVESTER_MIN_BUDGET = 250;
 
 /**
  * harvester 体型：
@@ -132,7 +133,7 @@ const CARRIER_MAX_GROUPS = 12;
 /**
  * @deprecated 已被 `GetUnitBodys` 的搬运动态体型特例取代（接力期 `maxCarry 4` 小体型快周转、
  * lv7+ 直运放开 32、`forRoad` 按路网覆盖率）——rush 孵化落点与搬运编制公式均已收口到那条口径
- * （见 `spawnMission.buildRushSpawnBody` / `roomWorkforce.getRushCarrierCarryParts`）。
+ * （见 bodyFactory/rushBodies 生成器）。
  * 本函数与 `buildRushBody` 的 carrier 分支仅作历史保留，待收官批次（B6）核对无消费者后删除。
  */
 export const buildRushCarrierBody = (budget: number): RushBody | null => {

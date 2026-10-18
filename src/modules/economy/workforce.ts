@@ -18,7 +18,7 @@ import { UNIT_CODES } from "@/constant/UnitConstant";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { buildBody } from "@/modules/spawning";
 import { destinationQuotas } from "@/modules/economy/quota";
-import { activeRemoteSourceCount } from "@/modules/economy/remoteMining";
+import { incomeWithRemoteOf } from "@/modules/economy/income";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 
 const HARVEST_POWER = 2;
@@ -89,15 +89,13 @@ export function harvestIncomeOf(ctx: TickContext, room: RoomObservation): number
 }
 
 /**
- * 含外矿折算的采集收入 (升级定编口径, bugs (十二)): 本矿实测 + 活跃远程源数 ×
- * 单源再生上限 (SOURCE_ENERGY_CAPACITY / ENERGY_REGEN_TIME)。远程源无本地绑定
- * 数据 (跨房), 按满采上限折算——升级定编用它是保守上界, 不会因外矿断供而超编。
+ * 含外矿折算的采集收入 (升级定编口径, bugs (十二)): 本矿实测 + 远程源统一折算
+ * (specs/resource-ledger「收入估计口径统一」): 己方预订源记满采上限, 未预订减半——
+ * 统一走 income.ts 单一口径, 定编/孵化门/外矿评分同源。远程源无本地绑定数据
+ * (跨房), 按折算上限计入——升级定编用它是保守上界, 不会因外矿断供而超编。
  */
 export function harvestIncomeWithRemoteOf(ctx: TickContext, room: RoomObservation): number {
-	const remoteSources = activeRemoteSourceCount(ctx, room.roomName);
-	if (remoteSources <= 0) return harvestIncomeOf(ctx, room);
-	const sourceCap = 3000 / ENERGY_REGEN_TIME; // SOURCE_ENERGY_CAPACITY / ENERGY_REGEN_TIME (远程源满采上限折算)
-	return harvestIncomeOf(ctx, room) + remoteSources * sourceCap;
+	return incomeWithRemoteOf(ctx, room.roomName, harvestIncomeOf(ctx, room));
 }
 
 // ==================== 源饱和口径实测分解 ====================
@@ -225,7 +223,7 @@ export function energyLevelOf(room: RoomObservation): number {
 }
 
 /** 地面掉落能量总额 (≥100 才计入): 采集快于搬运消耗的直接信号 */
-function droppedPileEnergy(room: RoomObservation): number {
+export function droppedPileEnergy(room: RoomObservation): number {
 	let total = 0;
 	for (const pile of room.piles) {
 		if (pile.amount >= 100) {

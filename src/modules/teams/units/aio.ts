@@ -1,6 +1,13 @@
 
 import { BehaviorTree, BtStatus, condition, fail, leaf, selector, sequence } from '@/core/ai/behaviorTree';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
+import {
+    combatHeal,
+    combatMoveByPath,
+    combatMoveTo,
+    combatRangedAttack,
+    combatRangedMassAttack,
+} from '@/modules/combat';
 
 type AioContext = {
     creep: Creep;
@@ -47,12 +54,12 @@ const findBoostedThreat = (creep: Creep) =>
 const rangedAttackNearby = (creep: Creep) => {
     const nearHostiles = findNonWhitelistHostilesInRange(creep, 1);
     if (nearHostiles.length) {
-        creep.rangedMassAttack();
+        combatRangedMassAttack(creep);
         return;
     }
     const farHostiles = findNonWhitelistHostilesInRange(creep, 3);
     if (farHostiles.length) {
-        creep.rangedAttack(farHostiles.reduce((a, b) => a.hits < b.hits ? a : b));
+        combatRangedAttack(creep, farHostiles.reduce((a, b) => a.hits < b.hits ? a : b));
     }
 };
 
@@ -136,32 +143,32 @@ const executeAttack = (creep: Creep, target: AttackTarget) => {
 };
 
 const executeStructureAttack = (creep: Creep, target: Structure) => {
-    creep.moveTo(target);
+    combatMoveTo(creep, target);
 
     if (creep.pos.isNearTo(target) && (target.pos.coverRampart() || 'owner' in target)) {
         const altTarget = findNonWhitelistHostilesInRange(creep, 3, (e) => !e.pos.coverRampart() && !creep.pos.isNearTo(e))[0];
-        if (altTarget) creep.rangedAttack(altTarget);
-        else creep.rangedMassAttack();
+        if (altTarget) combatRangedAttack(creep, altTarget);
+        else combatRangedMassAttack(creep);
         return;
     }
 
-    if (creep.rangedAttack(target) === ERR_NOT_IN_RANGE) {
+    if (combatRangedAttack(creep, target) === ERR_NOT_IN_RANGE) {
         tryAttackNearbyStructure(creep);
     }
 
     const altTarget = findNonWhitelistHostilesInRange(creep, 3, (e) => !e.pos.coverRampart() && !creep.pos.isNearTo(e))[0];
-    if (altTarget) creep.rangedAttack(altTarget);
+    if (altTarget) combatRangedAttack(creep, altTarget);
 };
 
 const executeCreepAttack = (creep: Creep, target: Creep | PowerCreep) => {
-    creep.moveTo(target);
+    combatMoveTo(creep, target);
 
     if (creep.pos.isNearTo(target)) {
-        creep.rangedMassAttack();
+        combatRangedMassAttack(creep);
         return;
     }
 
-    const result = creep.rangedAttack(target);
+    const result = combatRangedAttack(creep, target);
     if (result === ERR_NOT_IN_RANGE && creep.room.controller?.owner && !creep.room.my) {
         tryAttackNearbyStructure(creep);
     }
@@ -169,25 +176,25 @@ const executeCreepAttack = (creep: Creep, target: Creep | PowerCreep) => {
 
 const executeDefaultAttack = (creep: Creep, target: AttackTarget) => {
     if (creep.pos.isNearTo(target)) {
-        creep.rangedMassAttack();
+        combatRangedMassAttack(creep);
     } else if (creep.pos.inRangeTo(target, 3)) {
-        creep.rangedAttack(target as any);
+        combatRangedAttack(creep, target as any);
     }
     if (!creep.pos.inRangeTo(target, 1)) {
-        creep.moveTo(target);
+        combatMoveTo(creep, target);
     }
 };
 
 const tryAttackNearbyStructure = (creep: Creep) => {
     if (!creep.room.controller?.owner || creep.room.my) return;
     const structure = creep.pos.findClosestByRange(getRoomNonRoadStructures(creep));
-    if (structure) creep.rangedAttack(structure);
+    if (structure) combatRangedAttack(creep, structure);
 };
 
 const tryRetreat = (creep: Creep) => {
     if (creep.hits + 1300 >= creep.hitsMax) return;
     const exit = creep.pos.findClosestByPath(FIND_EXIT);
-    if (exit) creep.moveTo(exit);
+    if (exit) combatMoveTo(creep, exit);
 };
 
 const autoAttack = (creep: Creep, baseName: string) => {
@@ -201,26 +208,26 @@ const autoAttack = (creep: Creep, baseName: string) => {
 const runBoostedThreatRetreat = (creep: Creep, threat: Creep) => {
     if (creep.room.level > 0 && !creep.room.my && creep.room.tower) {
         const exit = creep.pos.findClosestByPath(FIND_EXIT);
-        if (exit) creep.moveTo(exit);
-        creep.rangedMassAttack();
+        if (exit) combatMoveTo(creep, exit);
+        combatRangedMassAttack(creep);
         return;
     }
 
     if (creep.pos.inRangeTo(threat, 2)) {
         const range = creep.pos.getRangeTo(threat) + 1;
         const path = PathFinder.search(creep.pos, { pos: threat.pos, range }, { flee: true }).path;
-        creep.moveByPath(path);
-        creep.rangedAttack(threat);
+        combatMoveByPath(creep, path);
+        combatRangedAttack(creep, threat);
 
         const exit = creep.pos.findClosestByPath(FIND_EXIT);
         if (exit && creep.pos.isNear(exit) && creep.pos.isNearTo(threat)) {
-            creep.moveTo(exit);
+            combatMoveTo(creep, exit);
         }
         return;
     }
 
     if (creep.pos.inRangeTo(threat, 3)) {
-        creep.rangedAttack(threat);
+        combatRangedAttack(creep, threat);
     }
 };
 
@@ -240,13 +247,13 @@ const runAdvanceToTargetRoom = (ctx: AioContext) => {
     rangedAttackNearby(creep);
 
     if (heavilyDamaged && !isInnerRoomPosition(creep.pos) && !hasEnemyTower(creep)) {
-        creep.moveTo(new RoomPosition(25, 25, creep.room.name));
+        combatMoveTo(creep, new RoomPosition(25, 25, creep.room.name));
         return;
     }
 
     const assaultFlagPos = getAioFlag(baseName)?.pos;
     if (assaultFlagPos) {
-        creep.moveTo(assaultFlagPos);
+        combatMoveTo(creep, assaultFlagPos);
     } else {
         creep.moveToRoom(creep.memory.targetRoom!);
     }
@@ -257,14 +264,14 @@ const shouldRecoverInTargetRoom = (creep: Creep) =>
 
 const runRecoverInTargetRoom = (creep: Creep) => {
     rangedAttackNearby(creep);
-    creep.moveTo(new RoomPosition(25, 25, creep.room.name));
+    combatMoveTo(creep, new RoomPosition(25, 25, creep.room.name));
 };
 
 const createAioBehaviorTree = () =>
     new BehaviorTree<AioContext>(
         sequence(
             leaf((ctx) => {
-                ctx.creep.heal(ctx.creep);
+                combatHeal(ctx.creep, ctx.creep);
                 return BtStatus.Success;
             }),
             selector(
@@ -283,7 +290,7 @@ const createAioBehaviorTree = () =>
                         if (ctx.creep.room.name !== flag.pos.roomName) {
                             ctx.creep.memory.targetRoom = flag.pos.roomName;
                         }
-                        ctx.creep.moveTo(flag.pos, { visualizePathStyle: { stroke: '#0000ff' } });
+                        combatMoveTo(ctx.creep, flag.pos, { visualizePathStyle: { stroke: '#0000ff' } });
                         return BtStatus.Running;
                     }),
                     fail()

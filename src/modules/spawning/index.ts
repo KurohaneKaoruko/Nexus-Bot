@@ -30,9 +30,8 @@ export { default as MissionSubmit } from "@/modules/spawning/mission/pool/Missio
 export { default as ManageMission, ManageTaskGetter } from "@/modules/spawning/mission/updaters/manageMission";
 export { default as WorkMission, WorkTaskGetter } from "@/modules/spawning/mission/updaters/workMission";
 export { default as MineMission } from "@/modules/spawning/mission/updaters/mineMission";
-export { default as SpawnMission, SpawnTaskGetter } from "@/modules/spawning/mission/updaters/spawnMission";
+export { default as SpawnMission } from "@/modules/spawning/mission/updaters/spawnMission";
 export { default as BoostMission } from "@/modules/spawning/mission/updaters/boostMission";
 export { default as TransportMission, TransportTaskGetter } from "@/modules/spawning/mission/updaters/transportMission";
-export { default as SpawnControl } from "@/modules/spawning/legacy/spawnControl";
 export { directSpawn } from "@/modules/spawning/spawnDirector";
 export { buildBody } from "@/modules/spawning/bodyFactory";

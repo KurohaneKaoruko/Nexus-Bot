@@ -1,13 +1,26 @@
 
-import { UNITS } from '@/constant/CreepConstant';
-import { UnitData, type UnitDefinition } from "@/constant/CreepConstant";
+import { UNITS, UnitData, type UnitDefinition, type UnitId } from '@/constant/CreepConstant';
 import { log } from '@/utils/log';
 import { AIO_CONFIG, LOOT_CONFIG, type BoostMap } from '@/modules/teams';
+import { directSpawn } from '@/modules/spawning/spawnDirector';
 import { getSpawnRoomOrRemove, parseFlagNumber, tickThrottle } from '@/modules/prototype/Flag/utils';
 import { getFlagSpawnLoad } from '@/modules/prototype/Flag/function/spawnLoad';
 
 /** 战争族旗前缀（新增战争旗在此加一行即可） */
 const WAR_FLAG_PREFIXES = ['AIO/', 'CLEAN/', 'ACLAIM/', 'DIS/', 'LOOT/'] as const;
+
+/** pairs 体型 ([[WORK,5],[MOVE,3]]) → flat 数组; directSpawn 的 body 形参口径 */
+const flattenBody = (pairs: unknown): BodyPartConstant[] | undefined => {
+    if (!Array.isArray(pairs) || pairs.length === 0) return undefined;
+    const out: BodyPartConstant[] = [];
+    for (const pair of pairs) {
+        if (!Array.isArray(pair)) return undefined;
+        const [part, n] = pair as [BodyPartConstant, number];
+        if (!part || !n) return undefined;
+        for (let i = 0; i < n; i++) out.push(part);
+    }
+    return out;
+};
 
 export default class WarSpawnFunction extends Flag {
     override handleWarSpawnFlag(): boolean {
@@ -64,13 +77,19 @@ export default class WarSpawnFunction extends Flag {
         }
 
         const boostOwnerId = `${flagName}:${Game.time}`
-        const spawnRet = room.SpawnMissionAdd('', bodys, -1, UNITS.aio, {
-            homeRoom: room.name,
-            targetRoom: targetRoom,
-            boostmap: boostable ? boostmap : {},
-            boostOwnerId,
-            spawnFlag: flagName,
-        } as any)
+        const flatBody = flattenBody(bodys);
+        const spawnRet = directSpawn(room, {
+            mode: "direct",
+            unit: UNITS.aio,
+            ...(flatBody ? { body: flatBody } : {}),
+            memory: {
+                homeRoom: room.name,
+                targetRoom: targetRoom,
+                boostmap: boostable ? boostmap : {},
+                boostOwnerId,
+                spawnFlag: flagName,
+            } as any,
+        })
         if (spawnRet !== OK) return true
         if (boostable) room.AssignBoostTaskByBody(boostBody, boostmap, boostOwnerId)
 
@@ -100,7 +119,11 @@ export default class WarSpawnFunction extends Flag {
         )
         if (spawnLoad.total >= 1) return true
         // 拆除策略由 creep.memory.dismantleMode 驱动，便于后续扩展与精细控制
-        room.SpawnMissionAdd('', '', -1, 'cleaner', { homeRoom: room.name, targetRoom, dismantleMode: 'clean', spawnFlag: flagName } as any)
+        directSpawn(room, {
+            mode: "direct",
+            unit: 'cleaner' as UnitId,
+            memory: { homeRoom: room.name, targetRoom, dismantleMode: 'clean', spawnFlag: flagName } as any,
+        })
         return true
     }
 
@@ -126,7 +149,12 @@ export default class WarSpawnFunction extends Flag {
         // memory.num 需 JSON 安全（Infinity 序列化为 null），无限用 999 哨兵
         const memNum = Number.isFinite(num) ? num : 999
         for (let i = 0; i < batch; i++) {
-            room.SpawnMissionAdd('', '', memNum, UNITS['attack-claimer'], { homeRoom: room.name, targetRoom, num: memNum, spawnFlag: flagName })
+            const ret = directSpawn(room, {
+                mode: "direct",
+                unit: UNITS['attack-claimer'],
+                memory: { homeRoom: room.name, targetRoom, num: memNum, spawnFlag: flagName } as any,
+            })
+            if (ret !== OK) break
         }
         if (missing > 0) {
             log('CLAIM', `${room.name} 补充了 ${missing} 个 attack-claimer 来攻击 ${targetRoom}`)
@@ -168,14 +196,20 @@ export default class WarSpawnFunction extends Flag {
 
         const boostOwnerId = `${flagName}:${Game.time}`
         // 拆除策略由 creep.memory.dismantleMode 驱动，避免仅靠 unit 绑定策略导致歧义
-        const spawnRet = room.SpawnMissionAdd('', bodys, -1, UNITS.dismantle, {
-            homeRoom: room.name,
-            targetRoom,
-            boostmap: boostable ? boostmap : {},
-            boostOwnerId,
-            dismantleMode: 'route',
-            spawnFlag: flagName,
-        } as any)
+        const flatBody = flattenBody(bodys);
+        const spawnRet = directSpawn(room, {
+            mode: "direct",
+            unit: UNITS.dismantle,
+            ...(flatBody ? { body: flatBody } : {}),
+            memory: {
+                homeRoom: room.name,
+                targetRoom,
+                boostmap: boostable ? boostmap : {},
+                boostOwnerId,
+                dismantleMode: 'route',
+                spawnFlag: flagName,
+            } as any,
+        })
         if (spawnRet !== OK) return true
         if (boostable) room.AssignBoostTaskByBody(bodys, boostmap, boostOwnerId)
 
@@ -221,13 +255,19 @@ export default class WarSpawnFunction extends Flag {
             return true
         }
 
-        const spawnRet = room.SpawnMissionAdd('', bodys, -1, UNITS.logistic, {
-            homeRoom: room.name,
-            sourceRoom,
-            targetRoom,
-            boostmap: config!.boostmap!,
-            spawnFlag: flagName,
-        } as any)
+        const flatBody = flattenBody(bodys);
+        const spawnRet = directSpawn(room, {
+            mode: "direct",
+            unit: UNITS.logistic,
+            ...(flatBody ? { body: flatBody } : {}),
+            memory: {
+                homeRoom: room.name,
+                sourceRoom,
+                targetRoom,
+                boostmap: config!.boostmap!,
+                spawnFlag: flagName,
+            } as any,
+        })
         if (spawnRet !== OK) return true
 
         return true

@@ -299,7 +299,7 @@ export const ExternalMineSpawner = {
     },
 
     // 常规外矿攻击者（单目标房最多 1 个）。
-    attack(sourceRoom: Room, targetRoom: Room): boolean {
+    requestAttackUnit(sourceRoom: Room, targetRoom: Room): boolean {
         const globalActive = this.getActiveRoleNumByTarget(UNITS['out-attack'], targetRoom.name);
         const globalQueued = this.getQueuedSpawnUnitNumByTargetGlobal(UNITS['out-attack'], targetRoom.name);
         const globalSpawning = this.getSpawningRoleNumByTargetGlobal(UNITS['out-attack'], targetRoom.name);

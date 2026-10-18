@@ -1,6 +1,6 @@
 /**
- * Memory.Nexus schema v11 (新增 rooms[].harvestSplit 源饱和实测分解,
- * SquadRecord.slots 标量→异构槽位定义数组)。
+ * Memory.Nexus schema v13 (账本五态分账: 预留 createdAt/饥饿生命体征/
+ * 消耗速率与累计/超龄回收计数, specs/resource-ledger)。
  * 规则: 只持久化 JSON 兼容数据 (ID + 元数据), 不保存游戏 API 对象引用;
  *       所有持久化结构携带 schemaVersion, 由 migrations 逐版本升级;
  *       新增子系统全部有界: 预留过期清理 / 热点条目上限 / 样本窗口固定。
@@ -9,7 +9,7 @@ import { STRATEGY_CONFIG } from "@/config/strategy";
 import type { RoomModeName } from "@/config/roomMode";
 import type { NexusTask, TaskKind } from "./taskSchema";
 
-export const CURRENT_SCHEMA_VERSION = 11;
+export const CURRENT_SCHEMA_VERSION = 13;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
 
@@ -22,6 +22,8 @@ export interface WorksiteRecord {
 	containerSpot?: { x: number; y: number };
 	/** 容器站点创建失败后的冷却截止 tick */
 	siteRetryAt?: number;
+	/** 工地创建意图已提交的 tick (命令边界异步化: 未成站超时后回退冷却) */
+	sitePending?: number;
 }
 
 /** 威胁类别 (docs/nexus-design/09 §9.2: NPC 与玩家敌人不可合并) */
@@ -117,7 +119,22 @@ export interface ReservationRecord {
 	amount: number;
 	/** 目的地结构 ID (配额在途承诺用), 无目的地时缺省 */
 	destId?: string;
+	/** 创建 tick (超龄回收判据); 历史记录缺省时不做超龄判定 */
+	createdAt?: number;
 	expiresAt: number;
+}
+
+/** 按房饥饿生命体征 (specs/resource-ledger「饥饿与瓶颈可观测」):
+ *  每房至多一条当前最严重饥饿, 房间脱离饥饿或失联即清除——有界 */
+export interface RoomHungerVitals {
+	/** 饥饿链路: 孵化线 (spawn 空仓) / 升级线 (cc 低于保障水位) */
+	kind: "spawn" | "cc";
+	/** 本次连续饥饿起始 tick (持续时长 = now - sinceTick) */
+	sinceTick: number;
+	/** 缺口量级 (保障线 - 现存量) */
+	deficit: number;
+	/** 最近一次确认为饥饿的 tick (失联房清理判据) */
+	lastTick: number;
 }
 
 /** 滚动速率: 每 Tick O(1) 累加, 每窗口折叠 EMA, 恒定 O(房间×资源种) */
@@ -134,14 +151,22 @@ export interface RoomRates {
 	produced: RateState;
 	/** 物流交付速率 */
 	delivered: RateState;
+	/** 供给消耗速率 (预留 commit 的实际用量) */
+	consumed: RateState;
 }
 
 export interface LedgerMemory {
 	reservations: Record<string, ReservationRecord>;
 	/** roomName → 速率 */
 	rates: Record<string, RoomRates>;
+	/** roomName → 饥饿生命体征 (每房至多一条当前最严重项, 有界) */
+	hunger: Record<string, RoomHungerVitals>;
+	/** roomName → 累计已消耗 (五态 Consumed 态, 单调标量有界) */
+	consumedTotal: Record<string, number>;
 	/** 累计过期清理数 (排障用) */
 	expiredCount: number;
+	/** 累计超龄强制回收数 (预留泄漏防护, specs/resource-ledger) */
+	overdueCount: number;
 }
 
 /** 拥堵统计 (docs/nexus-design/08 §8.4): 阻塞计数按保留时长清理, 热点条目有上限 */
@@ -161,7 +186,41 @@ export interface SpawnMemory {
 	/** spawn 空闲起算 tick (攒能等待超时兜底, specs/workforce-staffing 顺手修):
 	 *  跨 Tick 持久化——每 Tick 重建会让 capacityWaitTicks 超时永不触发 */
 	idleSince?: Record<string, number>;
+	/** 孵化链路遥测 (任务 6.4): 队列深度/等待时长 EMA/请求方拒绝计数。
+	 *  键集有界——roles 恒为 SpawnUnit 词表, denyReasons 恒为闸门名枚举 */
+	telemetry?: SpawnTelemetry;
 }
+
+/** 孵化链路遥测 (任务 6.4, api/13 §13.4 可审计): 只记计数与 EMA, 不记事件流 */
+export interface SpawnTelemetry {
+	/** 最近聚合 tick (诊断窗口节流写) */
+	tick: number;
+	/** 聚合窗口内的请求池峰值深度 */
+	queueDepthPeak: number;
+	/** 请求在池内等待时长 EMA (tick): 创建→被选中/被顶替 */
+	waitEma: Record<string, number>;
+	/** 请求方被拒计数 (按闸门原因): gate=产出就绪闸, yield=采集让位, pause=survive 暂停 */
+	denyReasons: Record<string, number>;
+}
+
+/**
+ * Actor 所有权跨 Tick 持久索引 (api/16 actor-ownership / 任务 2.2):
+ * 只存 owner 名与租约到期 tick (活跃租约的权威态在 global 运行时层);
+ * global 重置后由此索引恢复所有权事实, 避免重置窗口期冲突面失察。
+ */
+export interface OwnershipIndexEntry {
+	owner: string;
+	/** 租约到期 tick (超过即被 sweep 回收) */
+	expiresAt: number;
+}
+
+export interface OwnershipMemory {
+	/** 本索引 schema 版本 (与 Memory.Nexus.schemaVersion 独立演进) */
+	indexVersion: 1;
+	/** actor 名 → 持久所有权索引 */
+	actors: Record<string, OwnershipIndexEntry>;
+}
+
 
 export type BottleneckKind = "none" | "transport" | "destination" | "surplus";
 
@@ -359,6 +418,8 @@ export interface LayoutRoomRecord {
 	retryAt?: number;
 	/** 最近一次布局生成 tick */
 	updatedAt?: number;
+	/** 冲级期产业让位调制 (任务 6.5): rush 档产业类结构放量顺序压后 (运行时推导, 不落盘语义) */
+	rushMode?: boolean;
 	/** coreDepot 占位容器排空计时 (storage/terminal 真建筑可建时先拆占位再落真身) */
 	coreDepotSwapSince?: Partial<Record<"storage" | "terminal", number>>;
 }
@@ -382,6 +443,7 @@ export interface NexusMemory {
 	spawn: SpawnMemory;
 	layout: LayoutMemory;
 	metrics: NexusMetricsMemory;
+	ownership: OwnershipMemory;
 }
 
 /** 各子系统损坏时的安全空状态 (bootstrap 隔离重置用); 全部为纯 JSON */
@@ -398,6 +460,7 @@ export const SUBSYSTEM_DEFAULTS: {
 	spawn: SpawnMemory;
 	layout: LayoutMemory;
 	metrics: NexusMetricsMemory;
+	ownership: OwnershipMemory;
 } = {
 	global: {
 		posture: "develop",
@@ -412,7 +475,14 @@ export const SUBSYSTEM_DEFAULTS: {
 	rooms: {},
 	tasks: {},
 	units: {},
-	ledger: { reservations: {}, rates: {}, expiredCount: 0 },
+	ledger: {
+		reservations: {},
+		rates: {},
+		expiredCount: 0,
+		overdueCount: 0,
+		consumedTotal: {},
+		hunger: {},
+	},
 	traffic: { blocked: {}, hotspots: {} },
 	defense: {
 		safeMode: { lastAttemptTick: 0, activationCount: 0 },
@@ -446,6 +516,7 @@ export const SUBSYSTEM_DEFAULTS: {
 	spawn: { bootstrapCount: 0, lastBootstrapTick: 0 },
 	layout: { rooms: {} },
 	metrics: { migrationCount: 0 },
+	ownership: { indexVersion: 1, actors: {} },
 };
 
 export const SUBSYSTEM_KEYS = [
@@ -461,6 +532,7 @@ export const SUBSYSTEM_KEYS = [
 	"spawn",
 	"layout",
 	"metrics",
+	"ownership",
 ] as const;
 
 export type SubsystemKey = (typeof SUBSYSTEM_KEYS)[number];

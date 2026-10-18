@@ -1,6 +1,10 @@
 
 import { evaluateSourceWorkTiles } from '@/modules/prototype';
 import { getProfilerReport } from '@/core/cpuProfiler';
+import { invariantSummary } from '@/core/invariantWatch';
+import { moveExecutionRate } from '@/modules/movement/trafficMonitor';
+import { taskStatusCounts } from '@/modules/tasks/board';
+import type { NexusTask } from '@/core/store/taskSchema';
 
 /**
  * 采集/搬运决策诊断命令
@@ -13,6 +17,19 @@ export default {
         /** CPU 观测报告：开启采样 getStatsMemory().profiler = true 后等待 50 tick 再查看 */
         cpu() {
             return getProfilerReport();
+        },
+        /** 不变量监控摘要 (任务 9.4): 五项不变量的违例计数与最近摘要 */
+        invariant() {
+            return invariantSummary();
+        },
+        /** 移动执行率 (任务 5.7): 意图→实际位移的滚动累计口径, 契约基线 ≥97% */
+        moveRate() {
+            return moveExecutionRate() ?? '无样本 (尚无移动意图窗口)';
+        },
+        /** 任务账本 (任务 5.3): 各状态任务计数, 由 TaskIndex 状态桶 O(1) 直读 */
+        tasks() {
+            const nexus = (Memory as unknown as { Nexus?: { tasks?: Record<string, NexusTask> } }).Nexus;
+            return taskStatusCounts(nexus?.tasks ?? {});
         },
         worktile(creepName: string) {
             const creep = Game.creeps[creepName] as any;

@@ -9,6 +9,10 @@ import { SOURCE_EXTENSION_CONFIG } from "@/config/economy";
 import type { TickContext } from "@/core";
 import type { RoomObservation, SourceSummary } from "@/core/world";
 import type { RoomIntelRecord } from "@/core/store/memorySchema";
+import { submitIntent } from "@/runtime/intentQueue";
+
+/** 源旁 ext 工地在途意图 tick (房间 → 提交 tick; 超时未成站视为失败) */
+const pendingByRoom = new Map<string, number>();
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
@@ -108,6 +112,11 @@ export function runSourceExtensionPlacement(
 	if (retryAt !== undefined && ctx.tick < retryAt) {
 		return;
 	}
+	const pending = pendingByRoom.get(room.roomName);
+	if (pending !== undefined && ctx.tick - pending < SOURCE_EXTENSION_CONFIG.siteRetryInterval) {
+		// 在途意图未超时: 等待 broker 执行落地, 不重复提交
+		return;
+	}
 	const extCap = CONTROLLER_STRUCTURES[STRUCTURE_EXTENSION][room.rcl] ?? 0;
 	const built = room.energyStructures.filter((s) => s.structureType === "extension").length;
 	const sited = room.sites.filter((s) => s.structureType === "extension").length;
@@ -125,17 +134,19 @@ export function runSourceExtensionPlacement(
 		}
 		const standableTiles = [{ x: worksite.x, y: worksite.y }];
 		for (const spot of pickSourceExtensionSpots(roomObj, source, standableTiles)) {
-			const code = roomObj.createConstructionSite(spot.x, spot.y, STRUCTURE_EXTENSION);
-			if (code === OK) {
-				ctx.logger.info(
-					`src-ext:${room.roomName}:${ctx.tick} 源旁 ext 站点落位 (${spot.x},${spot.y})`,
-				);
-				return;
-			}
-			retryAtByRoom.set(room.roomName, ctx.tick + SOURCE_EXTENSION_CONFIG.siteRetryInterval);
-			ctx.logger.warn(
-				`src-ext:${code}`,
-				`源旁 ext 站点创建失败 code=${code}, 冷却 ${SOURCE_EXTENSION_CONFIG.siteRetryInterval}t`,
+			// 经命令边界提交工地创建 (api/17); 原生调用权收编进 broker
+			submitIntent(ctx.tick, {
+				actorName: room.roomName,
+				kind: "createSite",
+				pipeline: "construction",
+				priority: 40,
+				targetPos: { x: spot.x, y: spot.y, roomName: room.roomName },
+				payload: { structureType: STRUCTURE_EXTENSION },
+				dedupeKey: `src-ext:${room.roomName}:${spot.x}:${spot.y}`,
+			});
+			pendingByRoom.set(room.roomName, ctx.tick);
+			ctx.logger.info(
+				`src-ext:${room.roomName}:${ctx.tick} 源旁 ext 站点意图提交 (${spot.x},${spot.y})`,
 			);
 			return;
 		}

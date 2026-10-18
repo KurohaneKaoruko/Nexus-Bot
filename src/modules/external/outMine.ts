@@ -1,18 +1,11 @@
 
 import { qos } from '@/core/qos';
-import { ExternalMine, ExternalMineAnalysis, type ExternalMineTiming } from '@/modules/external/externalMine';
+import { ExternalMine, type ExternalMineTiming } from '@/modules/external/externalMine';
 import { getRoomModeProfile } from '@/modules/strategy';
-import { registerRemoteIncomeProvider } from '@/modules/economy';
-
-// 外矿真实收入富口径注册：升级定编（estimateRoomEnergyIncome）由此读到
-// 「净收入 × min(采集比, 搬运比)」的瓶颈口径——采集断档/运力不足时，
-// 升级吞吐目标随真实到账收缩，不再孵出喂不饱的升级工。
-// 本文件只在游戏运行时加载，单测的最小桩环境不 import 这里，
-// roomWorkforce 保持零游戏依赖（未注册时回退人数估算口径）。
-// 收入提供方注册：由组合根显式调用（registerOutMineIncomeProvider），
-// 本文件不再在 import 期注册。externalMine 主模块随本文件加载。
+// 外矿真实收入富口径注册（休眠 B 线）: roomWorkforce 退役后自持存根——
+// 唤醒 (外矿任务化批次) 时接快照口径的收入估算。
 export const registerOutMineIncomeProvider = (): void => {
-    registerRemoteIncomeProvider((room) => ExternalMineAnalysis.getRoomRemoteIncome(room));
+    /* roomWorkforce 收入注册表已随 5.6 退役, 唤醒时重接 */
 };
 
 /** 外矿采集模块（休眠态：外矿活链是 economy/remoteMining 任务板的 planRemoteHarvest） */

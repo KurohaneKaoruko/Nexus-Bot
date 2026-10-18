@@ -26,6 +26,9 @@ export const LEDGER_CONFIG = {
 	rateSmoothing: 0.3,
 	/** 预留默认有效期 (tick), 超期由对账清理 */
 	reservationTtl: 150,
+	/** 预留最大留存时长 (tick): 超龄强制回收 (泄漏防护)。
+	 *  须大于任务最大 deadline (700), 只兜异常滞留, 不碰健康在途承诺 */
+	maxReservationAge: 800,
 } as const;
 
 /** 固定采集工作位与 Source 容器 (docs/nexus-design/06 §6.3 / docs/nexus-design/17 / bugs/P0-3) */
@@ -85,8 +88,10 @@ export const REPLACEMENT_CONFIG = {
 
 /** 生产缺口 (docs/nexus-design/07 §7.5 / bugs/P1-5) */
 export const SPAWN_CONFIG = {
-	/** 达到该优先级的请求按现有能量立即生产 (bootstrap/应急, 不等攒能) */
-	immediatePriority: 70,
+	/** 达到该排队等级的请求按现有能量立即生产 (bootstrap/应急, 不等攒能);
+	 *  等级语义小者优先——保级 L2/供能 L1/搬运 L3/升级 L4 均可立即生产,
+	 *  采集 L5 走攒能 (capacityWaitRoles, 全灭自举另走 staffed==0 通道) */
+	immediatePriority: 4,
 	/** 攒能定档实验位 (2026-10-13 校准记录): harvester/carrier 攒能定档在
 	 *  强耦合经济里两轮全负 (6588/3919 vs 基线口径 6019)——采集面归零后等待
 	 *  断粮死锁, 自举通道补丁又把升级挤垮。维持空表 = 全部按优先级立即定档,
@@ -135,25 +140,31 @@ export const SPAWN_CONFIG = {
 	harvesterMinWorkNoIncome: 2,
 	/** legacy 采集让位闸门 (specs harvest-supply-convergence): true 时 legacy 服从
 	 *  workforce 单一来源定编, 编制已满足即不发单, 仅未满足时兜底发单防收入断档。
-	 *  默认 **关闭** —— sim remote-mine 实证: 开启后编制收敛到「每源一驻点」会减
-	 *  1 只编制 (13→12), 且外矿排队量被低估, 触及防回退断言。按 docs/bugs 校准史
-	 *  (单杠杆必被反噬), 让位收敛需成套校准 + A/B 留档, 另立变更推进; 此处仅留
-	 *  开关供 A/B 对照, 不作为默认供给口径。 */
+	 *  当前 **开启** —— 446d687 引入即 true (提交信息误书「默认关闭」), b8ca2d3
+	 *  让位收口后此为生产口径 (legacy 消费端已退役, 让位闸约束生产端挂单),
+	 *  六场景基线均在此值下校准; 关闭即恢复 legacy 独立供给, 仅作紧急回退通道。 */
 	legacyHarvestStandby: true,
 	/** 常驻编制岗位: 缺口判定与任务 available 状态解耦 (任务被租住/冷却期仍请求替补);
 	 *  carrier 入列——搬运任务随货源波动, 任务驱动的间歇请求会让编制在关键窗口空转 */
 	standingRoles: ["harvester", "upgrader", "carrier", "manager", "transporter", "miner", "scout"] as readonly string[],
-	/** 常驻编制缺口的请求优先级 (低于任务驱动, 只兜底) */
-	standingPriority: 55,
-	/** 按角色的常驻优先级覆盖: carrier 物流是骨干——涓流孵化队列里 55 会被
-	 *  任务驱动请求 (70) 永久压队, 没有搬运一切不流 (bugs/P1-14 根因③)。
-	 *  88: 升级任务优先级 85 也压不住搬运——sprint 实证 upgrade 85 恒压 72,
-	 *  carrier 稳态只维持 4 只 (target 8), 双源 20/t 采集落地腐烂 48%
-	 *  (docs/bugs (二十)); scout 是外矿链路第一环 (1 MOVE 一次性点亮件,
-	 *  50 能量), 必须压过孵化 churn 满负荷期的 fill_spawn (95)——urgent
-	 *  选择取队头, 95 之下 scout 永远轮不到, 外矿视野丢失即收入振荡死锁
-	 *  (bugs (十二) 实证) */
-	standingPriorityByRole: { carrier: 88, scout: 96 } as Readonly<Record<string, number>>,
+	/** 常驻编制缺口的请求排队等级 (race L9; 低于任务驱动, 只兜底) */
+	standingPriority: 9,
+	/** 按角色的常驻排队等级覆盖 (小者优先, race 语义 + 本矿供能约束):
+	 *  carrier L3 / harvester L4——本矿矿工 drop 采矿, 搬运是 spawn 的唯一
+	 *  能量入口, 必须先于采集补员 (旧体系 carrier 88 > harvester 55 的同语义);
+	 *  两者由采集让位闸 + carrier 上限闸实现 H/C 交替起步; upgrader L6 常态
+	 *  升级档 (main 档无 rush 提级时靠此兜底), scout L11 一次性小件。 */
+	standingPriorityByRole: { carrier: 3, upgrader: 4, harvester: 9, scout: 11 } as Readonly<Record<string, number>>,
+	/** 冲级档缺编 upgrader 的孵化等级下限 (bugs/P1-19): rush 期缺编 upgrader
+	 *  与搬运同进 urgent 段 (等级 3), 攒能与立即通道交错建立火力 */
+	rushUpgradeSpawnPriority: 3,
+	/** 孵化链路遥测 (任务 6.4): 聚合窗口与 EMA 平滑 */
+	spawnTelemetry: {
+		/** 聚合窗口 (tick): 遥测写 Memory 按窗口节流 */
+		aggregateTicks: 100,
+		/** 等待时长 EMA 平滑尺度 (tick) */
+		waitEmaTicks: 200,
+	},
 	/** bootstrap 空转治理 (bugs/P1-10): 失明态连续孵化超限后降频, 防能量被 universal churn 耗尽 */
 	bootstrap: {
 		/** 连续 bootstrap 超过该次数仍未恢复可见房 → 进入节流 */
@@ -174,8 +185,8 @@ export const SPAWN_CONFIG = {
 export const DOWNGRADE_CONFIG = {
 	/** 紧急阈值: 降级剩余 tick 低于该值判定紧急 (初值取 RCL2 计时 10000t 的 1/4, 覆盖替补生产+路程; sim 校准点) */
 	emergencyTicks: 2500,
-	/** 紧急态 upgrade 任务优先级: 高于抢占线 90 (含 retreat), 低于 defend 92 / fill_spawn 95 */
-	upgradePriority: 91,
+	/** 紧急态 upgrade 任务等级: 保级档, 压过常规升级 L4 与搬运 L3 */
+	upgradePriority: 2,
 } as const;
 
 /** 控制器缓冲 cc (bugs/P1-14 根因① / specs/controller-upgrade-buffer): 升级工就位直供的货源容器 */
@@ -192,12 +203,12 @@ export const CONTROLLER_BUFFER_CONFIG = {
 	/** 保障水位 (占容量比例, 含诊断偏移): 低于该线进入补货配额 */
 	floorRatio: 0.6,
 	/** 配额优先级: 常规档 (specs/controller-supply-line 序: 孵化线 > 受威胁塔 > cc > 常态塔) */
-	priorityNormal: 4.2,
+	priorityNormal: 3,
 	/** 配额优先级: 冲级档 (升过常态塔, 仍低于受威胁塔与孵化线) */
-	priorityRush: 4.4,
+	priorityRush: 2.5,
 	/** 专线 carve-out: 运力吃紧时 cc 货运任务提到该优先级 (压过孵化线任务),
 	 *  兑现「专线只数优先满足」——近距孵化/常态请求不得吸干升级供能份额 */
-	dedicatedLinePriority: 96,
+	dedicatedLinePriority: 0,
 	/**
 	 * 专线收紧总闸 (2026-10-13 校准负收益留档): 50k 实测 −3835 升级量——
 	 * 「空闲搬运力」在任务板架构下是瞬时口径 (fill_spawn 租约占满时恒 0),
@@ -208,8 +219,9 @@ export const CONTROLLER_BUFFER_CONFIG = {
 	supplyLineGateEnabled: false,
 	/** 站点创建失败冷却 (tick), 与 worksite 同口径 */
 	siteRetryInterval: 300,
-	/** cc 工地建造任务的优先级加成: 升级直供链路的地基, 与扩容同档压过路网 */
-	buildPriorityBonus: 25,
+	/** cc 工地建造任务的等级提前量: 升级直供链路的地基——恒压过扩容与路网
+	 *  (cc 不成升级体长腿取能, sim 实证 5k tick 零进度全在修 ext) */
+	buildPriorityBonus: -4,
 } as const;
 
 /** 搬运编制钳制: 吞吐目标由 workforce 运力公式现算 (specs/workforce-staffing),
@@ -275,8 +287,8 @@ export const COURIER_CONFIG = {
 	controllerRange: 4,
 	/** 空载断供的放弃等待 (tick) */
 	idleGiveUpTicks: 60,
-	/** 孵化请求优先级 (低于常驻编制兜底 55 与替补 60, 绝不挤占基础孵化) */
-	priority: 40,
+	/** 孵化请求排队等级 (L11 一次性小件档, 永不挤占基础孵化/攒能) */
+	priority: 11,
 	/** 特化子模式判据: 仅 RCL ≤ maxRcl 且 spawn 距控制器 ≤ spawnRange 且房内无 link 时激活 */
 	maxRcl: 3,
 	spawnRange: 3,
@@ -290,6 +302,14 @@ export const COURIER_CONFIG = {
 
 /** 房间劳动力吞吐定编 (specs/workforce-staffing): WORK/CARRY 能力口径取代固定只数 */
 export const WORKFORCE_CONFIG = {
+	/** 采集定编折算 (RosmarinBot 同源口径): 源速 3000e/300t=10e/t, 满速体 = 5W;
+	 *  低容量期单只 W 不足时按 ceil(容错W/单只W) 多只铺满, 容量升档自动回落单座 */
+	harvest: {
+		/** 满速单只 WORK 数 (= 源再生速率 10e/t ÷ HARVEST_POWER 2) */
+		fullSpeedWork: 5,
+		/** 容错 WORK 数 (满速 5W + 1W 换班/移动损耗容错) */
+		toleranceWork: 6,
+	},
 	/** 源饱和口径实测分解 (specs harvest-supply-convergence「源饱和口径实测分解」):
 	 *  按源 EMA 记录采集工时间去向 (在源/往返/等待), 作为定编与体型决策的证据口径。
 	 *  存储定长 (每源三个比例), 不随 tick 增长。 */
@@ -421,6 +441,26 @@ export const RESERVE_CONFIG = {
 	refreshTicks: 2000,
 } as const;
 
+/** 外矿收入统一折算 (资源账本 7.3): 定编与孵化门同源引用的唯一口径 */
+export const REMOTE_INCOME_CONFIG = {
+	/** 未预订源折算系数: 容量减半 (1500/3000) 计收入, 防按虚高收入超编 */
+	unreservedFactor: 0.5,
+} as const;
+
+/** 远程搬运链 (bugs/race-strategy-port W1-2: 自查式改独立 carrier 链):
+ *  远程矿工驻源满载卸源旁容器, 本矿 carrier 跨房 haul 回家——
+ *  5W 矿工走长途是运力浪费 (往返 2×路程 tick 全程 0 采集)。 */
+export const REMOTE_HAUL_CONFIG = {
+	/** 源旁容器搜索半径 (切比雪夫): 容器与源的距离上限 */
+	containerRange: 2,
+	/** 容器维修线: 耐久低于 hitsMax × 该值即修 (不修则 decay 拆 haul 链取料点) */
+	repairRatio: 0.5,
+	/** haul 任务发起阈值: 容器存量占容量比例达到即产任务 (拉空触发, 防空跑) */
+	haulTriggerRatio: 0.3,
+	/** haul 任务等级: 与本矿 haul 同档 L4 (收入实现线, 远程采集同源) */
+	haulPriority: 4,
+} as const;
+
 /** 升级体体型参数 (specs/workforce-staffing「升级定编 WORK 口径目标」):
  * 升级火力对齐采集收入, 体型按能量容量取**装得下的最大 WORK**。
  * 升级体常驻控制器工位就近取能, 移动占比极低, 故 MOVE 配给远低于移动型角色,
@@ -459,10 +499,22 @@ export const BODY_TERRAIN_CONFIG = {
 
 /** 建造任务的按结构加成 (docs/nexus-design/17 §17.9 建设协同: 扩容与路网优先) */
 export const BUILD_PRIORITY_BONUS: Readonly<Record<string, number>> = {
-	/** extension: 容量增长复利——750 能量换 550 容量与更大体型, 冲级窗口最高回报, 压过路网 */
-	extension: 40,
-	/** road: 平地全速移动, 早期收益低于扩容; 沼泽房由路网 RCL 门槛 (roadMinRcl) 之后的阶段承接 */
-	road: 25,
+	/** extension: 容量增长复利——750 能量换 550 容量与更大体型, 冲级窗口最高回报, 提前 3 档压过路网 */
+	extension: -3,
+	/** road: 平地全速移动, 早期收益低于扩容/直供链——殿后 (正数=推后), 沼泽房由
+	 *  路网 RCL 门槛 (roadMinRcl) 之后的阶段承接; 抢先修路会把 worker 从 cc/ext
+	 *  引走 (sim 实证 cc 工地 5k tick 零进度, worker 全在修路) */
+	road: 1,
+} as const;
+
+/** 建造近完提权 (bugs/P2-20): 工地进度占比 ≥ 阈值时加分——收尾一个 ext 立即
+ *  解锁 cap+50 (更大体型/更强火力), 摊开施工把「5 个各 20%」拖成「首个建成
+ *  无限推迟」(sim 实锤 5 ext 摊开 24k tick 才收首个, cap 300 锁 W1 体型整程)。 */
+export const BUILD_COMPLETION_CONFIG = {
+	/** 进度占比阈值 (0..1): 达到才提权 */
+	progressRatio: 0.6,
+	/** 提级幅度 (负数=提前): 压过其他在建 ext/road, 不越升级常规档 */
+	bonus: -2,
 } as const;
 
 /** 低频经济模型 (docs/nexus-design/06 §6.7/§6.8) */

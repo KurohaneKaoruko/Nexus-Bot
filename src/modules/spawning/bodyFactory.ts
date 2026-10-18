@@ -80,6 +80,10 @@ const ECONOMY_ROLES: ReadonlySet<string> = new Set([
 	"transporter",
 	"miner",
 	"rush-courier",
+	// scout 必须在集合内 (bugs/P1-18): standingPriorityByRole.scout=96 的覆盖
+	// 依赖 standing 循环的 isSpawnUnit 门——缺席使 scout 只能从任务路径拿
+	// priority=55, 孵化槽被 70+ 请求长期占据, 外矿视野 25k+ tick 点不亮
+	"scout",
 ]);
 
 export function isEconomyRole(unit: string): unit is EconomyRole {

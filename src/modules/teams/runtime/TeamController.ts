@@ -6,6 +6,7 @@ import { getTeamData } from "@/core/store/accessor";
 import { getTeamCreeps } from "@/utils/creepTickIndex";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
 import { getBoostCache } from "@/modules/prototype";
+import { combatMove, combatMoveTo, combatRemoveFlag, combatSuicide, holdActor, releaseTeamActors } from "@/modules/combat";
 
 /**
  * Team 执行调度器（运行时）。
@@ -45,6 +46,7 @@ const TeamController = {
             // getTeamCreeps() 已筛选 team 角色，这里保留兜底判断避免脏内存导致异常
             const unit = creep.memory.unit || '';
             if (!unit.startsWith('team')) continue;
+            holdActor(creep.name);
 
             // 关闭 notify（只设置一次）
             if (!creep.memory.notified) {
@@ -79,7 +81,7 @@ const TeamController = {
                 creep.memory['rejoin'] = true;
             }
             const teamID = creep.memory['teamID'];
-            if (!getTeamData(teamID)) creep.suicide();
+            if (!getTeamData(teamID)) combatSuicide(creep);
         }
     },
 
@@ -116,11 +118,13 @@ const TeamController = {
                 // 检查小队是否超时未集结
                 // 1. 长期超时 (50000 tick)
                 // 2. 空队超时 (5000 tick): 如果 creep 死光了还没组建好，说明失败
-                if (Game.time - teamData['time'] > 50000 || 
+                if (Game.time - teamData['time'] > 50000 ||
                    (teamData.creeps.length === 0 && Game.time - teamData['time'] > 5000)) {
+                    // 解散交接: 先归还成员控制权再清队伍数据, 无真空 (控制权立即可被再获取)
+                    releaseTeamActors(teamData.creeps);
                     delete teamRoot[teamID];
                     console.log(`${teamID}小队因组建超时或失败已解散.`);
-                    Game.flags[`Team-${teamID}`]?.remove();
+                    combatRemoveFlag(`Team-${teamID}`);
                     continue;
                 }
                 // 如果成员未齐: 有指挥旗走旗位集结；无旗（目标房无视野建不出）
@@ -136,7 +140,7 @@ const TeamController = {
                                 !creep.pos.isNearEdge(4) &&
                                 !creep.pos.inRangeTo(teamFlag, 3)
                             ) {
-                                creep.moveTo(teamFlag, { range: 3 });
+                                combatMoveTo(creep, teamFlag, { range: 3 });
                             }
                         });
                     } else {
@@ -145,7 +149,7 @@ const TeamController = {
                         for (const creep of teamData.creeps.map(Game.getObjectById).filter(Boolean) as Creep[]) {
                             if (creep.room.name === teamData.targetRoom) continue;
                             const dir = TeamUtils.routeExitDir(creep.room.name, teamData.targetRoom!);
-                            if (dir) creep.move(dir);
+                            if (dir) combatMove(creep, dir);
                         }
                     }
                     continue;
@@ -166,9 +170,11 @@ const TeamController = {
 
             // 检查小队是否全部死亡
             if (!team.creeps || team.creeps.length === 0) {
+                // 解散交接: 先归还成员控制权 (空队为无操作) 再清队伍数据
+                releaseTeamActors(teamData.creeps);
                 delete teamRoot[teamID];
                 console.log(`${teamID}小队因成员全部死亡已解散.`);
-                Game.flags[`Team-${teamID}`]?.remove();
+                combatRemoveFlag(`Team-${teamID}`);
                 continue;
             }
 

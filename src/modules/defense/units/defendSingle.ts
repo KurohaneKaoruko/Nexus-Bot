@@ -1,6 +1,7 @@
 
 import { isDefenseRampartLockActive, isDefenseRampartValid, isPosOccupiedByOtherCreep, pickDefenseAnchorRampart, scoreRampart, shouldSwitchDefenseRampart } from '@/utils/defenseUtils';
 import { getBoostCache } from '@/modules/prototype';
+import { combatAttack, combatMoveTo, combatRangedAttack } from '@/modules/combat';
 
 const DEFENSE_RAMPART_LOCK_TTL = 25;
 const DEFEND_ATTACK_SWITCH_THRESHOLD = 2;
@@ -98,7 +99,7 @@ const runDefendAttack = (creep: Creep) => {
 
     const targetRampart = selectDefenseRampart(creep, hostileCreeps, 'melee', DEFEND_ATTACK_SWITCH_THRESHOLD);
     if (targetRampart && !creep.pos.isEqualTo(targetRampart.pos)) {
-        creep.moveTo(targetRampart.pos, {
+        combatMoveTo(creep, targetRampart.pos, {
             visualizePathStyle: { stroke: '#ff0000' },
             range: 0,
             costCallback: creep.room.getDefenseCreepCostCallback(creep.name)
@@ -114,7 +115,7 @@ const runDefendAttack = (creep: Creep) => {
     if (!target) return;
 
     if (creep.pos.isNearTo(target)) {
-        const result = creep.attack(target);
+        const result = combatAttack(creep, target);
         if (result === OK) creep.room.CallTowerAttack(target);
         return;
     }
@@ -123,7 +124,7 @@ const runDefendAttack = (creep: Creep) => {
     const hasRamparts = Array.isArray(creep.room[STRUCTURE_RAMPART]) && creep.room[STRUCTURE_RAMPART].length > 0;
     if (state === 'breached' || !hasRamparts) {
         clearDefenseRampartLock(creep);
-        creep.moveTo(target, {
+        combatMoveTo(creep, target, {
             visualizePathStyle: { stroke: '#ff0000' },
             range: 1,
             costCallback: creep.room.getDefenseCreepCostCallback(creep.name)
@@ -141,7 +142,7 @@ const runDefendRanged = (creep: Creep) => {
 
     const targetRampart = selectDefenseRampart(creep, hostileCreeps, 'ranged', DEFEND_RANGED_SWITCH_THRESHOLD);
     if (targetRampart && !creep.pos.isEqualTo(targetRampart.pos)) {
-        creep.moveTo(targetRampart.pos, {
+        combatMoveTo(creep, targetRampart.pos, {
             visualizePathStyle: { stroke: '#ff0000' },
             range: 0,
             costCallback: creep.room.getDefenseCreepCostCallback(creep.name)
@@ -162,7 +163,7 @@ const runDefendRanged = (creep: Creep) => {
         const hasRamparts = Array.isArray(creep.room[STRUCTURE_RAMPART]) && creep.room[STRUCTURE_RAMPART].length > 0;
         if (state === 'breached' || !hasRamparts) {
             clearDefenseRampartLock(creep);
-            creep.moveTo(target, {
+            combatMoveTo(creep, target, {
                 visualizePathStyle: { stroke: '#ff0000' },
                 range: 1,
                 costCallback: creep.room.getDefenseCreepCostCallback(creep.name)
@@ -180,7 +181,7 @@ const runDefendRanged = (creep: Creep) => {
         ) {
             if (creep.fleeFromHostiles(4)) return;
         }
-        const result = creep.rangedAttack(target);
+        const result = combatRangedAttack(creep, target);
         if (result === OK) creep.room.CallTowerAttack(target);
     }
 };

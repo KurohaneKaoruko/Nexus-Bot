@@ -8,6 +8,8 @@ import { getLayoutData } from '@/core/store/accessor';
 import { CostMatrixCache } from '@/modules/external/road/costMatrixCache';
 import { RoadMemory } from '@/modules/external/road/roadMemory';
 import { PathPlanner } from '@/modules/external/road/pathPlanner';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
+import { EXTERNAL_COMMAND_PRIORITY } from '@/config/external';
 
 const hasLayoutMemory = (roomName: string): boolean => {
     const layout = getLayoutData();
@@ -97,9 +99,32 @@ export const RoadBuilder = {
         // 不与其他机制交叉管控（多机制各删各的会形成建→删→再建循环）
 
         // 链接期退役：升级供给已切 link，容器/工地清场收尾
+        // (任务 8.7: 结构变更经 broker construction 管线提交)
         if (rcl >= 5 && (sourceRoom.link || []).some(l => l.pos.inRangeTo(controller.pos, 3))) {
-            for (const container of existingContainers) container.destroy();
-            for (const site of sites) site.remove();
+            for (const container of existingContainers) {
+                sharedBrokerForDirectCommands().executeNow({
+                    id: `road-cc-destroy:${sourceRoom.name}:${container.id}:${Game.time}`,
+                    tick: Game.time,
+                    actorName: sourceRoom.name,
+                    kind: "destroyStructure",
+                    pipeline: "construction",
+                    priority: EXTERNAL_COMMAND_PRIORITY.construction,
+                    targetId: container.id,
+                    dedupeKey: `road-cc-destroy:${container.id}`,
+                });
+            }
+            for (const site of sites) {
+                sharedBrokerForDirectCommands().executeNow({
+                    id: `road-cc-rmsite:${sourceRoom.name}:${site.id}:${Game.time}`,
+                    tick: Game.time,
+                    actorName: sourceRoom.name,
+                    kind: "removeSite",
+                    pipeline: "construction",
+                    priority: EXTERNAL_COMMAND_PRIORITY.construction,
+                    targetId: site.id,
+                    dedupeKey: `road-cc-rmsite:${site.id}`,
+                });
+            }
             return;
         }
 
@@ -107,7 +132,18 @@ export const RoadBuilder = {
         // 不挑位置——建成容器是既得产能，拆了重建是纯浪费；距离口径只约束「新放置」。
         // 容器既成，圈内工地皆过时残留，一并清掉
         if (existingContainers.length > 0) {
-            for (const site of sites) site.remove();
+            for (const site of sites) {
+                sharedBrokerForDirectCommands().executeNow({
+                    id: `road-cc-rmsite:${sourceRoom.name}:${site.id}:${Game.time}`,
+                    tick: Game.time,
+                    actorName: sourceRoom.name,
+                    kind: "removeSite",
+                    pipeline: "construction",
+                    priority: EXTERNAL_COMMAND_PRIORITY.construction,
+                    targetId: site.id,
+                    dedupeKey: `road-cc-rmsite:${site.id}`,
+                });
+            }
             return;
         }
 
@@ -164,11 +200,36 @@ export const RoadBuilder = {
 
         // 工地唯一口径：既定坐标上的工地保留，错位残留清除；既定坐标无工地才放量。
         // 此后每周期都会因「已有容器/已有既定坐标工地」短路，无反复放量空间
+        // (任务 8.7: 工地移除经 broker construction 管线)
         const atCoord = sites.find(s => s.pos.x === coord!.x! && s.pos.y === coord!.y!);
         for (const site of sites) {
-            if (site !== atCoord) site.remove();
+            if (site === atCoord) continue;
+            sharedBrokerForDirectCommands().executeNow({
+                id: `road-cc-rmsite:${sourceRoom.name}:${site.id}:${Game.time}`,
+                tick: Game.time,
+                actorName: sourceRoom.name,
+                kind: "removeSite",
+                pipeline: "construction",
+                priority: EXTERNAL_COMMAND_PRIORITY.construction,
+                targetId: site.id,
+                dedupeKey: `road-cc-rmsite:${site.id}`,
+            });
         }
-        if (!atCoord) sourceRoom.createConstructionSite(coord!.x!, coord!.y!, STRUCTURE_CONTAINER);
+        // 经建造管线提交工地创建 (任务 6.6, api/17): 原生调用权收编进 broker;
+        // roadBuilder 无 ctx (模块内直用 Game), 用 sharedBroker 同步通道
+        if (!atCoord) {
+            sharedBrokerForDirectCommands().executeNow({
+                id: `road-cc-site:${sourceRoom.name}:${Game.time}`,
+                tick: Game.time,
+                actorName: sourceRoom.name,
+                kind: "createSite",
+                pipeline: "construction",
+                priority: EXTERNAL_COMMAND_PRIORITY.containerSite,
+                targetPos: { x: coord!.x!, y: coord!.y!, roomName: sourceRoom.name },
+                payload: { structureType: STRUCTURE_CONTAINER },
+                dedupeKey: `road-cc-site:${sourceRoom.name}:${coord!.x!}:${coord!.y!}`,
+            });
+        }
     },
 
     /**
@@ -239,8 +300,19 @@ export const RoadBuilder = {
                 const hasSite = sites.some(s => s.structureType === STRUCTURE_ROAD);
                 if (hasSite) continue;
 
-                const result = pos.createConstructionSite(STRUCTURE_ROAD);
-                if (result === OK) {
+                // 经建造管线提交 (任务 6.6): 无 ctx 场景走 sharedBroker 同步通道
+                const sendResult = sharedBrokerForDirectCommands().executeNow({
+                    id: `road-site:${pos.roomName}:${pos.x}:${pos.y}:${Game.time}`,
+                    tick: Game.time,
+                    actorName: pos.roomName,
+                    kind: "createSite",
+                    pipeline: "construction",
+                    priority: EXTERNAL_COMMAND_PRIORITY.roadSite,
+                    targetPos: { x: pos.x, y: pos.y, roomName: pos.roomName },
+                    payload: { structureType: STRUCTURE_ROAD },
+                    dedupeKey: `road-site:${pos.roomName}:${pos.x}:${pos.y}`,
+                });
+                if (sendResult.accepted || sendResult.nativeReturnCode === OK) {
                     created++;
                 }
             }
@@ -455,8 +527,19 @@ export const RoadBuilder = {
             if (pos.roomName !== targetRoom.name) continue;
             if (!this.canPlaceContainerAt(pos)) continue;
 
-            const result = pos.createConstructionSite(STRUCTURE_CONTAINER);
-            if (result === OK) created++;
+            // 经建造管线提交 (任务 6.6): 外矿采集容器工地
+            const sendResult = sharedBrokerForDirectCommands().executeNow({
+                id: `ext-container:${pos.roomName}:${pos.x}:${pos.y}:${Game.time}`,
+                tick: Game.time,
+                actorName: pos.roomName,
+                kind: "createSite",
+                pipeline: "construction",
+                priority: EXTERNAL_COMMAND_PRIORITY.containerSite,
+                targetPos: { x: pos.x, y: pos.y, roomName: pos.roomName },
+                payload: { structureType: STRUCTURE_CONTAINER },
+                dedupeKey: `ext-container:${pos.roomName}:${pos.x}:${pos.y}`,
+            });
+            if (sendResult.accepted || sendResult.nativeReturnCode === OK) created++;
         }
 
         return created;

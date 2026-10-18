@@ -16,6 +16,8 @@ import { readRecordedSourceSlotCounts, recordSourceSlotCounts } from '@/core/sto
 import { ExternalMineState, isRoomReachable, type OutMineTargetListKey, type ExternalMineTiming } from '@/modules/external/mine/state';
 import { ExternalMineMath } from '@/modules/external/mine/math';
 import { ExternalMineSpawner } from '@/modules/external/mine/spawner';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
+import { EXTERNAL_COMMAND_PRIORITY } from '@/config/external';
 
 // 各外矿房最后已知源数（有视野时刷新）：无视野补采集工时按它补给，防外矿停摆
 const lastKnownSourceNum = new Map<string, number>();
@@ -105,12 +107,22 @@ export const ExternalMine = {
 
         // 不可达扇区清理：绑定到 novice/respawn/closed 房间的外矿 creep 永远到不了岗，
         // 会一直堆在扇区边界（表现为「完全不派出」）——直接回收，孵化侧也不再往这些房间派
+        // (任务 8.7: 自杀回收经 broker work 管线提交, 无 ctx 走 sharedBroker 同步通道)
+        const broker = sharedBrokerForDirectCommands();
         for (const creep of Object.values(Game.creeps)) {
             if (!creep?.my || !creep.memory?.targetRoom) continue;
             const unit = String(creep.memory.unit || '');
             if (!unit.startsWith('out-') && unit !== UNITS.reserver) continue;
             if (isRoomReachable(creep.memory.targetRoom)) continue;
-            creep.suicide();
+            broker.executeNow({
+                id: `mine-suicide:${creep.name}:${Game.time}`,
+                tick: Game.time,
+                actorName: creep.name,
+                kind: "suicide",
+                pipeline: "work",
+                priority: EXTERNAL_COMMAND_PRIORITY.suicide,
+                dedupeKey: `mine-suicide:${creep.name}`,
+            });
         }
 
         // 补员派单顺序：先近后远 + 挂单少的先派（见 orderTargetsForSpawn）。
@@ -262,7 +274,7 @@ export const ExternalMine = {
 
             if (ExternalMineState.isKeeperCenterRoom(roomName)) {
                 const hasKeeperCoverage = ExternalMineSpawner.hasKeeperAttackCoverage(targetRoom.name);
-                ExternalMineSpawner.attack(room, targetRoom);
+                ExternalMineSpawner.requestAttackUnit(room, targetRoom);
                 if (!hasKeeperCoverage) continue;
             }
 

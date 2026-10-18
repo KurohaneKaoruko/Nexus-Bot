@@ -1,6 +1,7 @@
 
 import { getStructData } from '@/core/store/accessor';
 import { isWarMode } from '@/core/store/accessor';
+import { industryProcessPower } from '@/modules/industry/industryAdapter';
 
 /** PowerSpawn 烧电: RCL8 + 开关 + 战争豁免 + 资源门槛 (原 PowerSpawnWork 原型方法改写) */
 export function powerSpawnWork(room: Room): void {
@@ -17,5 +18,6 @@ export function powerSpawnWork(room: Room): void {
     if (mode === 'manual' && room.getResAmount(RESOURCE_ENERGY) < 50000) return;
     const store = powerSpawn.store;
     if((store[RESOURCE_ENERGY] ?? 0) < 50 || (store[RESOURCE_POWER] ?? 0) < 1) return;
-    powerSpawn.processPower();
+    // 经命令边界同步执行: 原生调用权收编进 broker
+    industryProcessPower(powerSpawn);
 }

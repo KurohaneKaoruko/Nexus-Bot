@@ -12,20 +12,46 @@
 import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
 import { harvesterBindingOf } from "@/modules/economy/workforce";
+import { WORKFORCE_CONFIG } from "@/config/economy";
+import { buildRushHarvesterBody, rushBodyWork } from "@/utils/rushBodies";
 
 /**
- * 采集编制目标 (只数口径): 每源一个驻点采集位 (specs harvest-supply-convergence
- * 「采集定编单一事实来源」的唯一公式)。
- *
- * 形态泛化到「只带源列表」的结构, 使 perception 侧快照与 legacy 侧 Room 共用同一公式
- * ——两套编制并存正是 P1-14 采集供给双轨分治的根因, 此处只允许有一份实现。
- * 饱和缺口由攒能定档升体型承接, 不在此处拆分多采集位。
+ * 单只采集体在给定孵化预算下的 WORK 数 (与 bodyFactory 同生成器, 口径永不漂移):
+ * RCL1 (300) → [W2,M1] = 2W; RCL2 (550) → [W5,M1] = 5W 满速体。
  */
-export function harvestStaffingOf(room: { sources: readonly unknown[] }): number {
-	return room.sources.length;
+function workPerHarvesterOf(capacity: number): number {
+	return rushBodyWork(buildRushHarvesterBody(capacity) ?? []);
 }
 
-/** 源采集定编合计 (只数口径): 主线每源 1 名驻点采集体 */
+/**
+ * 每源采集只数: 容量够单只 5W 满速 (10e/t = 源再生速率) 时单座;
+ * 低容量窗口 (RCL1 的 2W) 按容错 WORK 折多只——把 3000e/300t 采完
+ * 最少 5W, 容错取 +1W, 即 ceil(容错W / 单只W)。
+ */
+export function harvestStaffingPerSource(capacity: number | undefined): number {
+	if (capacity === undefined) return 1;
+	const workPerCreep = workPerHarvesterOf(capacity);
+	if (workPerCreep <= 0) return 1;
+	if (workPerCreep >= WORKFORCE_CONFIG.harvest.fullSpeedWork) return 1;
+	return Math.max(1, Math.ceil(WORKFORCE_CONFIG.harvest.toleranceWork / workPerCreep));
+}
+
+/**
+ * 采集编制目标 (只数口径) (specs harvest-supply-convergence
+ * 「采集定编单一事实来源」的唯一公式)。
+ *
+ * 形态泛化到「只带源列表」的结构, 使 perception 侧快照与 legacy 侧 Room 共用同一公式;
+ * 低容量期每源多只小体, 容量升档后自动回落单座驻点 (饱和缺口由攒能定档升体型承接)。
+ */
+export function harvestStaffingOf(room: {
+	sources: readonly unknown[];
+	energyCapacity?: number;
+}): number {
+	const perSource = harvestStaffingPerSource(room.energyCapacity);
+	return room.sources.length * perSource;
+}
+
+/** 源采集定编合计 (只数口径): 低容量期每源 ceil(容错W/单只W) 只 */
 export function harvesterTargetTotal(room: RoomObservation): number {
 	return harvestStaffingOf(room);
 }

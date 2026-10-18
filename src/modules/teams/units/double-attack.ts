@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 import { getWhitelistIds } from '@/core/store/accessor';
+import { combatAttack, combatMoveTo } from '@/modules/combat';
 type DoubleAttackTarget = Creep | Structure;
 
 const isDoubleAttackTarget = (target: _HasId | null): target is DoubleAttackTarget =>
@@ -72,7 +73,7 @@ function AutoFindTarget(creep: Creep) {
     if (enemies.length > 0) {
         const targetEnemy = creep.pos.findClosestByPath(enemies);
         if (targetEnemy) {
-            const result = creep.moveTo(targetEnemy, {
+            const result = combatMoveTo(creep, targetEnemy, {
                 visualizePathStyle: {stroke: '#ffff00'},
                 maxRooms: 1, range: 1
             });
@@ -121,7 +122,7 @@ function AutoFindTarget(creep: Creep) {
 
     if (creep.pos.isNearTo(targetStructure)) {
         creep.memory['targetId'] = targetStructure.id;
-        creep.attack(targetStructure);
+        combatAttack(creep, targetStructure);
         return;
     } else {
         const result = creep.doubleMoveTo(targetStructure.pos, '#ff0000', {maxRooms: 1, range: 1});
@@ -183,7 +184,7 @@ const runLegacy = (creep: Creep) => {
     AutoFindTarget(creep);
 
     if (!creep.pos.isNearTo(bindcreep)) {
-        bindcreep.moveTo(creep);
+        combatMoveTo(bindcreep, creep);
     }
 };
 

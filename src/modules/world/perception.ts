@@ -13,12 +13,14 @@ import {
 	aliveNames,
 	unitCodeFromName,
 	type ControllerBufferSummary,
+	type CreepSummary,
 	type DamageableSummary,
 	type RoomObservation,
 	type StoreSummary,
 	type TowerSummary,
 	type WorldView,
 } from "@/core/world";
+import { unitCode } from "@/constant/UnitConstant";
 
 /** 墙/城门类结构: 耐久无实际上限, 用绝对维护线而非 hitsMax 比例 */
 const WALL_LIKE: ReadonlySet<string> = new Set(["constructedWall", "rampart"]);
@@ -28,6 +30,38 @@ const NON_BLOCKING_STRUCTURES: ReadonlySet<string> = new Set(["road", "container
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+}
+
+/** 己方单位摘要工厂 (己方房/可见外矿房共用) */
+function summarizeCreep(creep: Creep, roomName: string): CreepSummary {
+	const alivePart = (type: BodyPartConstant): number =>
+		creep.body.filter((part) => part.type === type && part.hits > 0).length;
+	// 角色判定 Memory 权威化 (任务 5.5): unit/unitCode 第一来源是 creep.memory,
+	// 名称解析仅 fallback (改名/直操等场景名字可能失真; Memory 由孵化簿记写入)
+	const memUnit = (creep.memory as { unit?: string; unitCode?: string } | undefined) ?? {};
+	const memCode = memUnit.unitCode ?? (memUnit.unit ? unitCode(memUnit.unit) : undefined);
+	return {
+		name: creep.name,
+		id: creep.id,
+		roomName,
+		unitCode: memCode ?? unitCodeFromName(creep.name),
+		x: creep.pos.x,
+		y: creep.pos.y,
+		ticksToLive: creep.ticksToLive ?? 0,
+		carryEnergy: creep.store.energy,
+		freeCapacity: creep.store.getFreeCapacity(),
+		spawning: creep.spawning,
+		hits: creep.hits,
+		hitsMax: creep.hitsMax,
+		bodyWork: alivePart("work"),
+		bodyCarry: alivePart("carry"),
+		bodyMove: alivePart("move"),
+		bodyClaim: alivePart("claim"),
+		bodyAttack: alivePart("attack"),
+		bodyRanged: alivePart("ranged_attack"),
+		bodyHeal: alivePart("heal"),
+		bodyTough: alivePart("tough"),
+	};
 }
 
 /**
@@ -180,32 +214,7 @@ export const Perception: TickModule = {
 					});
 				}
 			}
-			const creeps = room.find(FIND_MY_CREEPS).map((creep) => {
-				const alivePart = (type: BodyPartConstant): number =>
-					creep.body.filter((part) => part.type === type && part.hits > 0).length;
-				return {
-					name: creep.name,
-					id: creep.id,
-					roomName,
-					unitCode: unitCodeFromName(creep.name),
-					x: creep.pos.x,
-					y: creep.pos.y,
-					ticksToLive: creep.ticksToLive ?? 0,
-					carryEnergy: creep.store.energy,
-					freeCapacity: creep.store.getFreeCapacity(),
-					spawning: creep.spawning,
-					hits: creep.hits,
-					hitsMax: creep.hitsMax,
-					bodyWork: alivePart("work"),
-					bodyCarry: alivePart("carry"),
-					bodyMove: alivePart("move"),
-					bodyClaim: alivePart("claim"),
-					bodyAttack: alivePart("attack"),
-					bodyRanged: alivePart("ranged_attack"),
-					bodyHeal: alivePart("heal"),
-					bodyTough: alivePart("tough"),
-				};
-			});
+			const creeps = room.find(FIND_MY_CREEPS).map((creep) => summarizeCreep(creep, roomName));
 			const hostiles = room.find(FIND_HOSTILE_CREEPS).map((creep) => {
 				const alivePart = (type: BodyPartConstant): number =>
 					creep.body.filter((part) => part.type === type && part.hits > 0).length;
@@ -232,6 +241,7 @@ export const Perception: TickModule = {
 			const observation: RoomObservation = {
 				roomName,
 				rcl: room.controller.level,
+				energyCapacity: room.energyCapacityAvailable,
 				controller: {
 					id: room.controller.id,
 					x: room.controller.pos.x,
@@ -291,7 +301,23 @@ export const Perception: TickModule = {
 			ctx.memory.rooms[roomName] = intel;
 		}
 
-		const view: WorldView = { tick: ctx.tick, rooms };
+		// 可见非己方房中的己方单位 (外矿链路, bugs/P1-18 断点④): world.rooms 只收
+		// 己方房, 外矿采集/侦查/预订件在 rooms 里没有归属——不收集则分配与驱动失联
+		const remoteUnits: CreepSummary[] = [];
+		for (const roomName in Game.rooms) {
+			if (rooms[roomName] !== undefined) {
+				continue;
+			}
+			const room = Game.rooms[roomName];
+			if (!room || room.controller?.my) {
+				continue;
+			}
+			for (const creep of room.find(FIND_MY_CREEPS)) {
+				remoteUnits.push(summarizeCreep(creep, roomName));
+			}
+		}
+
+		const view: WorldView = { tick: ctx.tick, rooms, remoteUnits };
 
 		const previous = ctx.world.current;
 

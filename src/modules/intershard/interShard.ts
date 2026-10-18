@@ -46,6 +46,14 @@ export type InterShardRoot = {
     transferAcks?: Record<string, Record<string, string>>;
 };
 
+/** InterShardMemory 根容量约束 (任务 8.6, Memory 有界写入): 各键总量钳制。
+ *  超限按最旧淘汰 (TTL 清理是主路径, 此处防 API 滥用写穿引擎 10MB 硬限) */
+export const INTERSHARD_ROOT_CAPS = {
+    plans: 32,
+    status: 64,
+    outboxPerShard: 64,
+} as const;
+
 const safeJsonParse = (raw: string) => {
     try { return JSON.parse(raw); } catch { return null; }
 };
@@ -153,6 +161,12 @@ export function pushInterShardCommand(cmd: Omit<InterShardCommand, 'id' | 'seq' 
     root.outbox ??= {};
     const q = root.outbox[cmd.toShard] || (root.outbox[cmd.toShard] = []);
     q.push({ ...(cmd as any), id, seq, time: Game.time, fromShard: Game.shard.name });
+    // 容量约束 (任务 8.6): 每 shard 待发队列钳制——超限丢最旧并上屏
+    // (正常吞吐下 ack 清理在 1-2 tick 内触发, 此处是 API 滥用兜底)
+    if (q.length > INTERSHARD_ROOT_CAPS.outboxPerShard) {
+        const dropped = q.splice(0, q.length - INTERSHARD_ROOT_CAPS.outboxPerShard);
+        console.log(`[isshard.cap] outbox→${cmd.toShard} 超限丢弃最旧 ${dropped.length} 条 (含 ${dropped[0]?.type ?? "?"})`);
+    }
     writeInterShardLocalRoot(root);
     return id;
 }
@@ -207,6 +221,15 @@ export function publishExpandPlanSummary(summary: InterShardExpandPlanSummary): 
     local.plans ??= {};
     if (typeof summary.ttl !== 'number') summary.ttl = Game.time + 5000;
     local.plans[summary.id] = summary;
+    // 容量约束 (任务 8.6): plans 总量钳制——超限按 updated 最旧淘汰, 防 API 滥用
+    // 写穿 InterShardMemory (引擎侧 10MB 硬限, 淘汰是自保不是业务语义)
+    const ids = Object.keys(local.plans);
+    if (ids.length > INTERSHARD_ROOT_CAPS.plans) {
+        ids
+            .sort((a, b) => (local.plans![a]?.updated ?? 0) - (local.plans![b]?.updated ?? 0))
+            .slice(0, ids.length - INTERSHARD_ROOT_CAPS.plans)
+            .forEach((id) => delete local.plans![id]);
+    }
     writeInterShardLocalRoot(local);
 }
 
@@ -216,6 +239,14 @@ export function publishExpandStatus(planId: string, status: InterShardExpandStat
     if (typeof status.ttl !== 'number' && status.state === 'removed') status.ttl = Game.time + 500;
     if (typeof status.ttl !== 'number' && status.state === 'done') status.ttl = Game.time + 2000;
     local.status[planId] = status;
+    // 容量约束 (任务 8.6): status 总量钳制 (TTL 清理是主路径, 此处是防累积兜底)
+    const ids = Object.keys(local.status);
+    if (ids.length > INTERSHARD_ROOT_CAPS.status) {
+        ids
+            .sort((a, b) => (local.status![a]?.time ?? 0) - (local.status![b]?.time ?? 0))
+            .slice(0, ids.length - INTERSHARD_ROOT_CAPS.status)
+            .forEach((id) => delete local.status![id]);
+    }
     writeInterShardLocalRoot(local);
 }
 

@@ -4,6 +4,7 @@ import TeamAction from '@/modules/teams/core/TeamAction';
 import TeamBattle from '@/modules/teams/core/TeamBattle';
 import TeamVisual from '@/modules/teams/core/TeamVisual';
 import { type TeamFormationName, type TowardName } from '@/modules/teams/core/FormationTables';
+import { combatCreateFlag } from '@/modules/combat';
 
 /**
  * 小队实体（Team 状态机）。
@@ -131,7 +132,7 @@ class Team {
         if (!this.flag && this.creeps && this.creeps.length > 0) {
             const head = this.creeps[0];
             if (head?.pos && head.room.name !== this.homeRoom) {
-                try { head.room.createFlag(head.pos.x, head.pos.y, `Team-${this.name}`); } catch { /* 引擎拒绝时下 tick 重试 */ }
+                try { combatCreateFlag(head.room.name, head.pos.x, head.pos.y, `Team-${this.name}`); } catch { /* 引擎拒绝时下 tick 重试 */ }
             }
         }
         // 指挥旗位置重定义目标房（已有逻辑）

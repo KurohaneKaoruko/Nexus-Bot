@@ -20,25 +20,41 @@ const BIG_MOVE_ERROR = 2000;     // 误差超过此值立即同步（快速收�
 
 /** 每 tick 调用一次：更新外矿活跃阈值 */
 export const updateBucketGovernor = (): void => {
-    const mem = Memory as any;
-    mem.remoteThreshold ??= 0;
-    mem.activeThresholdUpdated ??= 0;
+    // 散键收口 (任务 7.6): 状态迁入 Nexus 命名空间 (Memory.Nexus.bucketGovernor),
+    // 根散键只读迁移一次后不再写入——随 legacy 根清理自然消亡
+    const root = Memory as any;
+    root.Nexus ??= {};
+    const mem = (root.Nexus.bucketGovernor ??= { threshold: 0, syncedAt: 0 });
+    // legacy 迁移: 首次读取时接管根散键旧值 (口径延续, 不回退调控状态)
+    if (mem.threshold === 0 && typeof root.remoteThreshold === 'number' && root.remoteThreshold > 0) {
+        mem.threshold = root.remoteThreshold;
+        // 旧键一次性清除 (7.6 双轨收敛): 值已接管, 根散键不再保留
+        delete root.remoteThreshold;
+        delete root.activeThreshold;
+        delete root.activeThresholdUpdated;
+    }
 
     const bucket = Game.cpu.bucket || 0;
     const error = bucket - TARGET_BUCKET;
 
     // 桶高 → 阈值降（扩外矿）；桶低 → 阈值升（挂起低性价比外矿）
-    mem.remoteThreshold = Math.max(
+    mem.threshold = Math.max(
         0,
-        Math.min(THRESHOLD_MAX, mem.remoteThreshold - KI * error)
+        Math.min(THRESHOLD_MAX, mem.threshold - KI * error)
     );
 
     // 大幅变化立即生效；小幅变化 300 tick 冷却同步（防抖动）
-    if (Math.abs(error) > BIG_MOVE_ERROR || Game.time - mem.activeThresholdUpdated >= SYNC_INTERVAL) {
-        mem.activeThreshold = mem.remoteThreshold;
-        mem.activeThresholdUpdated = Game.time;
+    if (Math.abs(error) > BIG_MOVE_ERROR || Game.time - mem.syncedAt >= SYNC_INTERVAL) {
+        mem.active = mem.threshold;
+        mem.syncedAt = Game.time;
     }
+    mem.updatedAt = Game.time;
 };
 
 /** 当前生效的外矿活跃阈值（score 低于此值的外矿应挂起） */
-export const getActiveRemoteThreshold = (): number => (Memory as any).activeThreshold ?? 0;
+export const getActiveRemoteThreshold = (): number => {
+    const gov = (Memory as any).Nexus?.bucketGovernor;
+    if (gov && typeof gov.active === 'number') return gov.active;
+    // legacy 回退 (迁移窗口): 根散键尚有值时沿用, 迁移后自然归零
+    return (Memory as any).activeThreshold ?? 0;
+};

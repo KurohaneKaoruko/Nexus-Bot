@@ -333,20 +333,9 @@ export default {
                 }
             }
 
-            // 删除相关的 Spawn 任务
-            const spawnmission = room.getAllMissionFromPool?.(MISSION_POOLS.spawn);
-            if (!spawnmission) return OK;
-            for (const mission of spawnmission) {
-                const data = mission.data as SpawnTask;
-                if (data.memory.targetRoom == targetRoom) {
-                    // 如果指定了类型，则需要进一步检查 unit
-                    if (type === 'power' && !data.memory.unit!.startsWith! ('power-')) continue;
-                    if (type === 'deposit' && !data.memory.unit!.startsWith! ('deposit-')) continue;
-
-                    deleteMissionFromPool(room.name, MISSION_POOLS.spawn, mission.id);
-                }
-            }
-            console.log(`房间 ${sourceRoom} 的 ${targetRoom} 开采已取消。`);
+            // power/deposit 件孵化已桥接 directSpawn 不入 spawn 池——
+            // 在途蛋与活体无法取消孵化, 只移除后续轮次的派单 (上方 mine 池清理)
+            console.log(`房间 ${sourceRoom} 的 ${targetRoom} 开采已取消 (已下蛋/在编个体不召回)。`);
             return OK;
         }
     },

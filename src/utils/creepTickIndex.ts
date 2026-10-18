@@ -21,6 +21,8 @@ type CreepTickIndexCache = {
     downgradedLogisticsByAssignedRoom: Record<string, UnitCountMap>
     byExpandPlan: ExpandRoleCountMap
     minRespawnGapByAssignedRoomUnit: Record<string, MinRespawnGapMap>
+    /** 孵化中的蛋按 targetRoom 分组计数 (蛋不在 Game.creeps, 防重复派单的蛋窗口覆盖) */
+    eggsByTargetRoom: Record<string, UnitCountMap>
 }
 
 const EMPTY_TARGET_ROOM_ROLE_MAP: TargetRoomUnitMap = Object.freeze({}) as TargetRoomUnitMap
@@ -109,6 +111,25 @@ function buildCache(): CreepTickIndexCache {
         }
     }
 
+    // 孵化中的蛋索引: spawnCreep 意图当 tick 生效, 蛋下一 tick 才进 Game.creeps——
+    // 蛋期 (大体型 100+ tick) 不在 Game.creeps 快照, directSpawn 同步派单的
+    // 防重复计数若只看活 creep 会在蛋窗口重复下单
+    const eggsByTargetRoom: Record<string, UnitCountMap> = {}
+    for (const spawnName in Game.spawns) {
+        const spawn = Game.spawns[spawnName]
+        if (!spawn || !spawn.spawning) continue
+        const eggMemory = Memory.creeps?.[spawn.spawning.name]
+        const eggUnit = eggMemory?.unit
+        if (!eggUnit || !isUnitId(eggUnit)) continue
+        const eggTargetRoom = eggMemory.targetRoom
+        if (!eggTargetRoom) continue
+        if (!eggsByTargetRoom[eggTargetRoom]) {
+            eggsByTargetRoom[eggTargetRoom] = {}
+        }
+        eggsByTargetRoom[eggTargetRoom][eggUnit] =
+            (eggsByTargetRoom[eggTargetRoom][eggUnit] || 0) + 1
+    }
+
     return {
         time: Game.time,
         byTargetRoom,
@@ -118,6 +139,7 @@ function buildCache(): CreepTickIndexCache {
         downgradedLogisticsByAssignedRoom,
         byExpandPlan,
         minRespawnGapByAssignedRoomUnit,
+        eggsByTargetRoom,
     }
 }
 
@@ -131,6 +153,14 @@ function getCache(): CreepTickIndexCache {
 
 export function getCreepByTargetRoom(targetRoom: string): TargetRoomUnitMap {
     return getCache().byTargetRoom[targetRoom] || EMPTY_TARGET_ROOM_ROLE_MAP
+}
+
+/** 目标房角色计数 (活 creep + 孵化中的蛋): directSpawn 同步派单的防重复口径 */
+export function getUnitCountByTargetRoom(targetRoom: string, unit: string): number {
+    const cache = getCache()
+    const alive = cache.byTargetRoom[targetRoom]?.[unit]?.length ?? 0
+    const eggs = cache.eggsByTargetRoom[targetRoom]?.[unit] ?? 0
+    return alive + eggs
 }
 
 export function getTeamCreeps(): Creep[] {

@@ -3,6 +3,7 @@ import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';
 import { getLabAB } from '@/modules/industry';
 import { getStructData } from '@/core/store/accessor';
+import { pcUsePower } from './powerAdapter';
 
 export default class PowerCreepUsePower extends PowerCreep {
     private usePowerOrMove(
@@ -18,7 +19,7 @@ export default class PowerCreepUsePower extends PowerCreep {
             return true;
         }
 
-        const result = this.usePower(power, target);
+        const result = pcUsePower(this, power, target);
         if (result === OK) {
             return true;
         }
@@ -35,7 +36,7 @@ export default class PowerCreepUsePower extends PowerCreep {
         if(!power) return false;
         if(power.cooldown! > 0) return false;
         if(this.store.getFreeCapacity() <= 0) return false;
-        return this.usePower(PWR_GENERATE_OPS) === OK;
+        return pcUsePower(this, PWR_GENERATE_OPS) === OK;
     }
     override Regen_Source() {
         if (this.room!.memory.defend!) return false;
@@ -61,9 +62,14 @@ export default class PowerCreepUsePower extends PowerCreep {
                 UNITS['deposit-harvest'], UNITS['deposit-transfer'],
                 UNITS['team-attack'], UNITS['team-dismantle'], UNITS['team-ranged'], UNITS['team-heal'],
             ]
+            // 战件/power 件孵化已桥接 directSpawn 不入 spawn 池——孵化需求
+            // 改蛋感知口径: 本房任一 spawn 正在孵 units 内角色的蛋
+            const unitSet = new Set<string>(units);
+            const hasUnitEgg = this.room!.spawn!.some(
+                (s) => s.spawning && Memory.creeps?.[s.spawning.name]?.unit && unitSet.has(Memory.creeps[s.spawning.name]!.unit!)
+            );
             if (!Game.flags[this.name+'-upspawn'] && !this.room!.memory.defend &&
-                (!this.room!.checkMissionInPool! (MISSION_POOLS.mine) ||
-                this.room!.getSpawnMissionTotalByRoles! (units) < 1)) return false;
+                (!this.room!.checkMissionInPool! (MISSION_POOLS.mine) || !hasUnitEgg)) return false;
         }
         const spawns = this.room!.spawn!;
         if(!spawns) return false;
@@ -181,7 +187,7 @@ export default class PowerCreepUsePower extends PowerCreep {
         const powers = this.powers;
         if(PWR_SHIELD in powers && powers[PWR_SHIELD].cooldown! <= 0) {
             if(this.pos.inRangeTo(pos, 0)) {
-                this.usePower(PWR_SHIELD);
+                pcUsePower(this, PWR_SHIELD);
             } else {
                 this.moveTo(pos);
             }
@@ -209,7 +215,7 @@ export default class PowerCreepUsePower extends PowerCreep {
         const target = this.pos.findClosestByRange(targets);
         if (!target) return false;
 
-        const result = this.usePower(PWR_DISRUPT_TOWER, target);
+        const result = pcUsePower(this, PWR_DISRUPT_TOWER, target);
         if (result === ERR_NOT_IN_RANGE) {
             this.moveTo(target, { plainCost: 1, swampCost: 1 });
         }
@@ -234,7 +240,7 @@ export default class PowerCreepUsePower extends PowerCreep {
         const target = this.pos.findClosestByRange(targets);
         if (!target) return false;
 
-        const result = this.usePower(PWR_DISRUPT_SPAWN, target);
+        const result = pcUsePower(this, PWR_DISRUPT_SPAWN, target);
         if (result === ERR_NOT_IN_RANGE) {
             this.moveTo(target, { plainCost: 1, swampCost: 1 });
         }

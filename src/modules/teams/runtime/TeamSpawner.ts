@@ -5,6 +5,7 @@ import { ensureTeamData, getTeamData, getTeamSpawnQueue } from "@/core/store/acc
 import { isBoostResCheckEnabled } from "@/config/capabilities";
 import { getTeamConfig } from "@/modules/teams/config/TeamConfig";
 import { directSpawn } from "@/modules/spawning/spawnDirector";
+import { combatCreateFlag, combatRemoveFlag } from "@/modules/combat";
 
 /** 旗名解析出的孵化参数（各旗型解析器归一后的产出） */
 export type TeamSpawnSpec = {
@@ -132,11 +133,11 @@ const TeamSpawner = {
         };
     },
 
-    handleTeamFlag(flagName: string, flag: Flag): boolean {
+    handleTeamFlag(flagName: string, _flag: Flag): boolean {
         if (!flagName.startsWith('Team-')) return false;
         const teamID = flagName.match(/Team-(\w+)/)?.[1];
         if (!teamID) return true;
-        if (!getTeamData(teamID)) flag.remove();
+        if (!getTeamData(teamID)) combatRemoveFlag(flagName);
         return true;
     },
 
@@ -515,7 +516,7 @@ const TeamSpawner = {
         });
         try {
             // pos.createFlag 已重写，理论上无视野房可用；建不出就不建——无旗队伍按 targetRoom 推进开打（GatherLine/execMove/chooseTargets 均有无旗锚点）
-            flag.pos.createFlag(`Team-${teamID}`, flag.color, flag.secondaryColor);
+            combatCreateFlag(flag.pos.roomName, flag.pos.x, flag.pos.y, `Team-${teamID}`);
         } catch {
             // 引擎抛异常口径：放弃建旗
         }
@@ -533,12 +534,17 @@ const TeamSpawner = {
      * 这里保持原调用参数不变，避免影响孵化系统的调度优先级与任务结构。
      */
     spawnTeamCreeps(teamID: string, Team_Config: any[], room: Room): void {
-        // 孵化小队成员 (直接孵化, 绕池)
+        // 孵化小队成员 (直接孵化, 绕池): 显式压缩体, emergency 语义无需等待
         for (const c of Team_Config) {
-            directSpawn(room, c.unit, {
-                teamID,
-                ...(isBoostResCheckEnabled() ? { boostmap: { ...c.boostmap } } : {}),
-            }, (c.bodypart as BodyPartConstant[]).flat());
+            directSpawn(room, {
+                mode: "direct",
+                unit: c.unit,
+                memory: {
+                    teamID,
+                    ...(isBoostResCheckEnabled() ? { boostmap: { ...c.boostmap } } : {}),
+                },
+                body: (c.bodypart as BodyPartConstant[]).flat(),
+            });
         }
     },
 
@@ -573,7 +579,7 @@ const TeamSpawner = {
         }
 
         if (flagMemory['spawnCount'] >= maxCount) {
-            flag.remove();
+            combatRemoveFlag(flagName);
             log('TeamModule', flagName, '孵化数量已满');
             delete Memory.flags[flagName];
         }
@@ -587,7 +593,7 @@ const TeamSpawner = {
      * @param withMemory 是否同时清理 `Memory.flags[flagName]`
      */
     removeFlagAndMemory(flagName: string, flag: Flag, withMemory: boolean): void {
-        flag.remove();
+        combatRemoveFlag(flagName);
         if (withMemory) delete Memory.flags[flagName];
     },
 

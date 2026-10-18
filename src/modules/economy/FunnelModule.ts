@@ -11,6 +11,7 @@
 import { log } from '@/utils/log';
 import { getFunnelCooldownMap } from '@/core/store/accessor';
 import { getEnergyLevel, getStandardReserve } from '@/modules/economy/energyLogistics';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
 const FUNNEL_CHECK_INTERVAL = 20;
 const FUNNEL_EMERGENCY_LEVEL = 30;
@@ -62,7 +63,20 @@ export const FunnelModule = {
                 continue;
             }
 
-            const result = donor!.terminal.send(RESOURCE_ENERGY, amount, receiver.room.name);
+            // 经命令边界同步执行 (api/17 market 管线): 原生调用权收编进 broker
+            const sendResult = sharedBrokerForDirectCommands().executeNow({
+                id: `funnel-send:${donor!.room.name}:${Game.time}:${receiver.room.name}`,
+                tick: Game.time,
+                actorName: donor!.room.name,
+                kind: "terminalSend",
+                pipeline: "market",
+                priority: 50,
+                resourceType: RESOURCE_ENERGY,
+                amount,
+                payload: { destinationRoom: receiver.room.name },
+                dedupeKey: `funnel-send:${donor!.room.name}:${Game.time}:${receiver.room.name}`,
+            });
+            const result = sendResult.accepted ? OK : (sendResult.nativeReturnCode ?? ERR_INVALID_ARGS);
             if (result === OK) {
                 mem[receiver.room.name] = Game.time;
                 log(`[funnel] ${donor!.room.name} → ${receiver.room.name} 漏斗补给 ${amount} 能量（等级 ${donor!.level!} → ${receiver.level}）`);

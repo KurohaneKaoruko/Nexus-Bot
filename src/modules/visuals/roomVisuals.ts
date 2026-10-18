@@ -6,6 +6,7 @@
  * workFunction (源矿进账) 与 carrier (接力成交)。
  */
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
+import { isSpawningUnit } from "@/modules/spawning/spawningRoster";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 import { evaluateRaceSegments, applySegmentVerdicts, RUSH_SEGMENT_LEVELS } from "@/utils/raceSegments";
 import { CompoundColor } from "@/constant/ResourceConstant";
@@ -23,15 +24,19 @@ const isUnitId = (unit?: string): unit is UnitId => !!unit && unit in UNIT_CODES
  * 建筑可视化：孵化中 spawn 的数据标注 + lab 产物标注 + 布局规划图。
  */
 
-/** 孵化中 spawn：角色代号 + 剩余 tick；记忆缺角色或角色未注册时取消孵化 */
+/** 孵化中 spawn：角色代号 + 剩余 tick；记忆缺角色或角色未注册时限频告警 (可观测层不突变, api/17) */
 export function drawSpawnInfo(spawns: StructureSpawn[]): void {
 	for (const spawn of spawns) {
-		if (!spawn.spawning) continue;
+		// 孵化中判据走统一接口 (6.3): visuals 只展示, 名单语义单源
+		if (!isSpawningUnit(spawn.name, undefined)) continue;
 
-		const creepMemory = Memory.creeps[spawn.spawning.name];
+		const creepMemory = Memory.creeps[spawn.spawning!.name];
 		const unit = creepMemory?.unit;
 		if (!isUnitId(unit)) {
-			spawn.spawning.cancel();
+			// 只告警不取消: 突变须经命令边界 (命令管线), 可视化层无突变权
+			console.log(
+				`[visuals.spawn-orphan] ${spawn.room.name} ${spawn.spawning.name} 孵化中无角色记录, 待命令层处置`,
+			);
 			continue;
 		}
 

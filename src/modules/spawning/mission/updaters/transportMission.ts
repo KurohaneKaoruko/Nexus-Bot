@@ -201,7 +201,6 @@ export default class TransportMission extends Room {
         const hasUpgradeConsumer =
             (creepNum[UNITS.worker] || 0) +
             (creepNum[UNITS.upgrader] || 0) +
-            (creepNum[UNITS['aid-upgrade']] || 0) +
             (creepNum[UNITS.universal] || 0) > 0;
         if (!highMode && !hasUpgradeConsumer) return availableEnergy;
 

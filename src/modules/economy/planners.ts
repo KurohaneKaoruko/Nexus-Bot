@@ -8,6 +8,7 @@
  * haul 走配额 (§6.4): 货源+目的地+批量明确, 在途承诺入账本, 空缺即终结改派。
  */
 import {
+	BUILD_COMPLETION_CONFIG,
 	BUILD_PRIORITY_BONUS,
 	CONTROLLER_BUFFER_CONFIG,
 	DOWNGRADE_CONFIG,
@@ -22,7 +23,8 @@ import { priorityFor, type NewTaskInput, type TaskKind } from "@/core/store/task
 import type { TaskBoard } from "@/modules/tasks";
 import { destinationQuotas, pickDestination, roundTripEstimate } from "@/modules/economy/quota";
 import { createLedger, reserve } from "@/modules/economy/ledger";
-import { worksiteFor } from "@/modules/world";
+import { harvestSlotsFor } from "@/modules/world";
+import { harvestStaffingPerSource } from "@/modules/economy/productionGate";
 import { controllerCarryQuotaOf } from "@/modules/economy/workforce";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 
@@ -113,28 +115,45 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 	const directive = directiveFor(ctx);
 	const bias = (kind: TaskKind): number => directive.kindBias[kind] ?? 0;
 	const expected = new Set<string>();
-	const intel = ctx.memory.rooms[room.roomName];
 
-	// harvest: 每 Source 一个稳定任务, 工作位可用才生成 (容量语义 = 相邻可行走格数, 持有数由租约约束)
+	// harvest: 每 Source 稳定任务, 低容量期每源多条 (多只小体铺满源速,
+	// 定编口径 = productionGate.harvestStaffingPerSource)——每任务一个采集
+	// 槽位 (任务 i ↔ slots[i], 同 upgrade 工位先例), 避免多只挤同一格互相阻挡;
+	// 容量升档后 N 回落 1, 多余任务被 subject-gone 清扫
 	for (const source of room.sources) {
-		const worksite = intel ? worksiteFor(intel, room, source) : undefined;
-		if (!worksite) {
+		const intel = ctx.memory.rooms[room.roomName];
+		if (!intel) {
 			continue;
 		}
-		const dedupeKey = `harvest:${room.roomName}:${source.id}`;
-		expected.add(dedupeKey);
-		board.upsert(
-			{
-				dedupeKey,
-				kind: "harvest",
-				roomName: room.roomName,
-				targetId: source.id,
-				targetPos: { x: source.x, y: source.y, roomName: room.roomName },
-				priority: priorityFor("harvest") + bias("harvest"),
-				requiredCapabilities: ["work", "move"],
-			},
-			ctx.tick,
-		);
+		const count = harvestStaffingPerSource(room.energyCapacity);
+		const slots = harvestSlotsFor(intel, room, source, count);
+		if (slots.length === 0) {
+			continue;
+		}
+		for (let i = 0; i < slots.length; i += 1) {
+			const slot = slots[i];
+			if (!slot) {
+				continue;
+			}
+			// 主槽位保持无缀 key: 与单座期任务键连续, 升档回落时不重建任务
+			const dedupeKey =
+				i === 0
+					? `harvest:${room.roomName}:${source.id}`
+					: `harvest:${room.roomName}:${source.id}:${i}`;
+			expected.add(dedupeKey);
+			board.upsert(
+				{
+					dedupeKey,
+					kind: "harvest",
+					roomName: room.roomName,
+					targetId: source.id,
+					targetPos: { x: slot.x, y: slot.y, roomName: room.roomName },
+					priority: priorityFor("harvest") + bias("harvest"),
+					requiredCapabilities: ["work", "move"],
+				},
+				ctx.tick,
+			);
+		}
 	}
 
 	// upgrade: 控制器缓冲存在 → 每个就位工位一条任务 (工位任务 i ↔ slots[i], specs/controller-upgrade-buffer),
@@ -204,6 +223,15 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 			room.controller !== undefined &&
 			Math.max(Math.abs(site.x - room.controller.x), Math.abs(site.y - room.controller.y)) <=
 				CONTROLLER_BUFFER_CONFIG.adoptRange;
+		// 近完提权 (bugs/P2-20): 进度占比过线的工地加分收尾——收尾一个 ext 立即
+		// 解锁 cap+50, 摊开施工把首个建成无限推迟 (sim 实锤 5 ext 摊 24k tick)
+		const liveSite = Game.constructionSites[site.id];
+		const nearDone =
+			liveSite !== undefined &&
+			liveSite.progressTotal > 0 &&
+			liveSite.progress / liveSite.progressTotal >= BUILD_COMPLETION_CONFIG.progressRatio
+				? BUILD_COMPLETION_CONFIG.bonus
+				: 0;
 		const input: NewTaskInput = {
 			dedupeKey,
 			kind: "build",
@@ -214,7 +242,8 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				priorityFor("build") +
 				bias("build") +
 				(nearController ? CONTROLLER_BUFFER_CONFIG.buildPriorityBonus : 0) +
-				(BUILD_PRIORITY_BONUS[site.structureType] ?? 0),
+				(BUILD_PRIORITY_BONUS[site.structureType] ?? 0) +
+				nearDone,
 			requiredCapabilities: ["work", "carry", "move"],
 		};
 		// cc 工地豁免节流 (bugs/P1-14 派发段): 升级直供链路的地基, survive 压制会让
@@ -276,9 +305,16 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 	}
 	const supplyLineTight =
 		CONTROLLER_BUFFER_CONFIG.supplyLineGateEnabled && idleCarriers <= dedicatedCarry;
-	/** 在途 haul 任务键集: 专线收紧只抑制「新建」放量, 在途任务放行跑完 (取消风暴教训) */
-	const inflightHaulKeys = new Set(
-		board.list({ roomName: room.roomName, kinds: ["haul"] }).map((task) => task.dedupeKey),
+	/** 在途 haul 货源键集 (bugs 取消风暴): dedupeKey 含目的地 id, 目的地轮换
+	 *  (spawn 满 → ext → cc) 会产生同货源不同键的「新任务」——按全键判 expected
+	 *  会把在途旧任务误判 subject-gone 取消, carrier 半程反复易主, 有效运力大减
+	 *  (sim 实证 21 个 haul cancelled 全是同货源多目的地轮换)。货源在 → 该货源
+	 *  的全部在途任务保留, 由目的地配额 (headroom) 自然收敛。 */
+	const inflightHaulSourceKeys = new Set(
+		board
+			.list({ roomName: room.roomName, kinds: ["haul"] })
+			.filter((task) => task.status !== "completed" && task.status !== "cancelled")
+			.map((task) => task.dedupeKey.split(":")[2]),
 	);
 	const haulSources: Array<{ key: string; id: string; x: number; y: number; amount: number }> = [];
 	for (const pile of room.piles) {
@@ -304,18 +340,18 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 		// 已在途的任务保持预期集合 (跳过刷新), 不因闸门翻转被取消——载货半程被杀就是断流
 		const dedupeKey = `haul:${room.roomName}:${source.key}:${destination.id}`;
 		if (supplyLineTight && destination.id !== bufferId) {
-			if (inflightHaulKeys.has(dedupeKey)) {
+			if (inflightHaulSourceKeys.has(source.key)) {
 				expected.add(dedupeKey);
 			}
 			continue;
 		}
 		const amount = Math.min(source.amount, destination.headroom);
 		expected.add(dedupeKey);
-		// 专线 carve-out (specs/controller-supply-line): 收紧期 cc 货运压过孵化线,
-		// 分配器按任务优先级给专线先挑空闲搬运力
+		// 专线 carve-out (specs/controller-supply-line): 收紧期 cc 货运提级至供能档,
+		// 分配器按任务等级 (小者优先) 给专线先挑空闲搬运力
 		const dedicatedBoost =
 			supplyLineTight && destination.id === bufferId
-				? CONTROLLER_BUFFER_CONFIG.dedicatedLinePriority - priorityFor("haul") - destination.priority
+				? CONTROLLER_BUFFER_CONFIG.dedicatedLinePriority - priorityFor("haul") + destination.priority
 				: 0;
 		const distance = Math.max(
 			Math.abs(source.x - destination.x),
@@ -332,7 +368,7 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				destPos: { x: destination.x, y: destination.y, roomName: room.roomName },
 				resourceType: RESOURCE_ENERGY,
 				amount,
-				priority: priorityFor("haul") + destination.priority + bias("haul") + dedicatedBoost,
+				priority: priorityFor("haul") - destination.priority + bias("haul") + dedicatedBoost,
 				requiredCapabilities: ["carry", "move"],
 				deadline: ctx.tick + Math.min(600, roundTripEstimate(amount, distance) + 100),
 			},
@@ -350,8 +386,18 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 		}
 	}
 
-	// 消失的主体 → 取消其任务 (工地建成/移除、满仓、堆叠消失); 节流期保持存活者除外
+	// 消失的主体 → 取消其任务 (工地建成/移除、满仓、堆叠消失); 节流期保持存活者除外。
+	// 远程任务 (目标房 ≠ 本矿, planRemoteHarvest 产出) 不在本 planner 的 expected 口径内,
+	// 一律不扫——否则每 tick 误杀刚建好的外矿任务 (bugs/P1-18 断点⑤: claim→cancel 振荡)
+	// haul 例外: dedupeKey 含目的地, 目的地轮换产生的同货源异键在途任务不是
+	// 死任务——货源键在途即保留 (取消风暴修复, 见 inflightHaulSourceKeys 注释)。
 	for (const task of board.list({ roomName: room.roomName, kinds: PLANNED_KINDS })) {
+		if (task.targetPos?.roomName !== undefined && task.targetPos.roomName !== task.roomName) {
+			continue;
+		}
+		if (task.kind === "haul" && inflightHaulSourceKeys.has(task.dedupeKey.split(":")[2])) {
+			continue;
+		}
 		if (
 			!expected.has(task.dedupeKey) &&
 			task.status !== "completed" &&

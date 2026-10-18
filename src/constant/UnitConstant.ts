@@ -43,17 +43,10 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	logistic: "长途运输体",
 	cleaner: "清理体",
 	dismantle: "拆除体",
-	"up-upgrade": "加速升级体",
-	"up-repair": "加速维修体",
 
 	/* 占领房间 */
 	claimer: "占领体",
 	"attack-claimer": "强攻占领体",
-
-	/* 援建 */
-	"aid-build": "援建体",
-	"aid-carry": "援建搬运体",
-	"aid-upgrade": "援建升级体",
 
 	/* 一体机 */
 	"one-ranged": "远程一体体",

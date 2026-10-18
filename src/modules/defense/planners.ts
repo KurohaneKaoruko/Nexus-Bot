@@ -118,10 +118,10 @@ export function planRepairRoom(
 		expected.add(dedupeKey);
 		let priority = priorityFor("repair") + bias;
 		if (threatActive && isWallLike(structure)) {
-			priority += REPAIR_CONFIG.defenseLineThreatBonus;
+			priority -= REPAIR_CONFIG.defenseLineThreatBonus;
 		}
 		if (zone) {
-			priority += REPAIR_CONFIG.threatZoneBonus;
+			priority -= REPAIR_CONFIG.threatZoneBonus;
 		}
 		board.upsert(
 			{

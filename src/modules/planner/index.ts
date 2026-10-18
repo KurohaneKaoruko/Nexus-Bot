@@ -14,6 +14,7 @@ import { getLayoutRecord, ensureLayoutRecord } from "./memory";
 import { runControllerBufferPlacement } from "./controllerBuffer";
 import { runSourceExtensionPlacement } from "./sourceExtensions";
 import { roomModeFor } from "@/modules/strategy";
+import { submitIntent } from "@/runtime/intentQueue";
 
 export { LayoutPlanner } from "./layoutPlanner";
 export { pickControllerBufferSpot } from "./controllerBuffer";
@@ -61,18 +62,24 @@ function runBootstrapContainers(
 		if (hasContainerNearSource(room, source) || hasSiteAt(room, spot, "container")) {
 			continue;
 		}
-		const code = roomObj.createConstructionSite(spot.x, spot.y, STRUCTURE_CONTAINER);
-		if (code === OK) {
-			ctx.logger.info(
-				`bootstrap-container:${room.roomName}:${ctx.tick} Source 容器站点落位 (${spot.x},${spot.y})`,
-			);
-		} else {
-			worksite.siteRetryAt = ctx.tick + WORKSITE_CONFIG.siteRetryInterval;
-			ctx.logger.warn(
-				`bootstrap-container:${code}`,
-				`容器站点创建失败 code=${code}, 冷却 ${WORKSITE_CONFIG.siteRetryInterval}t`,
-			);
+		// 在途意图未超时: 等待 broker 执行落地, 不重复提交
+		if (
+			worksite.sitePending !== undefined &&
+			ctx.tick - worksite.sitePending < WORKSITE_CONFIG.siteRetryInterval
+		) {
+			continue;
 		}
+		// 经命令边界提交工地创建 (api/17); 原生调用权收编进 broker
+		submitIntent(ctx.tick, {
+			actorName: room.roomName,
+			kind: "createSite",
+			pipeline: "construction",
+			priority: 40,
+			targetPos: { x: spot.x, y: spot.y, roomName: room.roomName },
+			payload: { structureType: STRUCTURE_CONTAINER },
+			dedupeKey: `bootstrap-container:${room.roomName}:${source.id}`,
+		});
+		worksite.sitePending = ctx.tick;
 	}
 }
 
@@ -103,16 +110,30 @@ function runSitePlacement(ctx: TickContext, roomObj: Room, record: LayoutRoomRec
 	}
 	const mySites = roomObj.find(FIND_CONSTRUCTION_SITES);
 	const levelChanged = record.buildLevel !== level;
-	const lowWater = mySites.length < PLANNER_CONFIG.buildSitesLowWater;
+	// 放量与在岗产能联动 (任务 6.5, specs/construction-intents): 承载水位 =
+	// min(静态低水位, 建造者 × 每工承载)——建造者含 universal (早期通用件兼建造),
+	// worker 不足时暂缓新工地, 防能量与孵化槽被无效工地锁死 (P2-20 产能侧)。
+	// 下限 = workerSitesCapacity 本身 (0 建造者时保 3 工地流水, 布局先行不锁死)
+	const builders = roomObj.find(FIND_MY_CREEPS).filter(
+		(c) =>
+			!c.spawning &&
+			["worker", "universal"].includes((c.memory as { unit?: string }).unit ?? ""),
+	).length;
+	const capacity = Math.max(
+		PLANNER_CONFIG.workerSitesCapacity,
+		builders * PLANNER_CONFIG.workerSitesCapacity,
+	);
+	const lowWater = mySites.length < Math.min(PLANNER_CONFIG.buildSitesLowWater, capacity);
 	if (!levelChanged && !lowWater) {
 		return;
 	}
 	const created = LayoutPlanner.plannerCreateSite(roomObj, record.data, {
 		maxSites: PLANNER_CONFIG.maxSitesPerPass,
+		rushMode: record.rushMode === true,
 	});
 	if (created > 0) {
 		ctx.logger.info(
-			`layout-sites:${record.type}:${roomObj.name}:${ctx.tick} 放量 ${created} 个工地 (RCL${level}${levelChanged ? " 升档" : " 补足"})`,
+			`layout-sites:${record.type}:${roomObj.name}:${ctx.tick} 放量 ${created} 个工地 (RCL${level}${levelChanged ? " 升档" : " 补足"} builder=${builders})`,
 		);
 	}
 	record.buildLevel = level;
@@ -120,6 +141,9 @@ function runSitePlacement(ctx: TickContext, roomObj: Room, record: LayoutRoomRec
 
 export const Planner: TickModule = {
 	name: "layout-planner",
+	// 相位保持 commit, 但注册序必须在 Broker 之前 (各变体 main 已调整):
+	// submitIntent 的消费方是同相位的 Broker——注册序在 Broker 之后则意图滞留
+	// 队列被下 tick 清空 (sim 实证 30k tick 放量意图全部落空)。
 	phase: "commit",
 	band: "P2",
 	run(ctx: TickContext): void {
@@ -155,6 +179,10 @@ export const Planner: TickModule = {
 				}
 				continue;
 			}
+			// 冲级期产业让位调制 (任务 6.5, specs/construction-intents):
+			// rush 档把产业类 (lab/factory/powerSpawn/nuker/extractor) 放量顺序压后——
+			// 冲级火力是主要目的, 产业建筑的能量锁不该挤占升级链 (配置驱动, 不散落分支)
+			record.rushMode = roomModeFor(ctx, room.roomName) === "rush";
 			if (record.autobuild) {
 				runSitePlacement(ctx, roomObj, record);
 			}

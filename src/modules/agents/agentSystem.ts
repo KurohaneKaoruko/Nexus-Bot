@@ -21,11 +21,13 @@ import { ccUpgradeReserveOf, hasHungryUpgrader, recordTravelSample, registerUpgr
 import { destinationQuotas } from "@/modules/economy";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { relayHandoffAllowed, type RelayCreepView } from "@/utils/haulRelay";
-import { CARRIER_BEHAVIOR_CONFIG, RELAY_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
+import { CARRIER_BEHAVIOR_CONFIG, RELAY_CONFIG, REMOTE_HAUL_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { COMBAT_CONFIG, RETREAT_CONFIG } from "@/config/defense";
 import { COURIER_CONFIG, HAUL_CONFIG } from "@/config/economy";
 import { rankHostiles } from "@/modules/defense";
 import { UNIT_CODES } from "@/constant/UnitConstant";
+import { acquire } from "@/runtime/actorOwnership";
+import { isLegacyExecOn } from "@/config/capabilities";
 
 const RANGE_ADJACENT = 1;
 const RANGE_UPGRADE = 3;
@@ -83,6 +85,7 @@ function submitMoveTo(
 	creep: CreepSummary,
 	task: NexusTask,
 	target: { x: number; y: number },
+	reason = `${task.kind}-target`,
 ): void {
 	broker.submit({
 		id: `${creep.name}-move-${ctx.tick}`,
@@ -93,6 +96,7 @@ function submitMoveTo(
 		targetPos: { x: target.x, y: target.y, roomName: task.roomName },
 		priority: task.priority,
 		pipeline: "move",
+		reason,
 		dedupeKey: `${creep.name}:move:${task.id}`,
 	});
 }
@@ -405,7 +409,7 @@ function deliverEnergy(
 		if (dist(creep.x, creep.y, buffer.x, buffer.y) <= RANGE_ADJACENT) {
 			submitDrop(ctx, broker, creep, task);
 		} else {
-			submitMoveTo(ctx, broker, creep, task, buffer);
+			submitMoveTo(ctx, broker, creep, task, buffer, "cc-overflow-buffer");
 		}
 	}
 }
@@ -424,6 +428,7 @@ function pileEnergyAt(room: RoomObservation, x: number, y: number): number {
 function runCreep(
 	ctx: TickContext,
 	broker: ActionBroker,
+	board: TaskBoard,
 	room: RoomObservation,
 	creep: CreepSummary,
 	task: NexusTask,
@@ -431,10 +436,13 @@ function runCreep(
 	switch (task.kind) {
 		case "scout": {
 			// 侦查: 到达目标房即获视野 (下 tick planRemoteHarvest 产出采集任务接替);
-			// 到达后清任务指针停心跳, 任务由 lease 过期自然回收
+			// 到达即 complete 终结任务——此前只删指针不终结, 任务靠 lease 过期回
+			// available 又被认领, 且规划器每拍 upsert 续命成永生任务 (实服 4wt
+			// 重开残留 6 条 scout 任务 + 视野口径漏计 → 无限补孵 20 只, bugs/实服)
 			const target = task.targetPos?.roomName;
 			if (!target) return;
 			if (creep.roomName === target) {
+				board.complete(task.id, creep.name, ctx.tick);
 				const live = Game.creeps[creep.name];
 				if (live) delete (live.memory as Record<string, unknown>).taskId;
 				return;
@@ -448,6 +456,7 @@ function runCreep(
 				targetPos: { x: 25, y: 25, roomName: target },
 				priority: task.priority,
 				pipeline: "move",
+				reason: "scout-room",
 				dedupeKey: `${creep.name}:move:${task.id}`,
 			});
 			return;
@@ -462,10 +471,20 @@ function runCreep(
 			if (!source) {
 				return;
 			}
-			const worksite = ctx.memory.rooms[room.roomName]?.worksites?.[source.id];
-			if (worksite && !atWorksite(creep, worksite)) {
+			// 钉位: 低容量多只期任务自带采集槽位坐标 (与 Source 相邻且非 Source 本格),
+			// 每任务一槽避免多只互挤; 旧口径任务 (targetPos=Source 本格) 与远程任务
+			// 回退 intel 主驻点 (单座语义)
+			const intel = ctx.memory.rooms[room.roomName];
+			const worksite = intel?.worksites?.[source.id];
+			const taskSlot =
+				task.targetPos &&
+				task.targetPos.roomName === room.roomName &&
+				!(task.targetPos.x === source.x && task.targetPos.y === source.y)
+					? task.targetPos
+					: worksite;
+			if (taskSlot && !atWorksite(creep, taskSlot)) {
 				// 驻点未到: 工作位必然与 Source 相邻, 先钉在固定驻点
-				submitMoveTo(ctx, broker, creep, task, worksite);
+				submitMoveTo(ctx, broker, creep, task, taskSlot, "harvest-worksite");
 				return;
 			}
 			// 首次到岗采样: bornAt→firstArrivedAt 即实测路程 (替补窗口用);
@@ -519,6 +538,12 @@ function runCreep(
 		}
 		case "fill_spawn":
 		case "haul": {
+			// 跨房 haul (W1-2 远程容器回运): 取料点在外矿房, 本矿分支的
+			// room.piles/stores 是错房快照——走独立跨房状态机
+			if (task.targetPos?.roomName && task.targetPos.roomName !== room.roomName) {
+				runRemoteHaul(ctx, broker, creep, task);
+				return;
+			}
 			// 满载迟滞: 拿满才交付; 源枯竭时带余量交付
 			const live = Game.creeps[creep.name];
 			const fromId = task.kind === "haul" ? task.targetId : undefined;
@@ -561,7 +586,7 @@ function runCreep(
 			if (buffer) {
 				const slot = task.targetPos;
 				if (slot && (creep.x !== slot.x || creep.y !== slot.y)) {
-					submitMoveTo(ctx, broker, creep, task, slot);
+					submitMoveTo(ctx, broker, creep, task, slot, "upgrade-slot");
 					return;
 				}
 				if (creep.carryEnergy > 0) {
@@ -728,6 +753,7 @@ function runCreep(
 					},
 					priority: task.priority,
 					pipeline: "move",
+					reason: "claim-room",
 					dedupeKey: `${creep.name}:move:${task.id}`,
 				});
 				return;
@@ -741,8 +767,18 @@ function runCreep(
 			}
 			const d = Math.max(Math.abs(creep.x - ctrl.pos.x), Math.abs(creep.y - ctrl.pos.y));
 			if (d <= 1) {
-				// claim 直接调用 (不走 broker, 引擎原生意图)
-				live.claimController(ctrl);
+				// claim 经命令边界提交 (api/17 claim 管线)
+				broker.submit({
+					id: `${creep.name}-claim-act-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "claimController",
+					targetId: ctrl.id,
+					priority: task.priority,
+					pipeline: "claim",
+					dedupeKey: `${creep.name}:claim:${task.id}`,
+				});
 			} else {
 				broker.submit({
 					id: `${creep.name}-claim-${ctx.tick}`,
@@ -753,6 +789,7 @@ function runCreep(
 					targetPos: { x: ctrl.pos.x, y: ctrl.pos.y, roomName: targetRoom },
 					priority: task.priority,
 					pipeline: "move",
+					reason: "claim-controller",
 					dedupeKey: `${creep.name}:move:${task.id}`,
 				});
 			}
@@ -780,6 +817,7 @@ function runCreep(
 					},
 					priority: task.priority,
 					pipeline: "move",
+					reason: "reserve-room",
 					dedupeKey: `${creep.name}:move:${task.id}`,
 				});
 				return;
@@ -793,7 +831,18 @@ function runCreep(
 			// 续满, 预订不中断外矿恒满容量; 寿命耗尽由生产端在续订线下重发接替
 			const d = Math.max(Math.abs(creep.x - ctrl.pos.x), Math.abs(creep.y - ctrl.pos.y));
 			if (d <= 1) {
-				live.reserveController(ctrl);
+				// reserve 经命令边界提交 (api/17 claim 管线)
+				broker.submit({
+					id: `${creep.name}-rsv-act-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "reserveController",
+					targetId: ctrl.id,
+					priority: task.priority,
+					pipeline: "claim",
+					dedupeKey: `${creep.name}:reserve:${task.id}`,
+				});
 			} else {
 				broker.submit({
 					id: `${creep.name}-rsv-${ctx.tick}`,
@@ -804,6 +853,7 @@ function runCreep(
 					targetPos: { x: ctrl.pos.x, y: ctrl.pos.y, roomName: targetRoom },
 					priority: task.priority,
 					pipeline: "move",
+					reason: "reserve-controller",
 					dedupeKey: `${creep.name}:move:${task.id}`,
 				});
 			}
@@ -981,6 +1031,65 @@ function runRemoteHarvest(
 	const targetRoom = task.targetPos?.roomName;
 	if (!targetRoom) return;
 
+	// 满载且在目标房: 优先卸源旁容器 (W1-2 carrier 链, 驻点化零往返);
+	// 无容器再走自回运兜底 (远程容器由本矿 carrier 跨房 haul 接力)
+	if (creep.carryEnergy > 0 && creep.freeCapacity === 0 && creep.roomName === targetRoom) {
+		const remoteRoom = Game.rooms[targetRoom];
+		const source = remoteRoom
+			? (Game.getObjectById(task.targetId ?? "") as Source | null)
+			: null;
+		const container =
+			source && remoteRoom
+				? remoteRoom
+						.find(FIND_STRUCTURES, {
+							filter: (s): s is StructureContainer =>
+								s.structureType === STRUCTURE_CONTAINER &&
+								s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange) &&
+								s.store.getFreeCapacity(RESOURCE_ENERGY) > 0,
+						})
+						.find((c) => dist(creep.x, creep.y, c.pos.x, c.pos.y) <= 1)
+				: undefined;
+		if (container) {
+			broker.submit({
+				id: `${creep.name}-rcd-${ctx.tick}`,
+				tick: ctx.tick,
+				taskId: task.id,
+				actorName: creep.name,
+				kind: "transfer",
+				targetId: container.id,
+				resourceType: "energy",
+				priority: task.priority,
+				pipeline: "carry",
+				dedupeKey: `${creep.name}:carry:${task.id}`,
+			});
+			return;
+		}
+		// 无成品容器但有自家工地 (W2 建设期): 满载去工地浇筑, 不走自回运——
+		// 回运一趟 2×路程 tick, 容器不落地 haul 链永远不开
+		const liveRoomFull = Game.rooms[targetRoom];
+		const ownSiteFull = liveRoomFull
+			? liveRoomFull.find(FIND_CONSTRUCTION_SITES, {
+					filter: (s) =>
+						s.structureType === STRUCTURE_CONTAINER &&
+						Math.max(Math.abs(s.pos.x - (task.targetPos?.x ?? 0)), Math.abs(s.pos.y - (task.targetPos?.y ?? 0))) <= REMOTE_HAUL_CONFIG.containerRange + 1,
+				})[0]
+			: undefined;
+		if (ownSiteFull && creep.bodyWork > 0) {
+			broker.submit({
+				id: `${creep.name}-rhb2-${ctx.tick}`,
+				tick: ctx.tick,
+				taskId: task.id,
+				actorName: creep.name,
+				kind: "build",
+				targetId: ownSiteFull.id,
+				priority: task.priority,
+				pipeline: "work",
+				dedupeKey: `${creep.name}:work:${task.id}`,
+			});
+			return;
+		}
+	}
+
 	// 满载且不在本矿 → 走回本矿
 	if (creep.carryEnergy > 0 && creep.freeCapacity === 0 && creep.roomName !== task.roomName) {
 		broker.submit({
@@ -992,6 +1101,7 @@ function runRemoteHarvest(
 			targetPos: { x: 25, y: 25, roomName: task.roomName },
 			priority: task.priority,
 			pipeline: "move",
+			reason: "return-home",
 			dedupeKey: `${creep.name}:move:${task.id}`,
 		});
 		return;
@@ -1001,6 +1111,24 @@ function runRemoteHarvest(
 	if (creep.carryEnergy > 0 && creep.roomName === task.roomName) {
 		const dest = remoteDropoffFor(ctx, task.roomName);
 		if (dest) {
+			const live = Game.getObjectById(dest.id as Id<AnyStoreStructure>);
+			// 距离预判 (bugs/P1-18 断点⑥): 卸货点不在脚边时先走过去——
+			// 直接 transfer 只会每 tick ERR_NOT_IN_RANGE, 爬原地罚站到租约耗尽
+			if (live && dist(creep.x, creep.y, live.pos.x, live.pos.y) > 1) {
+				broker.submit({
+					id: `${creep.name}-del-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "move",
+					targetPos: { x: live.pos.x, y: live.pos.y, roomName: task.roomName },
+					priority: task.priority,
+					pipeline: "move",
+					reason: "remote-dropoff",
+					dedupeKey: `${creep.name}:move:${task.id}`,
+				});
+				return;
+			}
 			broker.submit({
 				id: `${creep.name}-del-${ctx.tick}`,
 				tick: ctx.tick,
@@ -1022,8 +1150,91 @@ function runRemoteHarvest(
 		const remoteRoom = Game.rooms[targetRoom];
 		const source = remoteRoom ? (Game.getObjectById(task.targetId ?? "") as Source | null) : null;
 		if (source) {
+			// 远程基建 (W2): 源旁无容器且无在建 → 就地放站; 兼职建造——
+			// 容器是 carrier 回运链的开关 (W1-2), 无容器期采集掉落堆满地腐烂。
+			// 门控: 非己方房且 (无 controller 或无主) 才动工——有主之地禁建
+			const liveRoom = Game.rooms[targetRoom];
+			const remoteCtrl = liveRoom?.controller;
+			const buildableRemote =
+				liveRoom !== undefined && !remoteCtrl?.my && (remoteCtrl === undefined || !remoteCtrl.owner);
+			if (buildableRemote) {
+				const existing = liveRoom.find(FIND_STRUCTURES, {
+					filter: (s): s is StructureContainer =>
+						s.structureType === STRUCTURE_CONTAINER &&
+						s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange),
+				});
+				const site = liveRoom.find(FIND_CONSTRUCTION_SITES, {
+					filter: (s) => s.structureType === STRUCTURE_CONTAINER,
+				});
+				if (existing.length === 0 && site.length === 0 && creep.bodyWork > 0) {
+					// 站点位置: 采集工位即容器位 (驻点采集本就贴源), 找源旁一格空地
+					const spot = pickRemoteContainerSpot(liveRoom, source);
+					if (spot) {
+						broker.submit({
+							id: `${creep.name}-rcs-${ctx.tick}`,
+							tick: ctx.tick,
+							taskId: task.id,
+							actorName: liveRoom.name,
+							kind: "createSite",
+							targetPos: { x: spot.x, y: spot.y, roomName: targetRoom },
+							payload: { structureType: STRUCTURE_CONTAINER },
+							priority: 40,
+							pipeline: "construction",
+							dedupeKey: `remote-container:${targetRoom}:${spot.x}:${spot.y}`,
+						});
+					}
+				}
+			}
 			const d = Math.max(Math.abs(creep.x - source.pos.x), Math.abs(creep.y - source.pos.y));
 			if (d <= 1) {
+				// 兼职建造 (W2): 工地贴源且身上有货 → 先 build (采集间隙推进容器)。
+				// 射程用原生 build 上限 3: 容器位与矿工工位可能分居源两侧 (切比雪夫 2),
+				// 收紧到 1 会让站点永远无人建造直到衰亡重放
+				const buildTarget = liveRoom
+					? liveRoom.find(FIND_CONSTRUCTION_SITES, {
+							filter: (s) =>
+								s.structureType === STRUCTURE_CONTAINER &&
+								Math.max(Math.abs(s.pos.x - source.pos.x), Math.abs(s.pos.y - source.pos.y)) <= REMOTE_HAUL_CONFIG.containerRange,
+						})[0]
+					: undefined;
+				if (buildTarget && creep.carryEnergy > 0 && dist(creep.x, creep.y, buildTarget.pos.x, buildTarget.pos.y) <= 3) {
+					broker.submit({
+						id: `${creep.name}-rhb-${ctx.tick}`,
+						tick: ctx.tick,
+						taskId: task.id,
+						actorName: creep.name,
+						kind: "build",
+						targetId: buildTarget.id,
+						priority: task.priority,
+						pipeline: "work",
+						dedupeKey: `${creep.name}:work:${task.id}`,
+					});
+					return;
+				}
+				// 容器维修 (W2): 成品容器耐久低于阈值即修——不修则 decay 拆链,
+				// haul 回运的取料点周期性消失 (sim 实证 cont 周期性归零重放)
+				const wornContainer = liveRoom
+					? liveRoom.find(FIND_STRUCTURES, {
+							filter: (s): s is StructureContainer =>
+								s.structureType === STRUCTURE_CONTAINER &&
+								s.hits < s.hitsMax * REMOTE_HAUL_CONFIG.repairRatio &&
+								s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange + 1),
+						})[0]
+					: undefined;
+				if (wornContainer && creep.carryEnergy > 0) {
+					broker.submit({
+						id: `${creep.name}-rhr-${ctx.tick}`,
+						tick: ctx.tick,
+						taskId: task.id,
+						actorName: creep.name,
+						kind: "repair",
+						targetId: wornContainer.id,
+						priority: task.priority,
+						pipeline: "work",
+						dedupeKey: `${creep.name}:work:${task.id}`,
+					});
+					return;
+				}
 				broker.submit({
 					id: `${creep.name}-hv-${ctx.tick}`,
 					tick: ctx.tick,
@@ -1045,6 +1256,7 @@ function runRemoteHarvest(
 					targetPos: { x: source.pos.x, y: source.pos.y, roomName: targetRoom },
 					priority: task.priority,
 					pipeline: "move",
+					reason: "remote-source",
 					dedupeKey: `${creep.name}:move:${task.id}`,
 				});
 			}
@@ -1062,6 +1274,7 @@ function runRemoteHarvest(
 		targetPos: { x: task.targetPos?.x ?? 25, y: task.targetPos?.y ?? 25, roomName: targetRoom },
 		priority: task.priority,
 		pipeline: "move",
+		reason: "remote-room",
 		dedupeKey: `${creep.name}:move:${task.id}`,
 	});
 }
@@ -1080,6 +1293,119 @@ function room_energyStructures_findSpawn(ctx: TickContext) {
  * 远程采集件在本矿的卸货地: 优先 cc (升级线是外矿冲级收入的最终去处,
  * 直灌孵化线会把 cc 抽干——bugs (十二) 实证 control −82%), spawn/ext 次之。
  */
+/** 远程容器选址: 源旁一格非墙空地 (无结构/工地), 确定性序 (dx/dy 升序) */
+function pickRemoteContainerSpot(
+	room: Room,
+	source: Source,
+): { x: number; y: number } | undefined {
+	const terrain = room.getTerrain();
+	for (let dy = -1; dy <= 1; dy += 1) {
+		for (let dx = -1; dx <= 1; dx += 1) {
+			if (dx === 0 && dy === 0) continue;
+			const x = source.pos.x + dx;
+			const y = source.pos.y + dy;
+			if (x < 1 || x > 48 || y < 1 || y > 48) continue;
+			if ((terrain.get(x, y) & TERRAIN_MASK_WALL) !== 0) continue;
+			if (room.lookForAt(LOOK_STRUCTURES, x, y).length > 0) continue;
+			if (room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y).length > 0) continue;
+			return { x, y };
+		}
+	}
+	return undefined;
+}
+
+/**
+ * 跨房 haul (W1-2 远程容器回运): fetch 腿在容器房 (withdraw 装满),
+ * deliver 腿回本矿卸货点 (remoteDropoffFor)——与 runRemoteHarvest 的
+ * 自回运兜底同构, 但由专职 carrier 承担, 5W 矿工驻源不出场。
+ */
+function runRemoteHaul(
+	ctx: TickContext,
+	broker: ActionBroker,
+	creep: CreepSummary,
+	task: NexusTask,
+): void {
+	const live = Game.creeps[creep.name];
+	// deliver 态: 有货即回本矿卸 (空载才回 fetch)
+	if (live?.memory.mode === "deliver") {
+		if (creep.carryEnergy === 0) {
+			live.memory.mode = "fetch";
+		} else {
+			const dest = remoteDropoffFor(ctx, task.roomName);
+			const destLive = dest
+				? (Game.getObjectById(dest.id as Id<AnyStoreStructure>)?.pos ?? null)
+				: null;
+			if (dest && destLive && dist(creep.x, creep.y, destLive.x, destLive.y) <= 1 && creep.roomName === task.roomName) {
+				broker.submit({
+					id: `${creep.name}-rhd-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "transfer",
+					targetId: dest.id,
+					resourceType: "energy",
+					priority: task.priority,
+					pipeline: "carry",
+					dedupeKey: `${creep.name}:carry:${task.id}`,
+				});
+			} else {
+				broker.submit({
+					id: `${creep.name}-rhg-${ctx.tick}`,
+					tick: ctx.tick,
+					taskId: task.id,
+					actorName: creep.name,
+					kind: "move",
+					targetPos: destLive
+						? { x: destLive.x, y: destLive.y, roomName: task.roomName }
+						: { x: 25, y: 25, roomName: task.roomName },
+					priority: task.priority,
+					pipeline: "move",
+					reason: "haul-deliver",
+					dedupeKey: `${creep.name}:move:${task.id}`,
+				});
+			}
+			return;
+		}
+	}
+	// fetch 态: 满载切 deliver; 未满去容器取
+	if (creep.carryEnergy > 0 && creep.freeCapacity === 0) {
+		if (live) live.memory.mode = "deliver";
+		return;
+	}
+	const container = Game.getObjectById(task.targetId ?? "") as StructureContainer | null;
+	if (container && container.store.energy > 0) {
+		if (creep.roomName === container.pos.roomName && dist(creep.x, creep.y, container.pos.x, container.pos.y) <= 1) {
+			broker.submit({
+				id: `${creep.name}-rhf-${ctx.tick}`,
+				tick: ctx.tick,
+				taskId: task.id,
+				actorName: creep.name,
+				kind: "withdraw",
+				targetId: container.id,
+				resourceType: "energy",
+				priority: task.priority,
+				pipeline: "carry",
+				dedupeKey: `${creep.name}:carry:${task.id}`,
+			});
+		} else {
+			broker.submit({
+				id: `${creep.name}-rhm-${ctx.tick}`,
+				tick: ctx.tick,
+				taskId: task.id,
+				actorName: creep.name,
+				kind: "move",
+				targetPos: { x: container.pos.x, y: container.pos.y, roomName: container.pos.roomName },
+				priority: task.priority,
+				pipeline: "move",
+				reason: "haul-fetch",
+				dedupeKey: `${creep.name}:move:${task.id}`,
+			});
+		}
+		return;
+	}
+	// 容器空/消失: 任务由 planner 存量门自然回收, 空载待命避免空跑
+}
+
 function remoteDropoffFor(ctx: TickContext, roomName: string): { id: string } | undefined {
 	const room = ctx.world.current?.rooms[roomName];
 	if (!room) return room_energyStructures_findSpawn(ctx);
@@ -1249,22 +1575,37 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 			if (processed.has(creep.name)) {
 				continue;
 			}
+			// 孵化中单位不驱动 (bugs/P0-16c 同源防护): 出生前任何计划都是
+			// actor-missing-or-spawning 无效提交; 角色记录由孵化簿记保证
+			if (creep.spawning) {
+				continue;
+			}
 			// 原型角色执行体 (manager/transporter/miner): 无任务指针时走原型 exec()
 			// 注意: NEXUS_TASK_DRIVEN_CODES 是 Set, 成员判定必须用 has——
 			// `in` 是对象属性键检查, 对 Set 成员恒 false, 会让任务驱动角色
 			// 全部漏进 exec() (scout/claimer 无 registry 处理器, 刷屏空转)
+			// legacyExecMode 全局关 (任务 5.5 三级开关末段): 类别级收编
+			// (加 NEXUS_TASK_DRIVEN_CODES) 完成后的全量切换点
 			const liveVendor = Game.creeps[creep.name];
 			if (
+				isLegacyExecOn() &&
 				!NEXUS_TASK_DRIVEN_CODES.has(creep.unitCode) &&
 				liveVendor &&
 				!liveVendor.memory.taskId &&
 				typeof liveVendor.exec === "function"
 			) {
+				acquire(creep.name, "legacy-exec", ctx.tick);
 				liveVendor.exec();
 				continue;
 			}
 			// 快递爬: 无任务租约的角色驱动 (specs/rush-courier)
 			if (creep.unitCode === UNIT_CODES["rush-courier"]) {
+				// 孵化中不产出计划 (bugs/P0-16c): 出生前提交的计划全部
+				// actor-missing-or-spawning 无效, 白耗仲裁与告警
+				if (creep.spawning) {
+					continue;
+				}
+				acquire(creep.name, "nexus-agent", ctx.tick);
 				runCourierCreep(ctx, broker, room, creep);
 				continue;
 			}
@@ -1303,6 +1644,7 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 				continue;
 			}
 			board.heartbeat(taskId, creep.name, ctx.tick);
+			acquire(creep.name, "nexus-agent", ctx.tick);
 			// 接力搬运 (specs/relay-hauling): 相向对穿整仓交接, 任务随货走后双方同 Tick 重跑
 			const relay = tryRelayHandoff(ctx, broker, board, room, creep, task, processed);
 			if (relay) {
@@ -1312,13 +1654,49 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 					const swapped = memberTaskId ? board.get(memberTaskId) : undefined;
 					processed.add(name);
 					if (member && swapped && swapped.assignedTo === name) {
-						runCreep(ctx, broker, room, member, swapped);
+						runCreep(ctx, broker, board, room, member, swapped);
 					}
 				}
 				continue;
 			}
-			runCreep(ctx, broker, room, creep, task);
+			runCreep(ctx, broker, board, room, creep, task);
 			processed.add(creep.name);
 		}
+	}
+
+	// 外矿单位驱动 (bugs/P1-18 断点④): 可见非己方房的己方爬不进 world.rooms,
+	// 上面循环驱动不到——按其任务归属房取 observation 后走同一 runCreep。
+	// 只驱动带有效租约的任务件 (无租约外矿件不产出计划, 等待分配器续派)。
+	for (const creep of world.remoteUnits) {
+		if (creep.spawning) {
+			continue;
+		}
+		const live = Game.creeps[creep.name];
+		if (!live) {
+			continue;
+		}
+		const taskId = live.memory.taskId;
+		if (!taskId) {
+			continue;
+		}
+		const task = board.get(taskId);
+		if (
+			!task ||
+			task.assignedTo !== creep.name ||
+			task.status === "completed" ||
+			task.status === "cancelled" ||
+			task.status === "failed"
+		) {
+			delete live.memory.taskId;
+			continue;
+		}
+		// 任务归属房 (本矿) 的 observation: runCreep 的 remote 分支按 task 定位目标
+		const homeRoom = world.rooms[task.roomName];
+		if (!homeRoom) {
+			continue;
+		}
+		board.heartbeat(taskId, creep.name, ctx.tick);
+		acquire(creep.name, "nexus-agent", ctx.tick);
+		runCreep(ctx, broker, board, homeRoom, creep, task);
 	}
 }

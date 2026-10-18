@@ -2,6 +2,7 @@
 import { isWarMode } from '@/core/store/accessor';
 import { getStructData } from '@/core/store/accessor';
 import { isRoomTickAligned } from '@/utils/roomPhase';
+import { industryProduce } from '@/modules/industry/industryAdapter';
 
 /** 工厂生产: 冷却/战争/关停/等级失配门 + 原料检查 + 产出回灌任务 (原 FactoryWork 改写) */
 export function factoryWork(room: Room): void {
@@ -34,7 +35,8 @@ export function factoryWork(room: Room): void {
     // 原料不足时不处理
     if (!components || Object.keys(components).some((c: any) => (factory.store as any) [c] < (components as any) [c])) return;
 
-    const result = factory.produce(product as CommodityConstant);
+    // 经命令边界同步执行: 原生调用权收编进 broker
+    const result = industryProduce(factory, product as CommodityConstant);
 
     if (isRoomTickAligned(room.name, 100) || result != OK){
         if((factory.store[product] ?? 0) > 0) {

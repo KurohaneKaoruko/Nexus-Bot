@@ -15,8 +15,19 @@ export type CongestionAction = "none" | "repath" | "release";
 /** 上一 Tick 的位置缓存: creep 名 → 坐标 */
 const lastPositions = new Map<string, { x: number; y: number }>();
 
-/** 登记「本 Tick 该单位有移动意图」(由 Broker 的 move 结果回填) */
-export function noteMoveIntent(ctx: TickContext, creepName: string): void {
+/**
+ * 移动执行率滚动窗口 (任务 5.7 契约锚定):
+ * intent = 有移动意图的单位 tick 数, moved = 其中实际发生位移的;
+ * 执行率 = moved / intent, sim 断言口径「不低于 97% 基线」由 diag.moveRate() 消费。
+ * 进程内存态 (跨 tick 累计), 不落 Memory。
+ */
+const moveRateWindow = { intentTicks: 0, movedTicks: 0 };
+
+/** 移动意图场景分布 (任务 5.1): reason 标签 → 窗口内计数; 驱动诊断归因, 不落 Memory */
+const moveReasonCounts = new Map<string, number>();
+
+/** 登记本 tick 移动意图 (由 Broker 的 move 结果回填; reason = 意图场景标签, 5.1) */
+export function noteMoveIntent(ctx: TickContext, creepName: string, reason?: string): void {
 	const blocked = ctx.memory.traffic.blocked;
 	const record = blocked[creepName];
 	if (record) {
@@ -24,7 +35,25 @@ export function noteMoveIntent(ctx: TickContext, creepName: string): void {
 	} else {
 		blocked[creepName] = { count: 0, lastTick: ctx.tick };
 	}
+	if (reason !== undefined) {
+		moveReasonCounts.set(reason, (moveReasonCounts.get(reason) ?? 0) + 1);
+	}
 }
+
+/** 移动执行率摘要 (任务 5.7): 滚动窗口累计口径, 无样本时 null; reasons = 5.1 场景分布 */
+export const moveExecutionRate = (): {
+	rate: number;
+	intentTicks: number;
+	movedTicks: number;
+	reasons: Record<string, number>;
+} | null => {
+	if (moveRateWindow.intentTicks === 0) return null;
+	return {
+		rate: moveRateWindow.movedTicks / moveRateWindow.intentTicks,
+		...moveRateWindow,
+		reasons: Object.fromEntries(moveReasonCounts),
+	};
+};
 
 /**
  * 每 Tick 位置差分 (commit 段 endTickResolve 之后调用, 此时位置已定):
@@ -54,7 +83,9 @@ export function updateCongestion(ctx: TickContext, world: WorldView): void {
 				traffic.hotspots[key] = hotspot;
 			} else {
 				record.count = 0;
+				moveRateWindow.movedTicks += 1;
 			}
+			moveRateWindow.intentTicks += 1;
 		}
 	}
 

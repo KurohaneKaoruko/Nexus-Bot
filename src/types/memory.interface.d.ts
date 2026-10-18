@@ -87,6 +87,17 @@ interface BotMemory {
     funnelCooldown?: Record<string, number>;
     /** 是否 MMO 官方服（按 shard 名缓存） */
     isMMO?: boolean;
+    /** CPU 桶闭环调控状态（任务 7.6 收口, 原 Memory.remoteThreshold/activeThreshold 散键） */
+    bucketGovernor?: {
+        /** 积分控制器阈值 (score 量级 0..2) */
+        threshold: number;
+        /** 最近同步到 active 的 tick */
+        syncedAt: number;
+        /** 当前生效阈值 (score 低于此值的外矿挂起) */
+        active?: number;
+        /** 最近更新 tick (遥测/诊断用) */
+        updatedAt?: number;
+    };
 }
 
 interface Memory {

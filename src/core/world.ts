@@ -154,6 +154,8 @@ export interface ControllerBufferSummary {
 export interface RoomObservation {
 	roomName: string;
 	rcl: number;
+	/** 孵化能量容量 (spawn+ext 合计, 采集定编折算输入) */
+	energyCapacity: number;
 	controller?: ControllerSummary;
 	sources: SourceSummary[];
 	energyStructures: EnergyStructureSummary[];
@@ -175,6 +177,10 @@ export interface RoomObservation {
 export interface WorldView {
 	tick: number;
 	rooms: Record<string, RoomObservation>;
+	/** 可见非己方房中的己方单位 (外矿采集/侦查/预订件):
+	 *  world.rooms 只收己方房, 这些单位不进任何房观察——没有此清单时
+	 *  任务分配与 agent 驱动都看不见它们 (bugs/P1-18 断点④: 跨房爬到达即失联)。 */
+	remoteUnits: CreepSummary[];
 }
 
 /** 跨 Tick 感知状态: 当 Tick 快照 + 本 Tick 发现的死亡单位与失守房间 */
@@ -199,6 +205,9 @@ export function aliveNames(world: WorldView | null): Set<string> {
 		for (const creep of room.creeps) {
 			names.add(creep.name);
 		}
+	}
+	for (const creep of world.remoteUnits) {
+		names.add(creep.name);
 	}
 	return names;
 }

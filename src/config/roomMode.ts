@@ -77,8 +77,8 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		remoteMining: "auto",
 		// 同时在发展的外矿房上限: 定编任务数驱动, 不设限会淹没孵化队列 (控制冻结机理)
 		remoteAutoMaxRooms: 2,
-		// 冲级底线 (bugs/P1-14): RCL4 前升级压过建造, 到 RCL4 后回落让 ext/路网扩容
-		upgradeBias: { amount: 55, belowRcl: 4 },
+		// 冲级底线 (bugs/P1-14): RCL4 前升级提前到保级档 (L5, 压过建造 L8), 到 RCL4 后回落
+		upgradeBias: { amount: -1, belowRcl: 4 },
 	},
 	// mini 迷你房: 常驻冲级 farm (对应 mini 布局), 非必要设施全关、拉能快递常驻
 	mini: {
@@ -87,7 +87,7 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
 		courierEnabled: true,
 		upgraderForageOnStarve: false,
 		remoteMining: "manual",
-		upgradeBias: { amount: 55, belowRcl: 4 },
+		upgradeBias: { amount: -1, belowRcl: 4 },
 	},
 };
 

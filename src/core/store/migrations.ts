@@ -337,6 +337,66 @@ export const migrateV10ToV11: MigrationFn = (memory) => {
 	return {};
 };
 
+/**
+ * v11 → v12: 新增 `ownership` 子系统 (api/16 actor-ownership 任务 2.2):
+ * 跨 Tick 持久所有权索引, 旧 Memory 无此键 → 引导为安全空状态
+ * (spec: 内存兼容——旧 Memory 不产生未迁移字段错误, 机制从空状态引导)。
+ * 坏条目 (owner 非串/expiresAt 非数) 逐条剔除; 子系统级损坏重置。
+ * 迁移幂等。
+ */
+export const migrateV11ToV12: MigrationFn = (memory) => {
+	const ownership = memory["ownership"];
+	if (ownership === undefined) {
+		return {};
+	}
+	if (
+		!isPlainObject(ownership) ||
+		!isPlainObject(ownership["actors"])
+	) {
+		memory["ownership"] = { indexVersion: 1, actors: {} };
+		return { resetSubsystems: ["ownership"] };
+	}
+	const actors = ownership["actors"] as Record<string, unknown>;
+	for (const [name, entry] of Object.entries(actors)) {
+		if (
+			!isPlainObject(entry) ||
+			typeof entry["owner"] !== "string" ||
+			typeof entry["expiresAt"] !== "number"
+		) {
+			delete actors[name];
+		}
+	}
+	return {};
+};
+
+/**
+ * v12 → v13: 账本五态分账 (specs/resource-ledger 任务 7.1/7.2/7.4):
+ * ledger 新增 hunger / consumedTotal / overdueCount 子键,
+ * rates 各房补 consumed 速率位; 预留 createdAt 为可选字段, 不回填
+ * (缺省记录不做超龄判定, 首次 reserve 起带年龄)。迁移幂等。
+ */
+export const migrateV12ToV13: MigrationFn = (memory) => {
+	const ledger = memory["ledger"];
+	if (ledger === undefined) {
+		return {};
+	}
+	if (!isPlainObject(ledger)) {
+		return { resetSubsystems: ["ledger"] };
+	}
+	ledger["hunger"] ??= {};
+	ledger["consumedTotal"] ??= {};
+	ledger["overdueCount"] ??= 0;
+	const rates = ledger["rates"];
+	if (isPlainObject(rates)) {
+		for (const entry of Object.values(rates)) {
+			if (isPlainObject(entry) && !isPlainObject(entry["consumed"])) {
+				entry["consumed"] = { accumulated: 0, ema: 0, lastFoldTick: 0 };
+			}
+		}
+	}
+	return {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -349,4 +409,6 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV8ToV9,
 	migrateV9ToV10,
 	migrateV10ToV11,
+	migrateV11ToV12,
+	migrateV12ToV13,
 ];

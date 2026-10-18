@@ -20,14 +20,18 @@ import { EventBus } from "@/core/event";
 import { Nukes } from "@/modules/industry";
 import { InterShard } from "@/modules/intershard";
 import { Expansion } from "@/modules/external";
-import { EndPhase } from "@/core/endPhase";
+import { FunnelEnd, InterShardEnd, ClearEnd, StatisticsEnd } from "@/core/endPhase";
+import { EventBusEnd } from "@/core/event";
+import { InvariantWatch } from "@/core/invariantWatch";
 import { Visuals } from "@/modules/visuals";
 import { Pixel } from "@/modules/economy";
+import { ActorOwnershipSweep, ActorOwnershipPersist } from "@/runtime/actorOwnershipModule";
 
 const nexus = createNexus(DEFAULT_PROFILE);
 
 nexus.use(
 	Perception,
+	ActorOwnershipSweep,
 	Defense,
 	StrategyCore,
 	Economy,
@@ -36,8 +40,8 @@ nexus.use(
 	Tasks,
 	Spawning,
 	Agents,
-	Broker,
 	Planner,
+	Broker,
 	RoomFeatures,
 	Industry,
 	Teams,
@@ -46,7 +50,13 @@ nexus.use(
 	Nukes,
 	InterShard,
 	Expansion,
-	EndPhase,
+	EventBusEnd,
+	FunnelEnd,
+	InterShardEnd,
+	ClearEnd,
+	StatisticsEnd,
+	ActorOwnershipPersist,
+	InvariantWatch,
 	Visuals,
 	Pixel,
 );

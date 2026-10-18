@@ -38,7 +38,6 @@ export type RoomModeProfile = {
     /** 中央九房运行间隔（normal / QoS constrained） */
     remoteCenterInterval: { normal: number; constrained: number };
     /** 孵化任务调度周期（tick） */
-    spawnMissionInterval: number;
     /** 搬运任务调度周期（tick） */
     transportMissionInterval: number;
     /** high 强度：紧急 UNIV 上限 / 任务调度间隔 / 运力 / 控制器缓冲 用高强度档（仅 rush） */
@@ -68,7 +67,6 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         defenseInterval: 15,
         remoteEnergyInterval: { normal: 20, constrained: 40 },
         remoteCenterInterval: { normal: 10, constrained: 20 },
-        spawnMissionInterval: 10,
         transportMissionInterval: 20,
         highIntensity: false,
         upgradeIncomeMultiplier: 1,
@@ -86,7 +84,6 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         defenseInterval: 1,
         remoteEnergyInterval: { normal: 20, constrained: 40 },
         remoteCenterInterval: { normal: 10, constrained: 20 },
-        spawnMissionInterval: 10,
         transportMissionInterval: 20,
         highIntensity: false,
         upgradeIncomeMultiplier: 1,
@@ -104,7 +101,6 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         defenseInterval: 1,
         remoteEnergyInterval: { normal: 10, constrained: 20 },
         remoteCenterInterval: { normal: 5, constrained: 10 },
-        spawnMissionInterval: 5,
         transportMissionInterval: 10,
         highIntensity: true,
         upgradeIncomeMultiplier: 1.2,
@@ -122,7 +118,6 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         defenseInterval: 1,
         remoteEnergyInterval: { normal: 5, constrained: 10 },
         remoteCenterInterval: { normal: 4, constrained: 6 },
-        spawnMissionInterval: 5,
         transportMissionInterval: 10,
         highIntensity: true,
         // rush 火力全开: 刷墙给冲级让路, 推迟到 RCL7 (紧急破口/REPAIR 旗仍然照刷)
@@ -147,7 +142,6 @@ export const ROOM_MODE_PROFILES: Record<RoomModeName, RoomModeProfile> = {
         defenseInterval: 5,
         remoteEnergyInterval: { normal: 20, constrained: 40 },
         remoteCenterInterval: { normal: 10, constrained: 20 },
-        spawnMissionInterval: 5,
         transportMissionInterval: 10,
         highIntensity: true,
         upgradeIncomeMultiplier: 1.5,

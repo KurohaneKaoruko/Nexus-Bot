@@ -4,6 +4,7 @@ import { ensureLabAB, getLabAB } from '@/modules/industry/labReservations';
 import { getStructData } from '@/core/store/accessor';
 import { isRoomTickAligned } from '@/utils/roomPhase';
 import { drawLabInfo } from '@/modules/visuals';
+import { industryRunReaction } from '@/modules/industry/industryAdapter';
 
 /** Lab 工作主入口: labAB 预留 + 可视化 + 战争豁免 + 反应 (原 LabWork 原型方法改写) */
 export function labWork(room: Room): void {
@@ -68,7 +69,7 @@ function runLabReaction(room: Room): void {
             continue; // 如果lab已满，跳过这个lab
         }
 
-        // 进行合成
-        lab.runReaction(labA, labB);
+        // 进行合成 (经命令边界同步执行: 原生调用权收编进 broker)
+        industryRunReaction(lab, labA, labB);
     }
 }

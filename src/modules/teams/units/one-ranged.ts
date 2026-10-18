@@ -1,9 +1,10 @@
 
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
+import { combatHeal, combatMoveTo, combatRangedAttack, combatRangedMassAttack } from '@/modules/combat';
 
 const runCombat = (creep: Creep) => {
     creep.disableAttackNotificationsOnce();
-    creep.heal(creep);
+    combatHeal(creep, creep);
 
     if (creep.ticksToLive! < 100 && creep.room.my) {
         creep.unBoost();
@@ -19,7 +20,7 @@ const runCombat = (creep: Creep) => {
         if (creep.room.name !== moveflag.pos.roomName) {
             creep.memory.targetRoom = moveflag.pos.roomName;
         }
-        creep.moveTo(moveflag.pos, { visualizePathStyle: { stroke: '#00ff00' } });
+        combatMoveTo(creep, moveflag.pos, { visualizePathStyle: { stroke: '#00ff00' } });
         moveOK = true;
     }
 
@@ -49,7 +50,7 @@ const runCombat = (creep: Creep) => {
     const target = creep.pos.findClosestByRange([...creepTarget, ...structureTarget]) as any;
     if (target) {
         if (!creep.pos.inRangeTo(target, 1) && !moveOK) {
-            creep.moveTo(target);
+            combatMoveTo(creep, target);
         }
         if (!rangedOK && creep.room.lookForAtArea(LOOK_STRUCTURES,
             Math.max(creep.pos.y - 3, 0), Math.max(creep.pos.x - 3, 0),
@@ -58,10 +59,10 @@ const runCombat = (creep: Creep) => {
                     s.structure.structureType === STRUCTURE_STORAGE || s.structure.structureType === STRUCTURE_TERMINAL
             ).length == 0 &&
             [...creepTarget, ...structureTarget].filter((t: any) => t.pos.inRangeTo(creep, 2)).length >= 3) {
-            creep.rangedMassAttack();
+            combatRangedMassAttack(creep);
         }
         else if (!rangedOK && creep.pos.inRangeTo(target, 3)) {
-            creep.rangedAttack(target);
+            combatRangedAttack(creep, target);
         }
     }
 };

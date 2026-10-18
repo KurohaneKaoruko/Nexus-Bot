@@ -5,6 +5,8 @@ import { AUTO_MARKET_CONFIG, AUTO_MARKET_DEFAULT } from "@/constant/ResourceCons
 import { getAutoMarketData } from "@/core/store/accessor";
 import { isRoomTickAligned } from "@/utils/roomPhase";
 import { calcTransactionCostSafe, findMyOrderCached, getAllOrdersCached, getEnergyHistoryAvgPrice, getOrderPrice, hasEnergyReceiverRoomCached, hasEnergySupplierRoomCached, hasMarketOrderApi } from "@/utils/marketUtils";
+import { sharedBrokerForDirectCommands } from "@/modules/agents/actionBroker";
+import { industryChangeOrderPrice, industryCreateOrder, industryExtendOrder } from "@/modules/industry/industryAdapter";
 
 const br = '<br/>';
 const LOG_COLORS = {
@@ -170,7 +172,8 @@ function AutoBuy(roomName: string, item: any) {
         const nextPrice = Math.min(suggested, priceLimit);
         const diff = Math.abs(nextPrice - existingOrder.price);
         if (diff >= Math.max(AUTO_MARKET_CONFIG.priceAdjustMinAbs, existingOrder.price * AUTO_MARKET_CONFIG.priceAdjustMinRatio)) {
-            const rc = Game.market.changeOrderPrice(existingOrder.id, nextPrice);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryChangeOrderPrice(existingOrder.id, nextPrice);
             if (rc === OK) {
                 const pct = existingOrder.price ? (nextPrice / existingOrder.price - 1) : 0;
                 logAuto([
@@ -189,7 +192,8 @@ function AutoBuy(roomName: string, item: any) {
 
         const needExtend = Math.max(0, orderAmount - existingOrder.remainingAmount);
         if (needExtend >= minOrderAmount) {
-            const rc = Game.market.extendOrder(existingOrder.id, needExtend);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryExtendOrder(existingOrder.id, needExtend);
             if (rc === OK) {
                 logAuto([
                     `${c('BUY', LOG_COLORS.good, true)} ${c('扩单', LOG_COLORS.theme, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
@@ -207,16 +211,15 @@ function AutoBuy(roomName: string, item: any) {
         return OK;
     }
 
-    // 创建订单
+    // 创建订单 (经命令边界同步执行 market 管线: 原生调用权收编进 broker)
     const suggested = getOrderPrice(resourceType, ORDER_BUY);
     if (suggested === null) return;
     const price = Math.min(suggested, priceLimit);
-    const result = Game.market.createOrder({
-        type: ORDER_BUY,
+    const result = industryCreateOrder(room!.name!, {
+        type: 'buy',
         resourceType,
         price,
         totalAmount: orderAmount,
-        roomName: room!.name!
     });
     if (result === OK) {
         logAuto([
@@ -295,7 +298,8 @@ function AutoSell(roomName: string, item: any) {
         const nextPrice = Math.max(suggested, priceLimit);
         const diff = Math.abs(nextPrice - existingOrder.price);
         if (diff >= Math.max(AUTO_MARKET_CONFIG.priceAdjustMinAbs, existingOrder.price * AUTO_MARKET_CONFIG.priceAdjustMinRatio)) {
-            const rc = Game.market.changeOrderPrice(existingOrder.id, nextPrice);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryChangeOrderPrice(existingOrder.id, nextPrice);
             if (rc === OK) {
                 const pct = existingOrder.price ? (nextPrice / existingOrder.price - 1) : 0;
                 logAuto([
@@ -314,7 +318,8 @@ function AutoSell(roomName: string, item: any) {
 
         const needExtend = Math.max(0, orderAmount - existingOrder.remainingAmount);
         if (needExtend >= minOrderAmount) {
-            const rc = Game.market.extendOrder(existingOrder.id, needExtend);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryExtendOrder(existingOrder.id, needExtend);
             if (rc === OK) {
                 logAuto([
                     `${c('SELL', LOG_COLORS.warning, true)} ${c('扩单', LOG_COLORS.theme, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
@@ -332,16 +337,15 @@ function AutoSell(roomName: string, item: any) {
         return OK;
     }
 
-    // 创建订单
+    // 创建订单 (经命令边界同步执行 market 管线: 原生调用权收编进 broker)
     const suggested = suggestedSellPrice;
     if (suggested === null) return;
     const price = Math.max(suggested, priceLimit);
-    const result = Game.market.createOrder({
-        type: ORDER_SELL,
+    const result = industryCreateOrder(room!.name!, {
+        type: 'sell',
         resourceType,
         price,
         totalAmount: orderAmount,
-        roomName: room!.name!
     });
     if (result === OK) {
         logAuto([
@@ -544,7 +548,20 @@ function AutoDeal(
         return;
     }
 
-    const result = Game.market.deal(bestOrder.id, TotalDealAmount, roomName);
+    // 经命令边界同步执行 (api/17 market 管线): 原生调用权收编进 broker
+    const dealResult = sharedBrokerForDirectCommands().executeNow({
+        id: `market-deal:${roomName}:${Game.time}:${bestOrder.id}`,
+        tick: Game.time,
+        actorName: roomName!,
+        kind: "marketDeal",
+        pipeline: "market",
+        priority: 50,
+		resourceType: res,
+        amount: TotalDealAmount,
+        payload: { orderId: bestOrder.id },
+        dedupeKey: `market-deal:${roomName}:${Game.time}:${bestOrder.id}`,
+    });
+    const result = dealResult.accepted ? OK : (dealResult.nativeReturnCode ?? ERR_INVALID_ARGS);
 
     const action = orderType === ORDER_SELL ? '购买' : '出售';
     const direction = orderType === ORDER_SELL ? '从' : '向';
