@@ -27,8 +27,8 @@
 
 ## 5. 批次 B4：开局序列 + 外矿评分
 
-- [ ] 5.1 开局序列按 roomMode 分档：rush 模式开局序列改 harvester→upgrader→carrier（首只采集体先于搬运体），main 档保持现行；分档走 config；验证：speedrun L2 达成时间较 1117 基线缩短 ≥300t，boot 场景 L2 漂移 ≤10%
-- [ ] 5.2 外矿激活评分排序：remoteAutoMaxRooms 固定上限改价值密度排序（value/distance，预算内贪心取前 K），rush 模式预算保底不因本地紧张清零；验证：speedrun 冲级期外矿激活数随预算扩展（≥3 房），收入曲线上升；remote-mine 场景断言不红
+- [x] 5.1 开局序列按 roomMode 分档：rush 模式开局序列改 harvester→upgrader→carrier（首只采集体先于搬运体），main 档保持现行；分档走 config；验证：speedrun L2 达成时间较 1117 基线缩短 ≥300t，boot 场景 L2 漂移 ≤10%
+- [x] 5.2 外矿激活评分排序：remoteAutoMaxRooms 固定上限改价值密度排序（value/distance，预算内贪心取前 K），rush 模式预算保底不因本地紧张清零；验证：speedrun 冲级期外矿激活数随预算扩展（≥3 房），收入曲线上升；remote-mine 场景断言不红
 
 ## 6. 批次 C：冲刺迭代（循环直至三档全绿）
 
