@@ -29,6 +29,10 @@ import {
 } from "@/modules/economy";
 import { maxThreatScore, threatTierOf } from "@/modules/defense";
 
+// 引擎常量: 将死体判定 (CREEP_SPAWN_TIME) 用
+declare const CREEP_LIFE_TIME: number;
+declare const CREEP_SPAWN_TIME: number;
+
 /** 代号 → 角色名 (名称解析出的 unitCode 是代号, 需还原为角色名) */
 export function roleFromCode(code: string): SpawnUnit | undefined {
 	const entry = Object.entries(UNIT_CODES).find(([, candidate]) => candidate === code);
@@ -88,10 +92,25 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 	// 键口径: 注册表存角色名 (spawnDirector 写入 request.unit), staffed
 	// 查询用代号——经 unitCode() 归一, 与视野口径 (CreepSummary.unitCode
 	// 为代号) 键空间对齐。
+	//
+	// 将死体剔除 (race-speedrun 任务2.2, 对齐 race bot manageUpgrade 口径):
+	// ticksToLive ≤ 剩余孵化时间 (body.length × CREEP_SPAWN_TIME) 的单位不再
+	// 计入在岗——否则其占编使替补请求因「staffed ≥ target」被拒, 替补要等
+	// 尸体消失才发出, 加上孵化耗时形成人口空窗 (同龄批死亡潮放大器)。
+	// 出视野的远程件拿不到 Game.creeps 条目, 保持计入 (保守口径)。
 	const aliveRoles = new Map<string, number>();
 	let aliveTotal = 0;
 	for (const record of Object.values(ctx.memory.units)) {
 		const code = unitCode(record.unitCode);
+		const engineCreep = Game.creeps[record.name];
+		if (
+			engineCreep &&
+			!engineCreep.spawning &&
+			(engineCreep.ticksToLive ?? CREEP_LIFE_TIME) <=
+				engineCreep.body.length * CREEP_SPAWN_TIME
+		) {
+			continue;
+		}
 		aliveRoles.set(code, (aliveRoles.get(code) ?? 0) + 1);
 		aliveTotal += 1;
 	}
@@ -249,19 +268,40 @@ export function replacementLead(
 	roomName: string,
 	creepName: string,
 ): number {
+	const spawnTime = typicalSpawnTime(unit);
 	const base =
-		typicalSpawnTime(unit) + travelP95(ctx, unit, roomName) + REPLACEMENT_CONFIG.setupMargin;
-	return Math.round(base * (1 + nameJitter(creepName)));
+		spawnTime + travelP95(ctx, unit, roomName) + REPLACEMENT_CONFIG.setupMargin;
+	// 错峰双通道 (race-speedrun D2): 乘性 jitter (±比例) + 加性离散窗口。
+	// 窗口 = 批规模 × 生产周期 (单 spawn 串行吞吐), 同批 N 只的替补点按名哈希
+	// 均匀落在 [base, base+窗口] 内; 窗口上限钳制在寿命的一半内——
+	// lead 是「TTL 低于此值即触发」的阈值, 若 lead 可超过寿命, 单位从出生起
+	// 永远处于替补窗口, 孵化队列被常驻替补请求淹没 (sim 实锤人口 23→8 平台下移)。
+	// 同名恒定 (无随机源), sim 可复现。
+	const windowCap = Math.floor(
+		(CREEP_LIFE_TIME - base) * REPLACEMENT_CONFIG.disperseLifeShare,
+	);
+	const disperseWindow = Math.min(
+		REPLACEMENT_CONFIG.disperseWindowFactor *
+			REPLACEMENT_CONFIG.disperseCohortSize *
+			spawnTime,
+		windowCap,
+	);
+	const jittered = base * (1 + nameJitter(creepName));
+	return Math.round(jittered + nameUnit01(creepName) * disperseWindow);
 }
 
 /** 名称哈希 → [-jitterRatio, +jitterRatio] 的确定性偏移 (同名恒定, 不引入随机源) */
 function nameJitter(creepName: string): number {
+	return (nameUnit01(creepName) * 2 - 1) * REPLACEMENT_CONFIG.jitterRatio;
+}
+
+/** 名称哈希 → [0,1) 确定性均匀值 (错峰取点共用, 同名恒定) */
+function nameUnit01(creepName: string): number {
 	let hash = 0;
 	for (let i = 0; i < creepName.length; i += 1) {
 		hash = (hash * 31 + creepName.charCodeAt(i)) | 0;
 	}
-	const unit = (Math.abs(hash) % 1000) / 1000; // 0..1
-	return (unit * 2 - 1) * REPLACEMENT_CONFIG.jitterRatio;
+	return (Math.abs(hash) % 1000) / 1000; // 0..1
 }
 
 /** roomModeFor 的 rush 判定 rush 档豁免用 */

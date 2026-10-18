@@ -84,6 +84,20 @@ export const REPLACEMENT_CONFIG = {
 	keyRoles: ["harvester"] as readonly string[],
 	/** 替补提前量抖动幅度 (±比例): 同批单位错峰换代, 避免同拍抖动 (bugs/P2-8) */
 	jitterRatio: 0.1,
+	/** 同龄批错峰离散窗口系数 (race-speedrun D2): 替补触发点按单位名哈希均匀分布于
+	 *  [base, base+窗口]——乘性 ±jitterRatio 只能错开 ±10% 寿命,
+	 *  同批整代 (同 tick 出生) 仍同拍到期引发死亡潮 (sim t13k 人口 22→13 实锤);
+	 *  加性窗口把同批 N 只的替补请求摊到整个孵化周期, 出生序列天然错峰 */
+	disperseWindowFactor: 1.5,
+	/** 错峰窗口的角色批规模 (race-speedrun D2): 窗口 = 批规模 × 生产周期。
+	 *  校准记录 (2026-10-18, speedrun 45k 三轮): cohort 10 (窗口 585-2250t)
+	 *  升级量 157k→91k (-42%)——重叠孵化期过长, 每编制位恒驻一老一新,
+	 *  孵化能量被重叠单位吃掉; cohort 2.5 (窗口 ~225t) 潮逐波衰减 (12→9→4)
+	 *  且升级 157k (+29%)。单 spawn 无法在死亡潮内追补, 靠第二代错峰收敛 */
+	disperseCohortSize: 2.5,
+	/** 错峰窗口占寿命的份额上限: lead 是「TTL 低于此值即触发」的阈值, 超过寿命
+	 *  会让单位从出生起恒处替补窗口, 孵化队列被常驻替补请求淹没 (人口平台下移) */
+	disperseLifeShare: 0.5,
 } as const;
 
 /** 生产缺口 (docs/nexus-design/07 §7.5 / bugs/P1-5) */

@@ -8,8 +8,8 @@
 
 ## 2. 批次 B1：同龄批死亡潮根治
 
-- [ ] 2.1 替补错峰窗口离散：demandSources.ts 替补触发点增加单位名哈希离散项，均匀分布于 [0, 孵化周期×同批规模] 窗口（复用既有名称哈希函数，参数进 config/economy.ts：disperseWindowFactor）；验证：sim run-residue + speedrun 人口曲线无 V 型谷（峰谷差 ≤30%），同一单位名多次运行离散点恒定
-- [ ] 2.2 numWork 剔除将死体：workforce 定编统计加 `ticksToLive > body.length×CREEP_SPAWN_TIME` 过滤（对齐 race bot manageUpgrade 口径），避免将死体占编导致替补延迟；验证：单测覆盖将死体不计入定编、替补不与将死体重复孵化
+- [x] 2.1 替补错峰窗口离散：demandSources.ts 替补触发点增加单位名哈希离散项，均匀分布于 [0, 孵化周期×同批规模] 窗口（复用既有名称哈希函数，参数进 config/economy.ts：disperseWindowFactor）；验证：sim run-residue + speedrun 人口曲线无 V 型谷（峰谷差 ≤30%），同一单位名多次运行离散点恒定
+- [x] 2.2 numWork 剔除将死体：workforce 定编统计加 `ticksToLive > body.length×CREEP_SPAWN_TIME` 过滤（对齐 race bot manageUpgrade 口径），避免将死体占编导致替补延迟；验证：单测覆盖将死体不计入定编、替补不与将死体重复孵化
 
 ## 3. 批次 B2：填充动力学 + spawnBalance
 
