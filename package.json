@@ -16,12 +16,16 @@
 		"build:season": "VARIANT=season rolldown -c",
 		"build:stronghold": "VARIANT=stronghold rolldown -c",
 		"lint": "oxlint",
+		"test": "node scripts/run-tests.mjs",
 		"lint:fix": "oxlint --fix",
 		"fmt": "oxfmt",
 		"fmt:check": "oxfmt --check",
 		"submit": "node ./scripts/submit.js",
 		"console": "node ./scripts/console.js",
 		"version": "node ./scripts/updateVersion.js",
+		"arch:guard": "node ./scripts/arch-guard.mjs",
+		"arch:report": "node ./scripts/arch-guard.mjs --report",
+		"arch:update": "node ./scripts/arch-guard.mjs --update",
 		"sim": "SOURCE_MAP=0 NO_UPLOAD=1 rolldown -c && screeps-sim test --no-bundle-check"
 	},
 	"screeps-sim": {
