@@ -2,7 +2,7 @@
 
 - 优先级: P1
 - 发现日期: 2026-10-16
-- 状态: 未修复（口径已勘误）
+- 状态: 主线断链已收口 2026-10-17 (任务 4.6); 死 handler 五件 (harvester/carrier/upgrader/worker/universal) 已裁撤 2026-10-17 (任务 5.2 批次一); 剩余批次见任务 5.2 注记
 - 来源: 全面重构 wave 4 后排查 teams/units 归位时的连锁发现
 
 ## 现象
@@ -22,7 +22,7 @@
 |---|---|---|---|
 | ExpandController（Expansion 域模块已挂载） | claimer | `directSpawn` 孵化但无 taskId → 在任务驱动集内却不被驱动 → 空转 | **活跃断链**（扩张触发即触发） |
 | ExpandController | aid-build/carry/upgrade | 无处理器、不在任务驱动集 → `exec()` null handler 日志跳过 | **活跃断链** |
-| 词表遗留 | deposit-\*×5, power-\*×4, cleaner, up-\*×2 | 孵化源仅词表/qos 权重/boost 表引用，无孵化调用 | 疑似死角色，待裁 |
+| 词表遗留 | ~~deposit-\*×5, power-\*×4, cleaner, up-\*×2~~ 勘误: deposit-harvest/transfer 与 power-attack/heal/ranged/carry 是 mineMission 活角色 (5.2 批次日已桥接 directSpawn); cleaner/dismantle/logistic/attack-claimer 是 warSpawn 旗操活角色 (同上); 词表实际不存在 deposit-haul/take、power-haul/take; **真死角色仅 up-upgrade/up-repair** (AID 旗退役后零孵化源) | 已裁撤 2026-10-17 (5.6): 词表条目 + UnitLevelData 分级 + qos 冻结权重 + boost 表 + spawnRules prune 过滤分支 + UnitConstant 中文名, 全部移除 |
 | 休眠 B 线 | out-\*×9, reserver | 全链休眠（features 勘误） | 任务化时一并收编或裁撤 |
 | warSpawn 旗标 | attack-claimer, logistic, dismantle | 手动旗标触发 | 低频，随任务化批次处理 |
 
@@ -45,3 +45,15 @@
 - sim remote-mine 30k tick 全程无 `[CreepExecute] ... 不存在` 日志
 - boot/remote-mine 回归通过
 - 扩张线（ExpandController）sim 或实服验证 claimer/aid-\* 到岗工作
+
+
+## 收口实录 (2026-10-17, 任务 4.6)
+
+| 线 | 处置 | 实改 |
+|---|---|---|
+| claim 任务映射 | `unitForTaskKind("claim")` 曾映射 universal (无 CLAIM 部件, 任务卡 available; claimer 定编通道又不在 standingRoles 永不触发) → 改映射 claimer; claim 链已任务化 (expansion.ts 产任务 + spawnDirector 活跃任务定编 + bodyFactory [CL,M] + agentSystem case claim) | spawning/spawnDirector.ts |
+| aid-* ×3 (活跃断链) | 词表/分级表/UnitBodys/中文名/qos 权重/boost 表/follower 集合/transportMission 计数/help 文案全数裁撤; ExpandController 跨 shard 援建改主线活体 (worker/carrier/upgrader, 任务板执行器齐全) | CreepConstant.ts, UnitConstant.ts, qos.ts, boostFunction.ts, controllerFunction.ts, baseFunction.ts, transportMission.ts, help.ts, ExpandController.ts |
+| 词表遗留 (deposit-haul/take, power-haul/take, cleaner, logistic, dismantle, out-carry/repair/take/heal/haul) | 存量引用为零或仅在休眠 B 线 (external/mine 链) —— 留 5.5/8.5 任务化批次裁撤, 本任务不扩面 | (未动) |
+| 休眠 B 线 (out-*/reserver 原型链) | external/mine spawner 等 9 处引用全在休眠链路; A 线 remoteMining 已承接行为 | 留 8.5 |
+
+回归: boot L1@0 L2@728 L3@15764 / remote-mine L3@0 逐位一致; tsc/oxlint/arch-guard 绿。

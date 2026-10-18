@@ -52,6 +52,41 @@
 - porter/creepsToFill 覆盖评估
 - building 开关与三侧定编的取舍评估
 
+## 实施记录 (2026-10-17, 任务 4.7 收口)
+
+### W1 波 (全部落地)
+
+| 项 | 状态 | 实改 |
+|---|---|---|
+| 外矿 reserver | ✅ (前批次) | reserve 任务产线 + reserver 单位 + agentSystem case + 跨房放行 + 租约 500 |
+| 独立 carrier 链 | ✅ 本批次 | REMOTE_HAUL_CONFIG (containerRange=2/haulTriggerRatio=0.3/repairRatio=0.5); runRemoteHarvest 满载优先卸源旁容器 (自回运兜底); planRemoteHarvest 容器存量超阈产跨房 haul; allocator 跨房放行 +4 类; agentSystem runRemoteHaul 跨房状态机 (fetch 容器/deliver 本矿 remoteDropoffFor) |
+| skipBuildTypes | ✅ (前批次) | race 分支禁建 factory/nuker/terminal/lab/powerSpawn/observer/extractor/rampart/wall |
+| 未预订 ept 减半 | ✅ (前批次) | activeRemoteSourceCount 己订记 1 未订记 0.5 |
+
+### W2 波 (容器/维修落地, 道路/porter 待评估)
+
+| 项 | 状态 | 实改 |
+|---|---|---|
+| 源容器 | ✅ 本批次 | 远程矿工驻点兼职: 无容器无在建→createSite (broker construction 管线, 无主之地门控), 满载浇工地 (rhb2), 驻点 build (射程 3) |
+| 容器维修 | ✅ 本批次 | 耐久 < hitsMax×0.5 即修 (rhr 分支)——sim 实证容器 decay 周期性消失, 不修则 haul 取料点反复重放 |
+| 道路 | ⏸ 待评估 | sim 邻房全 flat 地形零收益; 实服沼泽才有价值, 与 P1-14 沼泽低均衡同域 |
+| porter 直供 | ⏸ 待评估 | W3 项, 与 spawnUsage 背包替代同批 |
+
+### 排障实录 (修复的断点)
+
+1. 门控反写: 无主之地判定 `liveRoom.controller &&` 把无 controller 房全挡 (sim 邻房无 controller) → 改 `(remoteCtrl === undefined || !remoteCtrl.owner)`
+2. build 射程 1: 容器位与矿工工位分居源两侧 (切比雪夫 2), 站点永远无人建→衰亡重放 → 放宽到原生 build 射程 3
+3. 满载分支不可达: 「满载且不在本矿→回城」分支在容器卸货/rhb2 之前, 满载即走人 → 已重排 (容器卸货→浇工地→回城)
+4. ConstructionSite.my 条件反写 (自家工地被过滤) → 删除
+5. 探针勘误: Memory.tasks 实为 Memory.Nexus.tasks; 大量 haul:cancelled 是本房配额 haul 的 deadline 200t 既有机制, 非远程链 churn
+
+### 回归与净效果
+
+- boot L1@0 L2@728 L3@15764 / race L2@796 / remote-mine L3@0 逐位一致 (行为零回归)
+- remote-mine 探针: W4N8 容器建成收能 E1850, haul 任务 in_progress + carrier 跨房回运 (C-141F@W4N8 E100) 实证链路通
+- speedrun: RCL3@21349 (fail 仅 level-target, 既有状态); 外矿开发 RCL3 后启动 (rcl<3 门), t24000 侦察/采集/容器链已铺开, 31k 截断时尚在建设期
+- tsc / oxlint / arch-guard (330 处 / 43 文件) 全绿
+
 ## 验证标准
 - speedrun sim L3 达成时间显著缩短 (当前基线 L3@28111, 目标 ≤5000)
 - boot/remote-mine 回归不红
@@ -86,3 +121,42 @@
 - L2@994 vs 目标 500: 升级启动慢 (RCL1→2 仅 200 进度), 疑 boot 期升级任务发射/取能链晚热
 - L3@24671 vs 目标 3000: 45000 进度的均速仍 ~1.9 e/t, 距双源天花板 20 e/t 差 10 倍; 下一杠杆是 W2 远程容器+道路 (自回运 harvester 往返耗时) 与 L2 期 extension 铺设速度
 - speedrun 意图分布统计在引擎日志尾部, 本轮日志被 Tee 截断, 下轮独测补取
+
+## Rosmarin 等级优先级全面移植 (2026-10-18, Wave 5)
+
+### 改动 (等级体系: 小者优先, 档距 1, race 同源)
+
+| 层 | 改动 | 说明 |
+|---|---|---|
+| 任务等级表 | taskSchema TASK_PRIORITY 全面换档: fill_spawn 1 / defend 2 / upgrade 4 / haul 4 / harvest 5 / reserve 5 / build 8 / repair 8 / scout 9 / claim 10; DOWNGRADE emergency 2 | 旧 0-100 跑步机数值废弃 (85→88→89→90→91→95→96 叠加补丁); 排序语义 = 孵化序 C88>U85>H70 旧实拍序的等价翻转 |
+| 角色常驻档 | standingPriorityByRole { carrier 3, upgrader 4, harvester 9, scout 11 }; standing 9 兜底; worker/universal 退出 standingRoles | carrier 先于采集面是本矿 drop 采矿架构的供能约束 (spawn 唯一能量入口); worker 由 build 任务驱动 (开局插队会打断供能泵, sim 实证孵化节律 94t→268t) |
+| 孵化序翻转 | spawnDirector 合并取 min/排序 a-b/urgent 门 <=/arbiter 同步 | 涓流钳: 存量 < 容量一半时 carrier desired 钳到微型件档 (max(存量,250)), 高频先建 ext 填充 |
+| 替补跟随角色档 | replacement 请求等级 = 角色常驻档 (原恒 11 殿后) | 同龄批集中到期时死亡速率 > 孵化速率 → 人口崩塌 (t12k 22→7 实锤) |
+| 让位闸口径 | staffingFloor = harvesterTargetTotal (饱和定编), 原 sources.length | 双源房 @2 只即退出让位 → 采集面锁死 2W 小体 (5/t vs 17/t) |
+| 建造等级 | BUILD_PRIORITY_BONUS ext -3 / road +1 / cc -4; 近完收尾 -2 | cc 是升级直供链地基恒最前; 抢先修路/ext 会把 worker 从 cc 引走 (5k 零进度实锤) |
+| haul 取消风暴 | inflightHaulSourceKeys 货源口径判活 | dedupeKey 含目的地 id, 目的地轮换 → 在途任务被 subject-gone 误杀 → carrier 半程反复易主 (21 cancelled 实锤) |
+| 亲和扩展 | harvester +build (race 换班制); workerBuildCriticalOf 带 worker 出生史门 | 开局无 worker 史时不提级 (worker 插队打断供能泵) |
+| 配额/偏置翻转 | SUPPLY_LINE_PRIORITY/quota pickDestination/allocator criticality/postureBias/suppressPenalty 全部换等级语义 | postureBias survive { fill_spawn -1, harvest -1, build +2, upgrade +2 }; suppressPenalty 3; criticality = (11-level)/11 |
+
+### 实测 (speedrun 20k, seed 7)
+
+| 指标 | 基线 | Wave5 后 | 变化 |
+|---|---|---|---|
+| L2 | 806 | 1117 | +311 (慢) |
+| **L3** | **19049** | **14089** | **-4960 (-26%)** |
+| 20k 升级总量 | 46.7k | 74.6k | **+60%** |
+| L3 后段速率 | ~1.6/t | ~8.8/t | 5.5× |
+| 采集 | 340k | 359k | 持平 |
+| cpu p95 | 6ms | 6ms | 持平 |
+
+### 矩阵 (six-scenario)
+
+- remote-mine **转绿** (存活 10/10, RCL3 稳, 升级 0→6.7k)
+- boot L3 8885→7832 (-1053), arena L3 8991→7951 (-1040)
+- **剩 2 红**: boot/race-body-audit 的 L2 时间线 659→1066 / 806→1117 (开局多孵 carrier 致升级启动晚 ~400t)
+- **justified**: L2 慢 400t 换 L3 快 1k+ 净收益为正; 若需 bit-identical, 可将 carrier 常驻档改回 harvester 之后仅 rush 档前置 (未做, 待用户裁决)
+
+### 遗留
+- speedrun L2 后中段 (t2-13k) 速率仍 ~2.8/t 平台: 同龄批死亡潮 (t13k 人口 22→13) 未根治, 替补错峰 (jitterRatio 0.1) 不足
+- main 档涓流场景 (cpu 20) 孵化节律 180t/只 vs 旧体系 94t: 涓流钳已救活编制 (6→10 只), 深层差距在 ext 填充动力学 (fill_spawn 认领延迟), 未动
+- remote-mine 场景升级量 6.7k vs 旧体系 18.4k: 仍是上述 ext 填充链
