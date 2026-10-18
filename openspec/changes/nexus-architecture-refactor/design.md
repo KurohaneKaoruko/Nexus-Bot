@@ -37,7 +37,7 @@
 
 - 不重写 Movement 引擎、Teams 战斗算法、Industry 子系统的内部实现。
 - 不在本变更内追求 speedrun 榜第一（效率冲刺由 race-strategy-port 分波与既有 in-progress change 承担）。
-- 不迁移到文档 04 §4 的全量目标目录结构（`src/kernel`、`src/world`、`src/state` 等整树搬移）——按"职责收编优先于目录搬家"执行，目录重组只在模块收编自然发生时顺带进行，避免一次性大规模文件移动破坏 7 个 in-progress change 的路径引用。
+- 不迁移到文档 01 §29 的全量目标目录结构（`src/kernel`、`src/world`、`src/state` 等整树搬移）——按"职责收编优先于目录搬家"执行，目录重组只在模块收编自然发生时顺带进行，避免一次性大规模文件移动破坏 7 个 in-progress change 的路径引用。（原引用 04 §4 目标架构目录树，04 已索引化，内容归 01 §29）
 - 不处理 `docs/nexus-design/`（23 篇既有设计）与本程序的关系裁定——旧 change 继续按其执行，互不干扰。
 
 ## Decisions
@@ -64,7 +64,7 @@ P0-16 的三级联（a 普查双轨/b visuals 熔断/c courier 幽灵计划）�
 
 ### D6: 目录策略——职责收编优先于目录搬家
 
-文档 04 §29 的迁移矩阵（core→kernel/runtime/state 等）作为长期方向，但不在本变更做整树搬移。新增代码落新位（`src/runtime/`、`src/commands/` 仅在需要时创建）；存量模块原位收编（planner 加意图层、spawnDirector 拆 Demand/Arbiter/Queue 于 `src/modules/spawning/` 内）。每次目录移动都会使 7 个 in-progress change 的 tasks 引用失效，收益（纯目录洁癖）不抵成本。
+文档 01 §29.1 的迁移矩阵（core→kernel/runtime/state 等）作为长期方向，但不在本变更做整树搬移。新增代码落新位（`src/runtime/`、`src/commands/` 仅在需要时创建）；存量模块原位收编（planner 加意图层、spawnDirector 拆 Demand/Arbiter/Queue 于 `src/modules/spawning/` 内）。每次目录移动都会使 7 个 in-progress change 的 tasks 引用失效，收益（纯目录洁癖）不抵成本。（原引用 04 §29 文件迁移矩阵，04 已索引化，矩阵归 01 §29.1）
 
 ### D7: 缺陷轨道与重构轨道的并行编排
 

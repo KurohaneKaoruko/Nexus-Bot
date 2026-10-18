@@ -1,5 +1,7 @@
 # 04. 世界模型、Intel 与持久化记忆
 
+> ⚠ Memory 分层权威改向：Memory schema 字段表模板、NexusMemory 顶层结构与 Memory/Runtime 分界线已由 `docs/Nexus-Bot-01-架构设计.md` §24 承载（本篇保留 intel 与记忆分层的演进描述）。冲突时以 01 篇为准。
+
 ## 4.1 记忆分层
 
 建议分四层管理数据：

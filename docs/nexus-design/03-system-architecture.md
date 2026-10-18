@@ -4,6 +4,8 @@
 > 阶段顺序以 `src/core/phases.ts` 的 `TICK_PHASES` 为唯一权威。本文描述职责与数据流，不复刻清单。
 > 「智能连结集群」（多 Creep 协作编队）的完整架构见 docs/nexus-design/20；分层智能的落地契约见 docs/nexus-design/19。
 
+> ⚠ 架构权威源改向：目标架构总图、六层职责与层间接口契约已由 `docs/Nexus-Bot-01-架构设计.md` §3–§4、§14 承载（本篇保留 Tick 生命周期与数据流的演进描述）。冲突时以 01 篇为准。
+
 ## 3.1 逻辑架构
 
 ```mermaid
