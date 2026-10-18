@@ -277,6 +277,9 @@ export const Perception: TickModule = {
 				linkCount: room.find(FIND_MY_STRUCTURES, {
 					filter: (structure) => structure.structureType === STRUCTURE_LINK,
 				}).length,
+				// 升级链路 link 距离 (race-speedrun 任务4.1): 控制器 link (控制器 2 格内)
+				// 与最近其他 link 均在位才输出距离, 供吞吐封顶 floor(800/(range+1))
+				...observeUpgradeLinkRange(room),
 				...(controllerBuffer ? { controllerBuffer } : {}),
 			};
 			rooms[roomName] = observation;
@@ -348,3 +351,36 @@ export const Perception: TickModule = {
 		ctx.world.current = view;
 	},
 };
+
+/** 升级链路 link 距离 (race-speedrun 任务4.1, race bot getUpgradeCapacity 口径):
+ *  控制器 link (控制器 2 格内) 与最近其他 link 均在位时返回 { upgradeLinkRange },
+ *  升级吞吐封顶 floor(800/(range+1)) 的输入 (800 = LINK_CAPACITY×0.97/15t 折算);
+ *  link 不全时返回空对象 (走 cc/无缓冲口径)。 */
+function observeUpgradeLinkRange(room: Room): { upgradeLinkRange?: number } {
+	const links = room.find(FIND_MY_STRUCTURES, {
+		filter: (structure): structure is StructureLink =>
+			structure.structureType === STRUCTURE_LINK,
+	});
+	const controller = room.controller;
+	if (links.length < 2 || !controller) {
+		return {};
+	}
+	const controllerLink = links.find((link) => link.pos.inRangeTo(controller.pos, 2));
+	if (!controllerLink) {
+		return {};
+	}
+	let range: number | undefined;
+	for (const link of links) {
+		if (link.id === controllerLink.id) {
+			continue;
+		}
+		const d = Math.max(
+			Math.abs(link.pos.x - controllerLink.pos.x),
+			Math.abs(link.pos.y - controllerLink.pos.y),
+		);
+		if (range === undefined || d < range) {
+			range = d;
+		}
+	}
+	return range === undefined ? {} : { upgradeLinkRange: range };
+}

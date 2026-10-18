@@ -301,12 +301,20 @@ export function upgradeWorkTargetOf(ctx: TickContext, room: RoomObservation): nu
 	if (!controller) {
 		return 0;
 	}
-	// 吞吐上限: RCL8 固定; 无 cc 收紧; 有 cc 全额 (link 几何封顶留待 RCL5+ 链路)
+	// 吞吐上限: RCL8 固定; 无 cc 收紧; 有 cc 全额; link 双链在位时按几何封顶
+	// (race-speedrun 任务4.1, race bot getUpgradeCapacity 口径):
+	// floor(800/(range+1))——800 = LINK_CAPACITY×0.97/15t 折算, range = 控制器
+	// link 到最近其他 link 的切比雪夫距离; 无链路期 (RCL<5) 走 cc/无缓冲口径
+	const linkCapacity = room.upgradeLinkRange !== undefined
+		? Math.floor(WORKFORCE_CONFIG.upgrade.linkThroughputBase / (room.upgradeLinkRange + 1))
+		: undefined;
 	const capacity = room.rcl >= 8
 		? config.rcl8WorkCap
-		: room.controllerBuffer
-			? config.bufferedWorkCap
-			: config.noBufferWorkCap;
+		: linkCapacity !== undefined
+			? linkCapacity
+			: room.controllerBuffer
+				? config.bufferedWorkCap
+				: config.noBufferWorkCap;
 
 	const ttd = controller.ticksToDowngrade ?? Infinity;
 	const upgradeNeeded = ttd < config.neededTtd;
@@ -314,6 +322,20 @@ export function upgradeWorkTargetOf(ctx: TickContext, room: RoomObservation): nu
 	// 升级定编收入口径含外矿折算 (bugs (十二)): 外矿收入是冲级期升级火力的
 	// 直接供给, 不计则外矿起量后升级定编反被本地口径锁死
 	const income = harvestIncomeWithRemoteOf(ctx, room);
+
+	// 止升让位 (race-speedrun 任务4.2, race bot 口径): building 标志 = 主基地
+	// 完建后的防御建造期 (rampart/wall 工地, race bot 的 building 仅在布局
+	// 模板放量后开启); 该期升级定编归零——建造与升级抢同一批边际能量。
+	// 保级窗口 (upgradeNeeded) 恒豁免; 冲级建设期 (ext/storage/cc/link 工地)
+	// 不让位——那是升级的助推器而非竞争者 (race bot 的 building 不含此期)。
+	if (
+		room.rcl >= 2 &&
+		room.rcl < 8 &&
+		!upgradeNeeded &&
+		room.sites.some((site) => site.structureType === "rampart" || site.structureType === "wall")
+	) {
+		return 0;
+	}
 
 	// RCL1: 固定小队起步 (保级窗口恒保底)
 	if (room.rcl < 2) {

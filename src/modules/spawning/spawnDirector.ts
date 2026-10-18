@@ -21,6 +21,8 @@ import {
 	type SpawnUnit,
 } from "@/modules/spawning/bodyFactory";
 import { commitReservation, createLedger, releaseReservation, reserve } from "@/modules/economy";
+import { workPerUpgraderBody } from "@/modules/economy/workforce";
+import { UNIT_CODES } from "@/constant/UnitConstant";
 import { takeCourierRequests } from "@/core/store/runtime";
 import { SPAWN_CONFIG } from "@/config/economy";
 import type { TaskBoard } from "@/modules/tasks";
@@ -185,7 +187,23 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					continue;
 				}
 				if (staffed(unitName) < effectiveTarget(ctx, unitName as never, targets)) {
-					const basePriority =
+				// 半缺口不孵闸 (race-speedrun 任务4.3, race bot manageUpgrade L133 口径):
+				// 升级体缺口 WORK 不足半只新体 (2×缺口WORK < 单体WORK) 时放弃孵化——
+				// 为凑 1-2 WORK 的尾差孵小体是 churn (短寿命小体反复换代),
+				// 宁可让在编体多跑一拍; 保级窗口豁免 (downgradeActive 恒保底)。
+				if (unitName === "upgrader" && !downgradeActive) {
+					const spawnRoom = Object.values(world.rooms)[0];
+					if (spawnRoom) {
+						const perBody = workPerUpgraderBody(ctx, spawnRoom.roomName);
+						const staffedWork = spawnRoom.creeps
+							.filter((c) => c.unitCode === UNIT_CODES.upgrader && !c.spawning)
+							.reduce((sum, c) => sum + c.bodyWork, 0);
+						const targetWork = effectiveTarget(ctx, "upgrader" as never, targets) * perBody;
+						if (2 * (targetWork - staffedWork) < perBody) {
+							continue;
+						}
+					}
+				}					const basePriority =
 						SPAWN_CONFIG.standingPriorityByRole[unitName] ?? SPAWN_CONFIG.standingPriority;
 					// 冲级档孵化提级传导 (bugs/P1-19): rush 期 upgradeBias 在任务层
 					// 提前, 孵化层 upgrader 请求若恒 6 会被 fill_spawn 1 恒压队——

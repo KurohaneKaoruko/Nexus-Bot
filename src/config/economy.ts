@@ -348,8 +348,12 @@ export const WORKFORCE_CONFIG = {
 	upgrade: {
 		/** 无控制器缓冲时的收紧上限 (WORK): 长腿取能期不放大编制 */
 		noBufferWorkCap: 30,
-		/** 缓冲在位的上限 (WORK); link 供能几何封顶留待 RCL5+ 正规链路 */
+		/** 缓冲在位的上限 (WORK); link 供能几何封顶 (floor(800/(range+1))) 生效于
+		 *  双链在位期 (RCL5+), 覆盖本值 */
 		bufferedWorkCap: 90,
+		/** link 吞吐折算基数 (race-speedrun 任务4.1): LINK_CAPACITY 800 × 0.97 损耗
+		 *  ÷ 15t 冷却 = 每容量档吞吐; 封顶 = base / (range+1) */
+		linkThroughputBase: 800,
 		/** RCL8 满级房固定编制 (WORK) */
 		rcl8WorkCap: 15,
 		/** RCL8 维持升级的水位线 (energyLevel ≥ 该值时保编制) */

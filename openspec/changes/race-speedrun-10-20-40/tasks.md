@@ -20,10 +20,10 @@
 
 ## 4. 批次 B3：升级定编四口径对齐
 
-- [ ] 4.1 link 吞吐封顶对齐：controller link 期升级定编上限改 `floor(800/(range+1))`（range=两 link 切比雪夫距离，无 link 期 90），替换现行几何吞吐公式族；验证：单测覆盖 range 各档位（4/6/10/∞）的封顶值，speedrun RCL5 期定编不超上限
-- [ ] 4.2 止升让位：`building && !upgradeNeeded` 时 upgrader 定编归零（upgradeNeeded 按 ticksToDowngrade 低于降级线触发，对齐 race bot manageUpgrade L78-81 口径）；验证：建造高峰期 upgrader 定编归零、降级风险时恢复，单测覆盖两态切换
-- [ ] 4.3 半缺口不孵闸：`2×(maxWork−numWork) < bodyNumWork` 时放弃孵化（防小体 churn，对齐 race bot manageUpgrade L133）；验证：单测覆盖半缺口场景不孵化、全缺口场景正常孵化
-- [ ] 4.4 energyStandard 档位核对：Nexus energyLevelOf 与 race bot config 表 {1-3:10000, 4:20000, 5:40000, 6:80000, 7:160000, 8:320000} 逐档比对，不一致以 race bot 为准；验证：逐档数值表落 race-strategy-port.md，代码对齐
+- [x] 4.1 link 吞吐封顶对齐：controller link 期升级定编上限改 `floor(800/(range+1))`（range=两 link 切比雪夫距离，无 link 期 90），替换现行几何吞吐公式族；验证：单测覆盖 range 各档位（4/6/10/∞）的封顶值，speedrun RCL5 期定编不超上限
+- [x] 4.2 止升让位：`building && !upgradeNeeded` 时 upgrader 定编归零（upgradeNeeded 按 ticksToDowngrade 低于降级线触发，对齐 race bot manageUpgrade L78-81 口径）；验证：建造高峰期 upgrader 定编归零、降级风险时恢复，单测覆盖两态切换
+- [x] 4.3 半缺口不孵闸：`2×(maxWork−numWork) < bodyNumWork` 时放弃孵化（防小体 churn，对齐 race bot manageUpgrade L133）；验证：单测覆盖半缺口场景不孵化、全缺口场景正常孵化
+- [x] 4.4 energyStandard 档位核对：Nexus energyLevelOf 与 race bot config 表 {1-3:10000, 4:20000, 5:40000, 6:80000, 7:160000, 8:320000} 逐档比对，不一致以 race bot 为准；验证：逐档数值表落 race-strategy-port.md，代码对齐
 
 ## 5. 批次 B4：开局序列 + 外矿评分
 

@@ -172,6 +172,10 @@ export interface RoomObservation {
 	spawnBusy: boolean;
 	/** 供能 link 结构数 (快递特化子模式退位判据) */
 	linkCount: number;
+	/** 升级链路 link 切比雪夫距离 (race-speedrun 任务4.1): 控制器 link 与
+	 *  最近其他 link 均在位时的吞吐封顶输入 floor(800/(range+1));
+	 *  link 不全时缺省 (走 cc/无缓冲口径) */
+	upgradeLinkRange?: number;
 	/** 控制器缓冲 (范围内无容器时缺省; specs/controller-upgrade-buffer) */
 	controllerBuffer?: ControllerBufferSummary;
 }

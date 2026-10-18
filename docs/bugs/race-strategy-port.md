@@ -263,3 +263,18 @@ race bot 对策: porter 直供链 (manageLogistics requests/idlers 匹配, 无�
 B1 将死体剔除全局生效 → remote-mine (main 档涓流, cpu 20) 10→9→8 三轮回退:
 涓流期替补孵化间隔长, 提前剔死让编制长期虚低。修复: 剔除仅 rush 档生效 (anyRoomRush 门)。
 修复后: remote-mine 11 存活绿, speedrun 增益保持 (L3@12977)。
+
+## 批次 B3 实验记录 (2026-10-18, race-speedrun-10-20-40)
+
+### 四口径落地与 speedrun 实测
+
+| 口径 | 实现 | speedrun 实测 |
+|---|---|---|
+| 4.1 link 封顶 | perception 加 upgradeLinkRange (控制器 link 2 格内 ↔ 最近其他 link 切比雪夫); workforce 封顶 floor(800/(range+1)), 无链路走原 cc/无缓冲口径 | 中性——sim 内 L3 前无 link (RCL5+ 结构), 20k RCL5 门生效待验 |
+| 4.2 止升让位 | rampart/wall 工地存在且非保级窗口 → upgrader 定编 0 | 中性——speedrun RCL4 前 rampartMinRcl:4 未放量; 语义对齐 race bot (building=完建后防御建造期, 冲级建设期不让位) |
+| 4.3 半缺口不孵 | 2×(targetWork−staffedWork) < perBody 时不孵 upgrader | 中性——尾差 churn 防护, 量级小 |
+| 4.4 energyStandard | 逐档核对一致 (workforce energyLevelOf ↔ race bot config), 无需改 | — |
+
+回归: remote-mine/run-residue/boot 3/3 绿 (boot L2@1066 零漂移)。
+结论: B3 三机制在 10k RCL4 主战场均不触发 (link/防御建造/尾差都是 RCL4 后的事),
+四口径是为 20k RCL5 / 40k RCL6 两档铺路的结构对齐。
