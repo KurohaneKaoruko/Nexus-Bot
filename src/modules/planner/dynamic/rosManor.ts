@@ -124,6 +124,32 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	const candidateRoots = centerRoot != null && sizeMap[centerRoot]! > 0 ? [centerRoot] : Object.keys(sizeMap);
 
 	const manorRadius = spawnRadius === undefined ? MANOR_SPAWN_CHEBYSHEV : spawnRadius;
+	// 跨块聚合 (ext 选址修复): spawn 周边常被 score 脊线切成多个中小块 (speedrun
+	// 实证 4 块 126-307 格, 单块 putable 最大 63 < 任何 gate), 按「单块尺寸 ≥ gate」
+	// 过滤会全部出局 → 阶梯降级到无锚 → 布局被远处大块吸走, ext 铺到 spawn 15+ 格外。
+	// 锚定模式下改为「限幅半径内全部块的 putable 聚合 ≥ gate」判定, 块只贡献自己的
+	// putable 段; 非锚定维持单块口径 (历史行为)。
+	let anchorPool: Array<{ k: number; x?: number; y?: number }> | null = null;
+	let anchorAllPool: Array<{ k: number; x?: number; y?: number }> | null = null;
+	if (existSpawnPos && manorRadius > 0) {
+		const sx = existSpawnPos.x;
+		const sy = existSpawnPos.y;
+		const within = (e: { x?: number; y?: number }, radius: number) =>
+			Math.max(Math.abs(e.x! - sx), Math.abs(e.y! - sy)) <= radius;
+		anchorPool = [];
+		anchorAllPool = [];
+		for (const __r of Object.keys(sizeMap)) {
+			const __n = Number(__r);
+			if (sizeMap[__n]! < 40) continue;
+			ManagerPlanner.getBlockPutAbleCnt(roomWalkable, visited, queMinBuf, unionFind, __n, putAbleCacheMap, allCacheMap, rootMembers);
+			for (const __e of putAbleCacheMap[__n] || []) {
+				if (within(__e, manorRadius)) anchorPool.push(__e);
+			}
+			for (const __e of allCacheMap[__n] || []) {
+				if (within(__e, manorRadius + 3)) anchorAllPool.push(__e);
+			}
+		}
+	}
 	for (let i = 0; i < candidateRoots.length; i++) {
 		const posNum = Number(candidateRoots[i]);
 		// if(sizeMap[pos]<150)return
@@ -149,14 +175,9 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		let currentPutAbleList = currentPutAbleListCached;
 		let allList = allListCached;
 		if (existSpawnPos && manorRadius > 0) {
-			const sx = existSpawnPos.x;
-			const sy = existSpawnPos.y;
-			const withinSpawnRadius = (e: { x: number; y: number }, radius: number) =>
-				Math.max(Math.abs(e.x - sx), Math.abs(e.y - sy)) <= radius;
-			// 结构/路网限幅 R；墙圈边界外扩 3 格（R+3）——敌方远程射程 3，
-			// 贴墙站立时到墙内最近建筑 ≥ 4 格，打不到
-			currentPutAbleList = currentPutAbleListCached!.filter!((e) => withinSpawnRadius(e, manorRadius));
-			allList = allListCached!.filter!((e) => withinSpawnRadius(e, manorRadius + 3));
+			// 跨块聚合池 (见 anchorPool 注): 候选面 = 半径内全部块的 putable 并集
+			currentPutAbleList = anchorPool!;
+			allList = anchorAllPool!;
 		}
 		const currentPutAbleLen = currentPutAbleList!.length!;
 		if (currentPutAbleLen < planeGate) {
@@ -638,6 +659,33 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	const remainPos = extensionPos.slice(extIdx);
 	for (let i = spawnIdx; i < spawnPos.length; i++) remainPos.push(spawnPos[i]);
 	extensionPos = remainPos.sort(cmpFunc);
+	// 采集环保护 (boot 回归取证): source 8 邻是 miner 站位与源容器选址域——
+	// ext 是硬占位建筑, 压环 = 采集面收窄 (boot 实证 source(18,22) 环被占 2/8,
+	// L3 9177→12228 回退)。ext 候选剔除全部 source POI 的切比雪夫 1 环。
+	// POI 序 [controller, mineral, source1, source2], mineral=index 1 (rosBlock 约定)
+	const sourcePois = objects.slice(2);
+	if (sourcePois.length > 0) {
+		const protectedIdx = new Set<number>();
+		for (const s of sourcePois) {
+			for (let dx = -1; dx <= 1; dx++) {
+				for (let dy = -1; dy <= 1; dy++) {
+					protectedIdx.add((s.x! + dx) * 50 + (s.y! + dy));
+				}
+			}
+		}
+		extensionPos = extensionPos.filter((e) => !protectedIdx.has(e[0]! * 50 + e[1]!));
+	}
+	// ext 近 hub 钳制 (批次 I 缺口 1, race 本体 L2@676 口径): ext 的价值 = 孵化
+	// 攒能路程短——远离 spawn/hub 的 ext 每次填充多走十几格, L2 期建成也是负资产
+	// (实证: 布局 ext 全压 x=43 远东一列, 离 spawn(25,25) 15+ 格, 中段塌方主因)。
+	// 以 spawn 本体为圆心切比雪夫 ≤7 环带截断, 环带内不足再放远点兜底。
+	if (existSpawn) {
+		const sx = existSpawn.x;
+		const sy = existSpawn.y;
+		const near = extensionPos.filter((e) => Math.max(Math.abs(e[0]! - sx), Math.abs(e[1]! - sy)) <= 7);
+		const far = extensionPos.filter((e) => Math.max(Math.abs(e[0]! - sx), Math.abs(e[1]! - sy)) > 7);
+		extensionPos = near.length >= 10 ? near.concat(far.slice(0, Math.max(0, 60 - near.length))) : near.concat(far);
+	}
 	let extCnt = 60;
 	for (let i = 0; i < extensionPos.length; i++) {
 		const e = extensionPos[i];

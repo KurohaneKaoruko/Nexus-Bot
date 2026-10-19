@@ -166,9 +166,12 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
         roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], flagCenter);
         if (!roomStructsData) log(`[锚定诊断] 旗指定中心无解 room=${roomName} center=${flagCenter.x},${flagCenter.y}`);
     } else {
-        // spawn 锚定限幅降级阶梯：紧凑 10 → 放宽 14 → 不限幅，门槛 160 → 120 → 100 → 80 → 40 逐级放低
-        // 每级保持 spawn 收编；全阶梯无解才退回无锚流程（最后兜底），杜绝「稍偏即崩」的二值脆弱性
-        for (const [radius, gate] of [[10, 160], [10, 120], [14, 120], [0, 120], [0, 100], [0, 80], [0, 40]] as [number, number][]) {
+        // spawn 锚定限幅降级阶梯：半径只放宽到 8 为止（gate 逐级放低至 40），
+        // 不设「无限幅」档——无限幅成功 = 布局中心被远处大块吸走，ext 铺到 spawn
+        // 15+ 格外（speedrun 实证 ext 全压 x=43 一列，孵化攒能单程 18 格，中段塌方
+        // 主因）。近 spawn 小块即使 gate 低 also 远优于远块：ext 的价值在填充路程。
+        // 全阶梯无解才退回无锚流程（地形极端时的最后兜底，正常地形不可达）。
+        for (const [radius, gate] of [[10, 160], [10, 120], [8, 120], [8, 80], [8, 40]] as [number, number][]) {
             roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], undefined, undefined, existSpawnPos, radius, gate);
             if (roomStructsData) {
                 log(`[锚定诊断] 成功 room=${roomName} radius=${radius === 0 ? '无限' : radius} gate=${gate}`);
@@ -177,7 +180,9 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
             log(`[锚定诊断] 半径 ${radius === 0 ? '无限' : radius} 门槛 ${gate} 无解，降级重试 room=${roomName}`);
         }
         if (!roomStructsData) {
-            // 全阶梯无解：无锚无限幅兜底（门槛同步降级，直至必有产出）
+            // 全阶梯无解：无锚兜底（门槛同步降级，直至必有产出）。
+            // existSpawnPos 仍传入：spawn 收编与 ext 近-spawn 钳制不依赖限幅，
+            // 无锚也要保证 ext 不铺到 spawn 15+ 格外（speedrun x=43 实证）。
             log(`[锚定诊断] 锚定失败，退回无锚流程 room=${roomName}`);
             sigKey = makeDynamicSigKey(roomName, layoutType, pointsSig, null);
             const fallbackCached = getCachedDynamicBySig(sigKey);
@@ -189,7 +194,7 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
                 };
             }
             for (const gate of [160, 120, 80, 40] as number[]) {
-                roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], undefined, undefined, undefined, undefined, gate);
+                roomStructsData = computeManor(pa.roomName, [pc, pm, pa, pb], undefined, undefined, existSpawnPos, 0, gate);
                 if (roomStructsData) break;
             }
         }
