@@ -96,25 +96,6 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	"pc-heal": "智械护工",
 	"power-carry": "智械搬运体",
 	"power-ranged": "智械远程体",
-
-	/* 跨分支共用 */
-	attacker: "通用近战体",
-	blinky: "风筝远程体",
-	healer: "通用治疗体",
-	quad: "四人队成员",
-	colonist: "殖民开拓体",
-	porter: "补充搬运体",
-	courier: "资源派送体",
-	picker: "掉落拾取体",
-	puller: "拉动协作体",
-	digger: "破墙开路体",
-	tester: "测试体",
-	"rampart-repairer": "城墙维修体",
-	"nuke-repairer": "核弹维修体",
-	"core-attacker": "核心清除体",
-	"mineral-hauler": "矿物搬运体",
-	"keeper-killer": "猎杀体",
-	"score-hunter": "分数猎取体",
 };
 
 /** 取角色中文体名; 未收录角色回退为角色代号 */
