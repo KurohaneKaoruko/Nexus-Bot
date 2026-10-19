@@ -485,6 +485,14 @@ export const RESERVE_CONFIG = {
 	refreshTicks: 2000,
 } as const;
 
+/** 并行侦察 (race-speedrun 6.1): scout 并行编制上限——外矿预算 3 房时
+ *  恒 1 串行侦察跟不上扩张节奏 (t30k 实证预算 3 房只用 1 房), 并行侦察
+ *  让邻房情报同步到位, 采集任务同拍铺开 */
+export const SCOUT_CONFIG = {
+	/** 同时在侦的 scout 编制上限: 对齐 rush 档 remoteAutoMaxRooms (3 房预算) */
+	parallelCap: 3,
+} as const;
+
 /** 外矿收入统一折算 (资源账本 7.3): 定编与孵化门同源引用的唯一口径 */
 export const REMOTE_INCOME_CONFIG = {
 	/** 未预订源折算系数: 容量减半 (1500/3000) 计收入, 防按虚高收入超编 */

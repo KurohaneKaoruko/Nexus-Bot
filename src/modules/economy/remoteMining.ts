@@ -7,7 +7,7 @@ import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
 import type { TaskBoard } from "@/modules/tasks";
 import { priorityFor } from "@/core/store/taskSchema";
-import { RESERVE_CONFIG } from "@/config/economy";
+import { RESERVE_CONFIG, SCOUT_CONFIG } from "@/config/economy";
 import { roomModeProfileFor } from "@/modules/strategy";
 
 /** 己方用户名 (任一自有 spawn 的 owner; 无 spawn 的角落场景由调用侧兜底为不抢订) */
@@ -254,10 +254,18 @@ export function activeRemoteHarvestCount(ctx: TickContext, board: TaskBoard): nu
 	return n;
 }
 
-/** 活跃侦查任务数 (定编口径: scout 编制 = min(1, 活跃 scout 任务)) */
+/** 活跃侦查任务数 (定编口径): rush 档 3 房预算下 scout 任务 ≤3, 并行侦察
+ *  才能跟上外矿扩张节奏——恒 1 串行侦察时 2 房 scout 任务长期 available
+ *  无人认领, 外矿预算空转 (t30k 实证: 预算 3 房只用 1 房, race 同期 8 房全开)。
+ *  并行受生产安全门钳制: 采集面未铺满时 scout 是能量税 (speedrun t10k 累计
+ *  39k→32.8k 实证), 先保本地产出再摊侦察 */
 export function activeScoutCount(ctx: TickContext, board: TaskBoard): number {
-	const tasks = board.list({ kinds: ["scout"] });
-	return tasks.length > 0 ? 1 : 0;
+	const rooms = Object.values(ctx.world.current?.rooms ?? {});
+	const secured = rooms.length > 0 && rooms.every((room) => isProductionSecured(ctx, room));
+	if (!secured) {
+		return 1;
+	}
+	return Math.min(board.list({ kinds: ["scout"] }).length, SCOUT_CONFIG.parallelCap);
 }
 
 /**
