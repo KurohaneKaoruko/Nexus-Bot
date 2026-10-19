@@ -1,6 +1,6 @@
 
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ensureMemoryCache } from '@/modules/prototype/Creep/function/cacheFunction';
+import { ensureMemoryCache } from '@/proto/Creep/function/cacheFunction';
 import { UNITS } from '@/constant/CreepConstant';
 // ── 中央 boost 配置表（Tier 1 boost 管理统一）──────────────────
 // 角色 -> 部件 -> 候选 boost 资源（按优先级降级，前者不足自动用后者）。

@@ -1,11 +1,11 @@
 
 import type { TickContext, TickModule } from '@/core'
 import { log } from '@/utils/log'
-import { extend } from '@/modules/prototype/registry'
-import BaseFunction from "@/modules/prototype/PowerCreep/function/baseFunction"
-import PowerCreepDoubleAction from "@/modules/prototype/PowerCreep/function/doubleAction"
-import PowerCreepUsePower from "@/modules/prototype/PowerCreep/function/usePower"
-import PowerCreepExecute from "@/modules/prototype/PowerCreep/execute"
+import { extend } from '@/proto/registry'
+import BaseFunction from "@/proto/PowerCreep/function/baseFunction"
+import PowerCreepDoubleAction from "@/proto/PowerCreep/function/doubleAction"
+import PowerCreepUsePower from "@/proto/PowerCreep/function/usePower"
+import PowerCreepExecute from "@/proto/PowerCreep/execute"
 
 let mounted = false
 

@@ -5,7 +5,7 @@
  */
 
 import { UNITS } from '@/constant/CreepConstant';
-import { ensureMemoryCache } from '@/modules/prototype';
+import { ensureMemoryCache } from '@/proto';
 import { RoadMemory } from '@/modules/external/externalRoad';
 
 export type ExternalMineStoreLike = Partial<Record<string, number>> & {

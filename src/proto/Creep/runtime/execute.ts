@@ -1,7 +1,7 @@
 
 import { log } from '@/utils/log';
-import { getRoleHandler } from '@/modules/prototype/Creep/runtime/registry';
-import { ensureMemoryCache } from '@/modules/prototype/Creep/function/cacheFunction';
+import { getRoleHandler } from '@/proto/Creep/runtime/registry';
+import { ensureMemoryCache } from '@/proto/Creep/function/cacheFunction';
 import { UnitData } from '@/constant/CreepConstant';
 
 const creepExecuteErrorTickCache: Record<string, number> = {};

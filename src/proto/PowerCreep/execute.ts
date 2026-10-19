@@ -1,7 +1,7 @@
 
 import { UNITS } from '@/constant/CreepConstant';
-import { runAssist } from '@/modules/prototype/PowerCreep/mode/assist';
-import { runOperate } from '@/modules/prototype/PowerCreep/mode/operate';
+import { runAssist } from '@/proto/PowerCreep/mode/assist';
+import { runOperate } from '@/proto/PowerCreep/mode/operate';
 
 export default class PowerCreepExecute extends PowerCreep {
     override exec() {

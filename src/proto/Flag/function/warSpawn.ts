@@ -3,8 +3,8 @@ import { UNITS, UnitData, type UnitDefinition, type UnitId } from '@/constant/Cr
 import { log } from '@/utils/log';
 import { AIO_CONFIG, LOOT_CONFIG, type BoostMap } from '@/modules/teams';
 import { directSpawn } from '@/modules/spawning/spawnDirector';
-import { getSpawnRoomOrRemove, parseFlagNumber, tickThrottle } from '@/modules/prototype/Flag/utils';
-import { getFlagSpawnLoad } from '@/modules/prototype/Flag/function/spawnLoad';
+import { getSpawnRoomOrRemove, parseFlagNumber, tickThrottle } from '@/proto/Flag/utils';
+import { getFlagSpawnLoad } from '@/proto/Flag/function/spawnLoad';
 
 /** 战争族旗前缀（新增战争旗在此加一行即可） */
 const WAR_FLAG_PREFIXES = ['AIO/', 'CLEAN/', 'ACLAIM/', 'DIS/', 'LOOT/'] as const;

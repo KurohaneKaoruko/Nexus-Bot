@@ -1,6 +1,6 @@
 
 import { isDefenseRampartLockActive, isDefenseRampartValid, isPosOccupiedByOtherCreep, pickDefenseAnchorRampart, scoreRampart, shouldSwitchDefenseRampart } from '@/utils/defenseUtils';
-import { getBoostCache } from '@/modules/prototype';
+import { getBoostCache } from '@/proto';
 import { combatAttack, combatMoveTo, combatRangedAttack } from '@/modules/combat';
 
 const DEFENSE_RAMPART_LOCK_TTL = 25;

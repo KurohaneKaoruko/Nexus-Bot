@@ -5,10 +5,10 @@
  * Nexus 任务板处理核心经济 (harvester/carrier/upgrader/worker);
  * 原型方法族 (goTransfer/moveToRoom/doubleMove 等) 是角色行为库的现行 API。
  */
-import mountCreep from '@/modules/prototype/Creep'
-import mountFlag from '@/modules/prototype/Flag'
-import mountRoom from '@/modules/prototype/Room'
-import mountRoomPosition from '@/modules/prototype/RoomPosition'
+import mountCreep from '@/proto/Creep'
+import mountFlag from '@/proto/Flag'
+import mountRoom from '@/proto/Room'
+import mountRoomPosition from '@/proto/RoomPosition'
 import mountRoomVisual from '@/modules/visuals/proto'
 import { ConsoleExtension } from '@/console'
 import { qos } from '@/core/qos'

@@ -13,7 +13,7 @@ const OUT = path.join(ROOT, 'config', 'arch-allowlist.json');
 
 // 域 → 收编轨道映射 (design.md 的 Phase 编排; 未能归域的标 TBD)
 const TRACK_RULES = [
-	{ prefix: 'src/modules/prototype/', track: 'P6 legacy-removal (prototype 角色库收编)', due: null },
+	{ prefix: 'src/proto/', track: 'P6 legacy-removal (prototype 角色库收编)', due: null },
 	{ prefix: 'src/modules/teams/', track: 'P5 combat-adapter (Teams → adapter)', due: null },
 	{ prefix: 'src/modules/economy/units/', track: 'P7 industry-adapter (economy/units adapter 化)', due: null },
 	{ prefix: 'src/modules/industry/', track: 'P7 industry-adapter', due: null },

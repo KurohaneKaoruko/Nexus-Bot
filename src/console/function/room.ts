@@ -3,7 +3,7 @@ import { resolveFirstRoomMode } from "@/console/roomAutoStart";
 import { BASE_CONFIG } from "@/constant/BaseConstant";
 import { clearRoomRelatedMemory, ensureRoomData, getAutoData, getRoomData, getStructData } from "@/core/store/accessor";
 import { parseShardRoomName } from "@/utils/shardRoom";
-import { clearMemoryCache } from "@/modules/prototype";
+import { clearMemoryCache } from "@/proto";
 import { resolveRoomName } from "@/console/argUtils";
 
 // 动态布局（无需布局中心）

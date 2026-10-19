@@ -1,5 +1,5 @@
 
-import { evaluateSourceWorkTiles } from '@/modules/prototype';
+import { evaluateSourceWorkTiles } from '@/proto';
 import { getProfilerReport } from '@/core/cpuProfiler';
 import { invariantSummary } from '@/core/invariantWatch';
 import { moveExecutionRate } from '@/modules/movement/trafficMonitor';

@@ -1,6 +1,6 @@
 
 import { UNITS } from '@/constant/CreepConstant';
-import { getBoostCache } from '@/modules/prototype';
+import { getBoostCache } from '@/proto';
 
 
 const runLegacy = (creep: Creep) => {

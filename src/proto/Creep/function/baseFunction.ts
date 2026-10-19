@@ -3,7 +3,7 @@
  * 一些基础的功能
  */
 import { inWhitelist } from '@/utils/whitelist';
-import { ensureMemoryCache } from '@/modules/prototype/Creep/function/cacheFunction';
+import { ensureMemoryCache } from '@/proto/Creep/function/cacheFunction';
 
 type TakeTargetType = 'dropped' | 'structure' | 'ruin';
 type TakeTarget = { id: Id<any>; type: TakeTargetType };

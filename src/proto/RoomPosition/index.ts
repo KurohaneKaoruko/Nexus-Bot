@@ -1,6 +1,6 @@
 
-import { extend } from '@/modules/prototype/registry'
-import BaseFunction from '@/modules/prototype/RoomPosition/baseFunction'
+import { extend } from '@/proto/registry'
+import BaseFunction from '@/proto/RoomPosition/baseFunction'
 
 /** RoomPosition 原型扩展注册表 */
 export default () => {

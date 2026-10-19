@@ -15,7 +15,7 @@ import {
     makeCombatHealHandler, oneRanged, aio, doubleAttack, doubleDismantle,
 } from '@/modules/teams';
 import { defend2Attack, defendAttack, defendRanged } from '@/modules/defense';
-import pcHeal from '@/modules/prototype/PowerCreep/mode/assistHeal';
+import pcHeal from '@/proto/PowerCreep/mode/assistHeal';
 import { EXECUTORS, UNITS } from '@/constant/CreepConstant';
 
 // 键统一引用 EXECUTORS 常量（派生自 UnitData[].executor），与孵化侧词表单一来源对齐

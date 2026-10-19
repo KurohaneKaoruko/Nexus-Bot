@@ -5,7 +5,7 @@ import TeamUtils from "@/modules/teams/core/TeamUtils";
 import { getTeamData } from "@/core/store/accessor";
 import { getTeamCreeps } from "@/utils/creepTickIndex";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
-import { getBoostCache } from "@/modules/prototype";
+import { getBoostCache } from "@/proto";
 import { combatMove, combatMoveTo, combatRemoveFlag, combatSuicide, holdActor, releaseTeamActors } from "@/modules/combat";
 
 /**

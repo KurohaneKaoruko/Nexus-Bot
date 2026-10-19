@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
-import { getBoostCache } from '@/modules/prototype';
+import { getBoostCache } from '@/proto';
 
 const getCachedDoubleDismantleTarget = (creep: Creep): Structure | null => {
     const targetId = creep.memory['targetId'] as Id<Structure> | null | undefined;

@@ -1,6 +1,6 @@
 
-import { extend } from '@/modules/prototype/registry'
-import BaseFunction from '@/modules/prototype/Room/function/baseFunction'
+import { extend } from '@/proto/registry'
+import BaseFunction from '@/proto/Room/function/baseFunction'
 import { OutMine } from '@/modules/external'
 
 

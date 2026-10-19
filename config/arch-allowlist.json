@@ -186,227 +186,227 @@
 			"track": "P3 construction-intents (planner → intent)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/baseFunction.ts::moveTo": {
+		"src/proto/Creep/function/baseFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 4
 		},
-		"src/modules/prototype/Creep/function/baseFunction.ts::pickup": {
+		"src/proto/Creep/function/baseFunction.ts::pickup": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/baseFunction.ts::withdraw": {
+		"src/proto/Creep/function/baseFunction.ts::withdraw": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/baseFunction.ts::harvest": {
+		"src/proto/Creep/function/baseFunction.ts::harvest": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/boostFunction.ts::moveTo": {
+		"src/proto/Creep/function/boostFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 3
 		},
-		"src/modules/prototype/Creep/function/combatFunction.ts::attack": {
+		"src/proto/Creep/function/combatFunction.ts::attack": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/combatFunction.ts::moveTo": {
+		"src/proto/Creep/function/combatFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 4
 		},
-		"src/modules/prototype/Creep/function/combatFunction.ts::rangedAttack": {
+		"src/proto/Creep/function/combatFunction.ts::rangedAttack": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/combatFunction.ts::move": {
+		"src/proto/Creep/function/combatFunction.ts::move": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/controllerFunction.ts::moveTo": {
+		"src/proto/Creep/function/controllerFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 7
 		},
-		"src/modules/prototype/Creep/function/controllerFunction.ts::signController": {
+		"src/proto/Creep/function/controllerFunction.ts::signController": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/controllerFunction.ts::pickup": {
+		"src/proto/Creep/function/controllerFunction.ts::pickup": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/controllerFunction.ts::withdraw": {
+		"src/proto/Creep/function/controllerFunction.ts::withdraw": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/controllerFunction.ts::upgradeController": {
+		"src/proto/Creep/function/controllerFunction.ts::upgradeController": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/doubleAction.ts::move": {
+		"src/proto/Creep/function/doubleAction.ts::move": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 5
 		},
-		"src/modules/prototype/Creep/function/doubleAction.ts::pull": {
+		"src/proto/Creep/function/doubleAction.ts::pull": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/doubleAction.ts::moveTo": {
+		"src/proto/Creep/function/doubleAction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 7
 		},
-		"src/modules/prototype/Creep/function/doubleAction.ts::attack": {
+		"src/proto/Creep/function/doubleAction.ts::attack": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/moveFuntion.ts::move": {
+		"src/proto/Creep/function/moveFuntion.ts::move": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/moveFuntion.ts::moveTo": {
+		"src/proto/Creep/function/moveFuntion.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 4
 		},
-		"src/modules/prototype/Creep/function/sourceFunction.ts::moveTo": {
+		"src/proto/Creep/function/sourceFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/sourceFunction.ts::repair": {
+		"src/proto/Creep/function/sourceFunction.ts::repair": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/sourceFunction.ts::createConstructionSite": {
+		"src/proto/Creep/function/sourceFunction.ts::createConstructionSite": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/sourceFunction.ts::build": {
+		"src/proto/Creep/function/sourceFunction.ts::build": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/sourceFunction.ts::transfer": {
+		"src/proto/Creep/function/sourceFunction.ts::transfer": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::moveTo": {
+		"src/proto/Creep/function/workFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 9
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::pickup": {
+		"src/proto/Creep/function/workFunction.ts::pickup": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::withdraw": {
+		"src/proto/Creep/function/workFunction.ts::withdraw": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::harvest": {
+		"src/proto/Creep/function/workFunction.ts::harvest": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::transfer": {
+		"src/proto/Creep/function/workFunction.ts::transfer": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::build": {
+		"src/proto/Creep/function/workFunction.ts::build": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::repair": {
+		"src/proto/Creep/function/workFunction.ts::repair": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Creep/function/workFunction.ts::upgradeController": {
+		"src/proto/Creep/function/workFunction.ts::upgradeController": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Flag/function/baseFunction.ts::remove": {
+		"src/proto/Flag/function/baseFunction.ts::remove": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/Flag/function/warSpawn.ts::remove": {
+		"src/proto/Flag/function/warSpawn.ts::remove": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 6
 		},
-		"src/modules/prototype/Flag/utils.ts::remove": {
+		"src/proto/Flag/utils.ts::remove": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/execute.ts::moveTo": {
+		"src/proto/PowerCreep/execute.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/PowerCreep/execute.ts::suicide": {
+		"src/proto/PowerCreep/execute.ts::suicide": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/function/baseFunction.ts::moveTo": {
+		"src/proto/PowerCreep/function/baseFunction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 9
 		},
-		"src/modules/prototype/PowerCreep/function/baseFunction.ts::transfer": {
+		"src/proto/PowerCreep/function/baseFunction.ts::transfer": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 4
 		},
-		"src/modules/prototype/PowerCreep/function/baseFunction.ts::withdraw": {
+		"src/proto/PowerCreep/function/baseFunction.ts::withdraw": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/PowerCreep/function/baseFunction.ts::renew": {
+		"src/proto/PowerCreep/function/baseFunction.ts::renew": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/function/doubleAction.ts::move": {
+		"src/proto/PowerCreep/function/doubleAction.ts::move": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 6
 		},
-		"src/modules/prototype/PowerCreep/function/doubleAction.ts::moveTo": {
+		"src/proto/PowerCreep/function/doubleAction.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 7
 		},
-		"src/modules/prototype/PowerCreep/function/usePower.ts::moveTo": {
+		"src/proto/PowerCreep/function/usePower.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 5
 		},
-		"src/modules/prototype/PowerCreep/mode/assist.ts::remove": {
+		"src/proto/PowerCreep/mode/assist.ts::remove": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/mode/assist.ts::enableRoom": {
+		"src/proto/PowerCreep/mode/assist.ts::enableRoom": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/mode/assist.ts::moveTo": {
+		"src/proto/PowerCreep/mode/assist.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 8
 		},
-		"src/modules/prototype/PowerCreep/mode/assist.ts::renew": {
+		"src/proto/PowerCreep/mode/assist.ts::renew": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/mode/assist.ts::withdraw": {
+		"src/proto/PowerCreep/mode/assist.ts::withdraw": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/mode/assistHeal.ts::suicide": {
+		"src/proto/PowerCreep/mode/assistHeal.ts::suicide": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 3
 		},
-		"src/modules/prototype/PowerCreep/mode/assistHeal.ts::heal": {
+		"src/proto/PowerCreep/mode/assistHeal.ts::heal": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 3
 		},
-		"src/modules/prototype/PowerCreep/mode/assistHeal.ts::moveTo": {
+		"src/proto/PowerCreep/mode/assistHeal.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 2
 		},
-		"src/modules/prototype/PowerCreep/mode/assistHeal.ts::rangedHeal": {
+		"src/proto/PowerCreep/mode/assistHeal.ts::rangedHeal": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
-		"src/modules/prototype/PowerCreep/mode/operate.ts::moveTo": {
+		"src/proto/PowerCreep/mode/operate.ts::moveTo": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 3
 		},
-		"src/modules/prototype/Room/function/baseFunction.ts::createConstructionSite": {
+		"src/proto/Room/function/baseFunction.ts::createConstructionSite": {
 			"track": "P6 legacy-removal (prototype 角色库收编)",
 			"calls": 1
 		},
