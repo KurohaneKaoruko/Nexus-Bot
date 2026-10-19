@@ -9,6 +9,7 @@
  */
 import {
 	BUILD_COMPLETION_CONFIG,
+	RUSH_BUILD_CONFIG,
 	BUILD_PRIORITY_BONUS,
 	CONTROLLER_BUFFER_CONFIG,
 	DOWNGRADE_CONFIG,
@@ -25,8 +26,8 @@ import type { TaskBoard } from "@/modules/tasks";
 import { destinationQuotas, pickDestination, roundTripEstimate } from "@/modules/economy/quota";
 import { createLedger, reserve } from "@/modules/economy/ledger";
 import { harvestSlotsFor } from "@/modules/world";
-import { harvestStaffingPerSource } from "@/modules/economy/productionGate";
-import { controllerCarryQuotaOf } from "@/modules/economy/workforce";
+import { harvestStaffingPerSource, avgHarvesterWorkOf } from "@/modules/economy/productionGate";
+import { controllerCarryQuotaOf, upgradersStarvedOf } from "@/modules/economy/workforce";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 
 const PLANNED_KINDS: TaskKind[] = ["harvest", "haul", "fill_spawn", "upgrade", "build"];
@@ -116,6 +117,7 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 	const directive = directiveFor(ctx);
 	const bias = (kind: TaskKind): number => directive.kindBias[kind] ?? 0;
 	const expected = new Set<string>();
+	const worksites = ctx.memory.rooms[room.roomName]?.worksites;
 
 	// harvest: 每 Source 稳定任务, 低容量期每源多条 (多只小体铺满源速,
 	// 定编口径 = productionGate.harvestStaffingPerSource)——每任务一个采集
@@ -126,7 +128,7 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 		if (!intel) {
 			continue;
 		}
-		const count = harvestStaffingPerSource(room.energyCapacity);
+		const count = harvestStaffingPerSource(room.energyCapacity, avgHarvesterWorkOf(room));
 		const slots = harvestSlotsFor(intel, room, source, count);
 		if (slots.length === 0) {
 			continue;
@@ -224,6 +226,12 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 			room.controller !== undefined &&
 			Math.max(Math.abs(site.x - room.controller.x), Math.abs(site.y - room.controller.y)) <=
 				CONTROLLER_BUFFER_CONFIG.adoptRange;
+		// 源容器工地: 落在 worksite 登记的采集位旁 (源容器是采集链前提物)
+		const nearSource =
+			site.structureType === "container" &&
+			Object.values(worksites ?? {}).some(
+				(ws) => Math.abs(site.x - ws.x) <= 1 && Math.abs(site.y - ws.y) <= 1,
+			);
 		// 近完提权 (bugs/P2-20): 进度占比过线的工地加分收尾——收尾一个 ext 立即
 		// 解锁 cap+50, 摊开施工把首个建成无限推迟 (sim 实锤 5 ext 摊 24k tick)
 		const liveSite = Game.constructionSites[site.id];
@@ -232,6 +240,15 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 			liveSite.progressTotal > 0 &&
 			liveSite.progress / liveSite.progressTotal >= BUILD_COMPLETION_CONFIG.progressRatio
 				? BUILD_COMPLETION_CONFIG.bonus
+				: 0;
+		// 关键基建换班提级 (race 本体 building 开关语义): 源容器/cc 容器不成,
+		// 采集与升级链都缺前提物 (矿工 drop 地面 → haul 爆炸 / 升级断供)。
+		// L4 (压过采集 L5) 使 harvester 经 criticality 通道 (权重 100) 自然转建,
+		// 破解「亲和表有 build 但 utility/margin 恒拦」的死锁 (c16-c20 实证
+		// 源容器工地 19k tick 无人认领)。非关键结构维持 L8 殿后。
+		const criticalInfra =
+			site.structureType === "container" && (nearController || nearSource)
+				? RUSH_BUILD_CONFIG.criticalInfraPriority - priorityFor("build")
 				: 0;
 		const input: NewTaskInput = {
 			dedupeKey,
@@ -244,7 +261,8 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				bias("build") +
 				(nearController ? CONTROLLER_BUFFER_CONFIG.buildPriorityBonus : 0) +
 				(BUILD_PRIORITY_BONUS[site.structureType] ?? 0) +
-				nearDone,
+				nearDone +
+				criticalInfra,
 			requiredCapabilities: ["work", "carry", "move"],
 		};
 		// cc 工地豁免节流 (bugs/P1-14 派发段): 升级直供链路的地基, survive 压制会让
@@ -364,6 +382,18 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 			supplyLineTight && destination.id === bufferId
 				? CONTROLLER_BUFFER_CONFIG.dedicatedLinePriority - priorityFor("haul") + destination.priority
 				: 0;
+		// 升级断粮应急 (E13): cc 见底 (存量 < 半格水位) 且升级体在挨饿时, cc 补货
+		// 单临时越过孵化线 fill_spawn——恒提权/低水位提权均已判负 (E2b/E5 留档),
+		// 这里只在【双条件】同时成立时给一段窄档, 断粮解除即回落
+		const bufferStore =
+			destination.id === bufferId ? room.stores.find((store) => store.id === bufferId) : undefined;
+		const starveBoost =
+			bufferStore !== undefined &&
+			room.hostiles.length === 0 &&
+			bufferStore.energy < bufferStore.energyCapacity * CONTROLLER_BUFFER_CONFIG.refillEmergencyRatio &&
+			upgradersStarvedOf(ctx, room.roomName) > 0
+				? CONTROLLER_BUFFER_CONFIG.refillLead
+				: 0;
 		const distance = Math.max(
 			Math.abs(source.x - destination.x),
 			Math.abs(source.y - destination.y),
@@ -379,7 +409,8 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				destPos: { x: destination.x, y: destination.y, roomName: room.roomName },
 				resourceType: RESOURCE_ENERGY,
 				amount,
-				priority: priorityFor("haul") - destination.priority + bias("haul") + dedicatedBoost,
+				priority:
+					priorityFor("haul") - destination.priority + bias("haul") + dedicatedBoost - starveBoost,
 				requiredCapabilities: ["carry", "move"],
 				deadline: ctx.tick + Math.min(600, roundTripEstimate(amount, distance) + 100),
 			},

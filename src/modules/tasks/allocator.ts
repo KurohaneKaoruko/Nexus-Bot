@@ -59,10 +59,24 @@ export const SCORE_WEIGHTS = {
 	switch: 8,
 } as const;
 
-/** 切换阈值: 新任务须比当前任务高出的分数 (除非紧急抢占) */
+/** 切换阈值: 新任务须比当前任务高出的分数 (零滞回抢占除外) */
 export const SWITCH_MARGIN = 15;
-/** 紧急抢占线: 任务优先级达到该值可无视滞回直接抢占 */
-export const CRITICAL_PRIORITY = 2;
+/**
+ * 零滞回抢占种类: 紧急防御/撤离 + 孵化线供能 (design/05 §5.6「紧急事件可以抢占」,
+ * fill_spawn 是 spawn 队列的生存线)。判据必须是种类语义, 不得用 priority 数值档位——
+ * 专线 haul 的星饥加速会把 priority 压到 0~1.5, 数值落入与 survival 档相同的区间,
+ * 按数值豁免等于让物流任务每 tick 零成本换绑: 被换下的任务回池后下 tick 按亲和
+ * 又被同一只夺回, 形成 A→B→A 零进度振荡 (实测: 驻点矿工被专线 haul 反复抽走做
+ * 容器 withdraw/transfer 对冲; 载体被两地货源的两件任务拉成原地往返, 窗口期 62.7%
+ * creep-tick 换手)。
+ * 同族之间不豁免: 紧急任务只抢「非紧急」, 不与另一个紧急任务互相热土豆——
+ * 同类任务间的再平衡交给 travel 差 + 滞回阈值。
+ */
+export const SWITCH_EXEMPT_KINDS: ReadonlySet<string> = new Set([
+	"defend",
+	"retreat",
+	"fill_spawn",
+]);
 /** 最低剩余寿命: 低于此值不接新任务 */
 const MIN_TTL = 150;
 
@@ -98,7 +112,12 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 	if (profile.roomName !== task.roomName) {
 		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标; harvest/haul: 本矿登记的外矿源/容器) 放行,
 		// 由评分的 travel 成本约束
-		if (task.kind !== "claim" && task.kind !== "reserve" && task.kind !== "harvest" && task.kind !== "haul") {
+		if (
+			task.kind !== "claim" &&
+			task.kind !== "reserve" &&
+			task.kind !== "harvest" &&
+			task.kind !== "haul"
+		) {
 			return false;
 		}
 	}
@@ -107,7 +126,12 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 		return false;
 	}
 	// 反向: 侦查件只接侦查 (单 MOVE 身体不参与生产/搬运竞争)
-	if (task.kind !== "scout" && profile.work + profile.carry === 0 && profile.claim === 0 && profile.attack + profile.ranged + profile.heal === 0) {
+	if (
+		task.kind !== "scout" &&
+		profile.work + profile.carry === 0 &&
+		profile.claim === 0 &&
+		profile.attack + profile.ranged + profile.heal === 0
+	) {
 		return false;
 	}
 	for (const capability of task.requiredCapabilities) {
@@ -143,8 +167,11 @@ const KIND_UTILITY: Record<string, number> = {
 	retreat: 0.8,
 	harvest: 0.8,
 	haul: 0.6,
+	// 维修压过新建: decay 结构 (容器 25k tick 寿命) 死后重建 5000e + 数千 tick,
+	// 而及时维修只花 decay 速率的血 (容器 10e/t 血) —— 断供代价远高于新建收益
+	// (sim 实证 cc 容器 decay 死后升级链断供 8.9k tick, 损失 ~35k 进度)
 	build: 0.6,
-	repair: 0.5,
+	repair: 0.65,
 	upgrade: 0.4,
 };
 
@@ -222,7 +249,12 @@ function travelCostOf(profile: CapabilityProfile, task: NexusTask, world: WorldV
 	}
 	if (profile.roomName !== task.roomName) {
 		// 跨房任务 (claim/reserve/harvest/haul) 用房名线性距离折算, 不做无穷大排除
-		if (task.kind !== "claim" && task.kind !== "reserve" && task.kind !== "harvest" && task.kind !== "haul") {
+		if (
+			task.kind !== "claim" &&
+			task.kind !== "reserve" &&
+			task.kind !== "harvest" &&
+			task.kind !== "haul"
+		) {
 			return Number.POSITIVE_INFINITY;
 		}
 		const m1 = profile.roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
@@ -341,9 +373,13 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			const isSwitch = currentTaskId !== undefined && currentTaskId !== task.id;
 			const switchCost = isSwitch ? 1 : 0;
 			const candidateScore = scoreCandidate(profile, task, travel, switchCost, input.now);
-			if (isSwitch && task.priority > CRITICAL_PRIORITY) {
+			if (isSwitch) {
 				const current = input.getTask(currentTaskId);
-				if (current) {
+				// 紧急任务抢非紧急: 零滞回; 其余 (含紧急抢紧急) 需过阈值
+				const freePreempt =
+					SWITCH_EXEMPT_KINDS.has(task.kind) &&
+					(current === undefined || !SWITCH_EXEMPT_KINDS.has(current.kind));
+				if (!freePreempt && current) {
 					const currentScore = scoreCandidate(profile, current, 0, 0, input.now);
 					if (candidateScore < currentScore + SWITCH_MARGIN) {
 						continue;

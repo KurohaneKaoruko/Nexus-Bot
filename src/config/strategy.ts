@@ -51,9 +51,12 @@ export const STRATEGY_CONFIG: StrategyConfig = {
 	minDwellTicks: 600,
 	transitionLogMax: 10,
 	stockFloors: {
-		criticalFactor: 2,
-		healthyFactor: 5,
-		surplusFactor: 12,
+		/** 涓流期重校准 (race 对照): 无 storage 的低 RCL 期库存天然贴地
+		 *  (孵化即时消费), 瞬时存量当危机信号会 develop/survive 600t 起振,
+		 *  upgrade 被 suppress 5300t (sim 实证 L2 拖到 5907, race 参照 676) */
+		criticalFactor: 8,
+		healthyFactor: 20,
+		surplusFactor: 40,
 	},
 	starvationTrigger: 100,
 	posturePolicy: {

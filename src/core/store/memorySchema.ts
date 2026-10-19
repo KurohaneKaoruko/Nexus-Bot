@@ -234,6 +234,8 @@ export interface EconomyMemory {
 		haulIdleTicks: number;
 		energyStockDelta: number;
 	};
+	/** worker 出生史累计标记 (workerBuildCriticalOf 豁免口径; 死亡不清除) */
+	workerEverBorn?: boolean;
 	/** 上一诊断窗口的总库存 (算净变化用) */
 	lastStockTotal: number;
 	/** 观测窗口基准 tick */

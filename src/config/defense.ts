@@ -74,6 +74,9 @@ export const REPAIR_CONFIG = {
 	} as Record<string, number>,
 	/** 普通结构维护线: 修至 hitsMax × 该比例即完成 */
 	maintainRatio: 0.9,
+	/** decay 结构 (容器/道路) 预警窗口: 掉血 ≥ 窗口 tick × 每档衰减量即触发维修
+	 *  (绝对余量线, 替代比例线——见 defense/planners belowMaintainLine) */
+	decayLeadTicks: 500,
 	/** 墙体维护线 (绝对耐久, 不随 hitsMax) */
 	wallMaintainHits: 30000,
 	/** 城门维护线 (绝对耐久) */

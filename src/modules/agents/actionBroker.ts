@@ -196,6 +196,20 @@ const CREEP_PIPELINES: ReadonlySet<string> = new Set([
 	"claim",
 ]);
 
+/**
+ * 房间级批量管线 (api/17 命令边界): actor 是房间/结构名, 一 pass 天然提交多条
+ * 独立命令 (如布局放量一次放多个工地)。"同 actor 同 pipeline 留一"仲裁只对
+ * creep 行动有意义 (一个机体一 tick 一个动作); 对批量管线做去重会把放量压成
+ * 每 tick 1 条 (sim 实锤 45k 全房仅 6 工地, 源容器 0), 故豁免仲裁。
+ */
+const BATCH_PIPELINES: ReadonlySet<string> = new Set([
+	"construction",
+	"market",
+	"claim",
+	"power",
+	"flag",
+]);
+
 export function createBroker(deps: BrokerDeps): ActionBroker {
 	const plans = new Map<string, ActionPlan>();
 	const lastResults = new Map<string, ActionResult>();
@@ -926,10 +940,22 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 		submit,
 
 		commit(): readonly ActionResult[] {
-			// 管线仲裁: 同 actor 同 pipeline 只保留优先级最高的计划
+			// 管线仲裁: 同 actor 同 pipeline 只保留优先级最高的计划。
+			// 批量管线 (construction 等) 豁免: 提交方已按 dedupeKey 去重,
+			// 同 pass 多条是设计内批量命令, 无 "一机体一动作" 语义
+			const batchKeys = new Set<string>();
+			for (const plan of plans.values()) {
+				if (BATCH_PIPELINES.has(plan.pipeline)) {
+					batchKeys.add(`${plan.actorName}:${plan.pipeline}`);
+				}
+			}
 			const kept = new Map<string, ActionPlan>();
 			for (const plan of plans.values()) {
 				const key = `${plan.actorName}:${plan.pipeline}`;
+				if (batchKeys.has(key)) {
+					kept.set(`${key}:${plan.dedupeKey}`, plan);
+					continue;
+				}
 				const incumbent = kept.get(key);
 				if (!incumbent || plan.priority > incumbent.priority) {
 					kept.set(key, plan);
@@ -939,7 +965,7 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 			const results: ActionResult[] = [];
 			for (const plan of plans.values()) {
 				const key = `${plan.actorName}:${plan.pipeline}`;
-				const winner = kept.get(key);
+				const winner = batchKeys.has(key) ? kept.get(`${key}:${plan.dedupeKey}`) : kept.get(key);
 				if (winner !== plan) {
 					// 仲裁出局: 未触达原生 API, 无返回码
 					const suppressed: ActionResult = {

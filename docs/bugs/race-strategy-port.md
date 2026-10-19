@@ -362,3 +362,555 @@ RCL1→2 需 45k 进度, C7 实测 L2@25936 (vs 真基线 1117)。源码工作�
   4 只 carrier 被 fill_spawn (池常空) 与远程 haul 双向拉扯。
 - foldRates 只扫 world.rooms, 远程房速率永不折叠 (W4N8 accumulated 4232, EMA 0)——记侧小缺陷。
 - upgrader carryEnergyPerWork 6→12 中性 (池常空下 800 预算档从未触达, 恒按存量孵小体)。
+
+## 批次 D: 建筑/维修基础设施修复 (2026-10-19, race-speedrun 任务6.1)
+
+### 根因链: 52% 腐烂 + 容器 decay 死亡链 (完整尸检 n2/c1/c2)
+
+1. **broker 仲裁节流 (第一根因)**: commit 仲裁按 `actorName:pipeline` 每 tick 只留
+   1 条 → 工地滴灌 (45k 仅 6 站、源容器 0) → 0-carry 矿工落地能量全腐烂。
+2. **容器 decay 是结构炸弹**: 250k 血 ÷ 5000血/500t = 25k tick 寿命。cc 容器死后
+   重建 5000e 花 8.9k tick, 升级链断供 (n1/c1/c2 共同死因, 仅时序不同)。
+3. **repair 任务生成触发线缺失**: decay 结构 (容器/路) 满血时 absolute 检查恒
+   false → 源容器/cc 容器从不进 repair 任务 → 从不进 repairPending → 从不产生
+   worker 需求 → 从不孵 worker。
+4. **worker 七道闸逐层解锁** (每层单独无效, 须全开):
+   - allocator.ts KIND_UTILITY repair 0.5→0.65
+   - defense/planners.ts `DECAY_STRUCTURE_TYPES` + `decayRateOf` + 绝对余量触发线
+   - defense.ts `decayLeadTicks: 500`
+   - demandSources.ts `workerBuildCriticalOf(ctx, board?)` (repairPending 扫描 +
+     持久 workerEverBorn + 豁免旁路)
+   - spawnDirector.ts 孵化成交写 `memory.economy.workerEverBorn`
+   - economy.ts standingRoles 加 worker (priority 6) + unsecuredAllowedRoles 加 worker
+   - spawnArbiter.ts criticalWorker 让位豁免 + criticalWorkerWaiting 等待窗
+     (available<200 时本 tick 不孵低优先小体)
+   - cpuBudget.ts SkipReason 加 `"critical-worker-wait"`
+   - memorySchema.ts EconomyMemory 加 `workerEverBorn?`
+
+### 修复栈清单 (本轮全部已落地, tsc/lint/test 10/10 绿)
+
+- `src/modules/agents/actionBroker.ts`: BATCH_PIPELINES 仲裁豁免 (批量管道含 build/repair)
+- `src/modules/tasks/allocator.ts`: repair utility 0.65
+- `src/modules/defense/planners.ts` + `src/config/defense.ts`:
+  decay 结构类型表 + decayRateOf + decayLeadTicks 绝对触发线
+- `src/modules/spawning/demandSources.ts`: workerBuildCriticalOf 新语义
+- `src/modules/spawning/spawnDirector.ts`: workerEverBorn 落盘 + board 传参
+- `src/config/economy.ts`: standingRoles 加 worker (priority 6) + unsecuredAllowedRoles 加 worker
+- `src/modules/spawning/spawnArbiter.ts`: criticalWorker 豁免 + criticalWorkerWaiting 等待窗
+- `tests/broker-arbitration.test.ts` (红→绿实证仲裁压制)
+  + `tests/worker-critical.test.ts` (4 用例) + `tests/stubs/screeps-constants.ts` (引擎常量桩)
+
+### 实证闭环 (c15 短程 9500t)
+
+- broker 修复后 t1118 一 tick 5 ext + 2 源容器 (批量落站生效)
+- worker 终于孵出: repair 任务 t8468 生成 → critical → 孵化成交 (t9500 units 已见 worker)
+
+### 负结果台账
+
+- c1 (仅 broker 修复): 65086 (t45k progress, vs n1 124867)——单层修复不解决系统性问题
+- c2-c7 (各层修复单独): 全部 48549 逐位一致——**修复必须成套, 单层全无效**
+- 旧负结果 (S1 scout churn、远程入编、fill_spawn 账本预留等) 继续有效
+
+### 45k 全量验证 (c16, 修复栈齐装但 workerEverBorn 落盘 bug 未修)
+
+- **结果: 大幅劣化 17979** (vs c1 65086 / b1final 116533), RCL 卡 2 末段降级 1。
+- 意图分布 repair=43 (旧基线 0, 维修链首次活了), build=5071 (c1 全程量级)。
+- 尸检 (c17 9k 全量意图流):
+  - worker 出生 14 只正常 (t1046 起), 但每只 ~1400t 老死 (小体寿命), 时间分配
+    **move 65% / build 19% / pickup 5%**——1W 小体 + 7 工地分散 + 能量自给往返,
+    有效建造吞吐 ~1e/t。
+  - t5750-6250 塌方窗口: 四只升级体连孵 (wwcmw 350e ×2 + wcmw 250e ×2) 抽干
+    spawn 能量 → 人口 26→8, eAvail 恒 <100, 经济锁死 ~2.2 e/t。
+  - build 任务 (26,25 cc 容器) t30739 才生成 (工地 t0 就在)——worker 老死 →
+    build 任务回收 → 重生成的 churn 循环, 5000e 容器跨 worker 世代建不完。
+- **第三根因实锤**: `spawnDirector.ts:353` 比较 `request.unit === UNIT_CODES.worker`,
+  但 request.unit 是角色名 "worker" 而 UNIT_CODES.worker 是代号 "W"——恒 false,
+  workerEverBorn 永不落盘 (c16 dump 实证 economy 无此键)。修复: 改与
+  spawnArbiter 一致的角色名字面量比较。
+- 存疑待 c18 复核: worker 分流孵化预算 (25 只中 worker 4 + upgrader 10) 是否
+  挤垮采集面; criticalWorkerWaiting 等待窗是否在 repairPending 恒在时卡孵化线。
+
+### workerEverBorn 修复 + 关键基建提级 (c18→c22, 突破 RCL3 历史首次)
+
+- 第三根因修复 (保留): `spawnDirector.ts` request.unit 改角色名字面量 `"worker"`
+  比较, workerEverBorn 正常落盘。
+- **fill_spawn 禁取 cc 容器 (c25) = 负收益, 撤销**: L2 提速 1.4kt 但 L3 卡 36412。
+  fetch 禁令切断 cc 容器 → spawn 的能量流, RCL3 段升级链断供。
+- **关键基建 build/repair 提级 (保留)**:
+  - `RUSH_BUILD_CONFIG.criticalInfraPriority=4` (economy.ts): 源容器/cc 容器 build
+    提级 (planners.ts nearSource 判定)。
+  - container repair 提级 L4 (defense/planners.ts); road 不提级——c22 实证 10 条
+    路 repair 吸干 6/9 人力。
+- **criticalWorkerWaiting waitExpired 上限 (保留)**: 修复 repairPending 恒在时
+  等待窗无限卡孵化线。
+- **c22 = 当前最优态**: L2@4324 / **L3@17982** (历史首次破 RCL2→3; 此前所有
+  版本 45k 卡 RCL2, c1 65086 / b1final 116533 全量垫底)。
+
+### 任务分配死锁链尸检 (c19/c20)
+
+- build 任务 (pri 8) 被 harvest (pri 5) 的 criticality 权重差 (100×(11-p)/11 → 27
+  分) + SWITCH_MARGIN 15 拦死; harvester 体型 wmw (2W1M **0 CARRY**) 被 build 的
+  carry 要求 canExecute 筛掉; carrier 被 fill_spawn (utility 0.9) 占死, haul 25
+  任务积压——三闸叠加, build 无人认领。
+- 解法即上述提级 (pri 4 过 SWITCH_MARGIN 检查) + 0-carry 矿工不做 build。
+
+### 026c: fill_spawn/haul 抢占换手空转 (已知问题, 留档)
+
+- carrier 每 tick 从 haul 手里被 fill_spawn (pri1≤CRITICAL_PRIORITY 豁免 margin)
+  夺走, 下一 tick 又被 haul 夺回——withdraw/transfer 同一 cc 容器 1400t 零产出。
+- 两个修复方向均负收益 (见下), 系统在该噪声下仍达 L3@17982, 代价比修复低。
+- 候选方向 (未验): fill_spawn 对 carrier 的 utility 打折而非硬抢。
+
+### relay carrier 饥饿死锁 (c28 探明)
+
+- relay 段 min 250 (road [C,C,C,C,M]) > 涓流期 avail 82-233 → buildBody 恒 null →
+  carrier 全灭死锁 (remote-mine idle 221 恒等待的根因)。
+
+### 负结果台账 (批次 D 续)
+
+- **c26-c27 抢占滞回 (CRITICAL_SWITCH_MARGIN/SURVIVAL_KINDS) = 负收益, 撤销**:
+  L2 提速 1.4kt 但 L3 慢 10.8kt。fill_spawn 抢占风暴虽是真 bug, 滞回代价更高。
+- **c28 无条件 carrierBootstrap (relay 段付不起回退普通段) = 负收益, 撤销**:
+  全量回退引入小段件 churn 塌方, speedrun 全灭崩溃 + 破坏 run-residue 启动。
+- **收紧版 bootstrap (staffed==0 && carrierEverBorn) = 负收益, 撤销**: speedrun
+  L3 拖到 40425 (vs c22 17982)。
+- 三轮全套件矩阵佐证: #1(c27态) 3/7、#2(无条件) 2/7、#3(收紧态) 3/7。
+- 撤销后复测 (c29 态): speedrun-probe L2@4324 / **L3@17982**——与 c22 完全一致,
+  回退干净。tsc/lint/test 10/10 绿。
+
+### race 本体参照 harness 打通 + remote-mine 跨场景定性 (2026-10-19 c29)
+
+- remote-mine 200k A/B: 工作树 FAIL (7 单位 / RCL1), HEAD stash 对照 PASS (10 单位 / RCL3)
+  → 本批保留项引入 remote-mine 回归, 提交前须按 rush 档门控或 bisect。
+- sim 语义差 (探针实锤): 模拟器在首个 loop 前重建全局上下文, **模块加载期 Memory 写入全丢**
+  (tick 期写入正常)。race 本体依赖加载期初始化, 直跑 t0 必崩 `Memory.stats.cpu`。
+- 补丁: race 入口 (`branch/race/main.ts`) 6 行「首 loop 延迟装载」, 不动本体逻辑, 现可完整跑。
+- 参照成绩 (speedrun-probe 45k 同场景): race 本体 L2@676 L3@5624 **L4@23209**
+  (L3→4 段 7.7 e/t); 对照 Nexus c29 L2@4324 L3@17982 L4 缺 (L3→4 段 0.51 e/t)。
+  → 升级段 15x 差距, 体系级实锤; race 本体现为可跑的移植标尺。
+- 注: 本体 sim 绝对值仍慢于其私服 1wt/2wt/4wt 目标, sim↔私服机制差待校准。
+
+### B 路线：渐进移植计划 v1 (2026-10-19 用户决策)
+
+- 差距分解 (speedrun-probe 45k, 逐 5k 窗口升级速率 e/t):
+  race 7.62/1.82/12.47/7.47/6.70/0.17/2.86/10.28/12.34 vs
+  nexus 0.37/4.41/2.84/1.74/0.45/0.63/0.56/0.50/0.29。
+  开局差 ~20x; L3 后差 ~15x 且不回弹; nexus spawn 能量恒枯竭 (eav 29-205 vs race 550-1300),
+  人口 race 恒 10-12 成体系体 vs nexus 开局 26 只小体。
+- 本体核心机制 (源码勘察):
+  - **驻场升级体**: 站位区 (controller 3 格内 flood-fill 座次), 只做「取 depot→升级」,
+    永不跑腿; depot 链 = controller link > 掉落堆 > cc 容器, 由独立 courier 灌满
+    (流量模型 controllerNumCarry = 2*maxWork*distance); 体型按 energyCapacityAvailable+
+    maxWork 定档 (getUpgraderBody); numWork 记账 (健康升级体 WORK 总和 < maxWork 才孵);
+    building/upgradeNeeded 互斥开关; 升级体↔升级体能量递手 (防断供)。
+  - spawnManager 只是队列消费者 (MinHeap 优先级), 请求由各 manage* 系统推入。
+- 移植单元 (按杠杆排序, 各单元落地后跑 probe 与 race-ref 对照验收):
+  - **P1 升级供能链** (对标 manageUpgrade/manageLogistics): 驻场 + depot 链 + courier 流量;
+    Nexus 侧对应 controllerBuffer/courier.ts/energyLogistics/workforce。
+  - **P2 开局序列** (对标早期 roster/优先级): 目标 L2 < 1.5k / L3 < 8k。
+  - **P3 采集/搬运体系** (对标 manageSource/manageLogistics): 矿工 drop 型 + 大型体定档。
+- 验证协议: 每单元后 probe 45k 对照 L2/L3/L4 时刻与窗口速率; 全套件 (remote-mine 等)
+  不得出新回归; 提交前处理 remote-mine 门控。
+
+
+### 批次 E：P1 开工 · L3 塌方能量流解剖 (2026-10-19, probe-p1a ≡ c29 逐位再现)
+
+- 基线复现: L2@4325 / L3@17983 / 45k 末进度 13778; L3 期升级速率 0.53 e/t。
+- 全报告能量口径 (45k): 采集 535024 · 升级 58978 · 孵化 73500 · 建造 22365
+  → 三大消费端只吸收 ~155k (**29%**), 其余 ~380k 未被吸收 (源边既存/腐烂)。
+  意图: harvest 133854 · upgrade 33015 · transfer 11875 · withdraw 13140 · pickup 2273 ·
+  build 3956 · repair 9043 · spawnCreep 289。蜂窝: eav 快照全程 25-252 (RCL3 容量 800)。
+- 采集/收入健康: produced EMA 16.5 e/t; harvestSplit atSource 96%/97% (源饱和)。
+  → 断点不在采集端, 在**分配与消费端**。
+- **舰队替换吃满 spawn**: 终局 9 只全为最近 1400t 新生 (bornAt 43535..44920, 间隔 ~176t);
+  289 只/45k = 156t/只; **均体 254 能量** (race 定档 800+)。编制增长无门: 孵化吞吐
+  被换代 100% 占用, 舰队规模恒 = 156t×1500t 寿命 ≈ 9.6。
+  攒能等体型窗口 (120/400t) 在 ~1.6 e/t 的 spawn 入流下只能成就 200-400 能量体型 → 自锁。
+- **实锤: 升级体被 cc 货运征用 (分配器职能门缺失)**:
+  - cc 货运在专线收紧期被提级 **prio 1.5** (≤ CRITICAL_PRIORITY=2) → 无滞回抢占任何在岗者;
+  - `canExecute` 只做 capability 过滤, 无职能门 → dump 实锤: 升级体 U-E569 持
+    haul(8,37)→cc, 工人 W-777B 亦被租入 haul; 6 个 upgrade 任务全 available +
+    failureReason=preempted。升级体 40-70t 往返只送 37e → 段内升级停摆;
+  - 在岗升级体恒 1 只 (编制目标 ≈5), 升级火力被自己参与的空转换手吞掉。
+- 专线收紧判定恒真: `idleCarriers ≤ dedicatedCarry` (流量口径 ≈ 单位数) 在 3 搬运舰队下
+  恒成立 → 非 cc 目的地 haul 放量恒被压制; cc 货运恒处"见谁抢谁"档。
+- 待交叉核对 (p1a-intents.jsonl 取证): 37e 是 cc headroom 还是源容器存量 (cc 水位几何);
+  380k 腐烂的具体形态; fill_spawn 的 lease 独占时长。
+
+### P1 修复候选 (配置化, 全模式一套代码; 验收: L3 段 ≥4 e/t 起, 目标 7+, eav 常态 >400)
+
+- E1 **haul 职能门** (只锁 haul, 非全局排他): 在岗 carrier 存在时 haul 仅 carrier 可领,
+  全灭回退放行保 bootstrap。理由: 全局 affinityExclusive 是 arena 负实证 (批次 D),
+  但那是把 fill_spawn 也锁死; 升级体被 haul 征用是另一条链, 需单独锁。负向审查:
+  若 E1 后 L3 晚于 17983 或段速 <0.53, 撤销留档。
+- E2 **专线紧判定重写**: 舰队总量 < 专线流量需求时收紧无意义 (全舰队都该按优先级竞争),
+  仅在「有闲置余量可调」时才进入收紧。同期修正非 cc 目的地放量压制。
+- E3 **spawn 入流解锁**: E1/E2 释放 carrier 运力归位 fill_spawn (prio 1) 后观察
+  eav/体型自愈; 不自愈再调 rush 攒能窗 (WaitTicks ↔ 入流×体量自洽)。
+- E4 **升级体编制落地**: 验证 upgraderNeed≈5 在 spawn 队列的胜出顺序 (对标 race
+  numWork < maxWork 即孵口径)。
+
+### E1 实现：同容器自环不变量 (2026-10-19)
+
+- 根因链 (代码级): fill_spawn 任务持有者站在 cc 旁时——
+  ① 取能段 `fromId=undefined` → `nearestStore` 选中 cc (水位排他开放, cc ≥ 保底);
+  ② 交付段 `deliverEnergy` 无 destId → C1 顺路灌注 (`enrouteTopup`) 只排除 task.destId,
+     而 fill_spawn 无 destId → cc 恰在 60% 低保线下成为当拍配额目的地, 距离 0 命中;
+  ③ `withdraw cc → transfer cc` 每 tick 重复, 零位移。
+  取证: 0336 一生 1264t 零移动, cc 对倒 ±~100 e/t; 全房 cc 45k 吞吐 1.35M/1.35M,
+  真实采集仅 535k; 源容器取出仅 0.3 e/t。
+- 修复 (E1, 通用不变量, 全模式同一套):
+  - `CreepMemory.fetchSrcId`: 取能段记账本周期来源 (fetchEnergy 五条级联分支全标);
+  - `deliverEnergy` 四处排除同源: 任务 destId 分支 / 溯源配额集 / enrouteTopup / cc 溢流落堆;
+  - 语义: 本周期取能的来源结构不得作为本周期交付目标; 无可投配额时持能待命 (零损耗,
+    与 specs/controller-supply-line 既有「无配额可投则原地等待」一致)。
+- 验收: L3 不晚于 17983; 末进度 > 13778; 均体 > 254; 孵化 > 73500; eav 峰值 > 400。
+  负向: 任一项恶化即撤销留档。
+
+### E1 实验：同容器自环不变量 = 负收益, 已撤销 (2026-10-19)
+
+- 实现: `CreepMemory.fetchSrcId` 取能段记账 + `deliverEnergy` 四处排除同源
+  (任务 destId / 配额集 / 顺路灌注 / cc 溢流落堆)。
+- 有效部分 (达成设计目标): cc 自环根除——transfer 意图 11875→3424 (≈-71%);
+  采集 535k→577.8k (+8%); 孵化 73.5k→101.3k (+38%, spawn 入流解封);
+  末态 upgrade/in_progress=2 (基线 0, 升级体曾被 haul 征用)。
+- 回归实测 (speedrun-probe 45k):
+  | 指标 | 基线 c29 | E1 |
+  |---|---|---|
+  | L2 | 4325 | **6204 (+44%)** |
+  | L3 | 17983 | **39920 (+122%)** |
+  | 末进度 | 13778 | **5000** |
+  | 采集 | 535024 | 577828 |
+  | 升级 | 58978 | **50200 (-15%)** |
+  | 孵化 | 73500 | 101300 |
+  | 建造 | 22365 | **44632 (+100%)** |
+  | 单位 | 9→9 | 9→11 (中途 26-32) |
+  | 均体 | 254 | 260 |
+- 反噬机制 (dump 实证):
+  - 舰队膨胀 26-32 只 + 建造翻倍: 能量解锁后无总阀, spawn 刷小体、worker 刷工地;
+  - `spawnBalanceEma` (rush 升级定编 EMA 状态) 被 `upgradersStarvedOf>0` 拖到
+    **-1.0 下限** (基线 +0.99) → 升级定编乘数压最小 → 升级体更少 → 更饿, 负反馈螺旋;
+  - 根因: cc 自环原先是「伪水泵」——循环取能把 cc 恒压在水位线下, 使 cc 恒为配额
+    目的地, 持续吸引货源管线补货, 升级体随到随饮, 掩盖了 cc 供能链真实水位管理缺失。
+    自环一拆, cc 被 fill_spawn 直抽 (200/趟) 而无补货优先保护 → 升级线先饿。
+- 结论: 自环是不变量级 bug (必修), 但其拆除必须与「cc 水位保护 + 舰队总阀 + 升级
+  优先供能」成套上线。单拆 = 负收益, 已撤销 (dist 已重建回 c29 基线)。
+
+### 批次 E2 设计 (成套, 待实施)
+
+- 前提保留: E1 自环不变量 (补丁见本档实现描述; 独立 A/B 负, 需随成套验证)。
+- E2a **cc 水位保护**: fill_spawn/通用取能的 cc 开放线从「升级保底 (≈80)」抬到
+  配额水位线 (0.6×容量): cc 低于水位线时不给孵化线直抽, 只允许 upgrading 消费 +
+  货源管线补货; 防止孵化线把升级干水位抽空。
+  (基线自环把该问题掩盖; E1 实证 cc 抽空即升级 EMA 螺旋。)
+- E2b **舰队总阀**: 无上限的小体 spam 是膨胀源 (390 只/45k, 中途 26-32 只)。
+  候选: 编制请求上限约束 (总目标编制 × 寿命/孵化时长 ≤ 可持续层数), 或
+  carrier 请求绑定实测运力缺口 (partsPerBody 微体口径修正)。
+- E2c **升级优先供能**: EMA 螺旋保护 (starve 信号需回流缓冲/下限抬升),
+  且 cc 保底水位应覆盖「升级体一套取能缓冲 × 在岗数」。
+- 验收: L3 ≤ 17983 且升级 ≥ 58978 且 spawn 入流 ≥ 8080/t (E1 水平) 三项同达,
+  任一项退化即再撤。
+
+### E2 v2 实现与实测 (2026-10-19, probe-e2 ≡ 45k)
+
+- 三件套落地 (全配置化, 全模式一套代码):
+  - **E1 自环不变量 v2**: 取能段新增 subjectId —— fill 类任务 (kind=fill_spawn)
+    不以自身填充对象为取能点 (spawn 紧邻 cc, 「取它再填它」= 零净流空转的来源);
+    E1 的 fetchSrcId 记账 + 交付段同源排除保留。**v1 的教训**: v1 只做交付段排除,
+    把种子「从 spawn 补差 → 采满 → 交回 spawn」的早期自补给循环整条砍掉
+    (E1 早期 t4000 仅 2 只, spawn 攒 192 却不出兵) —— 该循环是合法的, 非自环。
+  - **E2a haul 职能门** (`STRICT_EXCLUSIVE_KINDS=["haul"]`, allocator 逐 kind 强排他):
+    在岗 carrier 存在时 haul 仅 carrier 可领——升级体/工人被 cc 货运征用的链路斩断
+    (有别于全局 affinityExclusive: 不波及 fill_spawn 的全员兜底, 见 (十三) 教训)。
+  - **E2b cc 补货提权** (`refillLead=0.5`): cc 低于水位时 cc 货运优先级压到孵化线
+    (fill_spawn) 之上 refillLead 档。
+- 实测 (45k):
+  | 指标 | 基线 c29 | E1 | E2 v2 |
+  |---|---|---|---|
+  | L2 | 4324 | 6204 | **2670 (-38% vs 基线, 历史最快)** |
+  | L3 | 17982 | 39920 | 未达 (末 RCL2 22128) |
+  | 升级 | 58978 | 50200 | **22328 (-62%)** |
+  | 采集 | 535024 | 577828 | 512422 |
+  | 孵化 | 73500 | 101300 | 63850 |
+  | 建造 | 22365 | 44632 | 22006 |
+  | spawnCreep | 289 | 390 | 256 |
+  | transfer 意图 | 11875 | 3424 | **508 (-96%)** |
+  | 存活编成 | 4H/1U/3C/1W | 6C/1W/2U/2H | 3H/3C/1W/1U |
+- 解剖 (汇总行 + dump):
+  - **早期大胜**: L2@2670 —— subjectId 修好早期自补给循环 + cc 有货升级体随到随饮
+    (t2670→6750 段升级 0.84 e/t, 远快于基线的 L1 段)。
+  - **中后期崩盘根因 (链条)**: `refillLead` 恒提权 (cc 配额水位 1200/2000 几乎永不满足)
+    → carrier 全时扑 cc 补货 (0.5 < fill 1.0) → 孵化线任务无人认领 (available 挂起)
+    → 落到唯一还有空档的 carry 单位 = **升级体**头上 (dump: fill_spawn in_progress
+    assignee=升级体 U-01D4, amount 221) → 升级体跑 30 格长腿取货填 spawn → upgrade
+    任务全 available 无升级体 → 升级 0.26 e/t 尾段 (6 条 upgrade 任务挂起)。
+  - transfer 508 的对应读法: withdraw/pickup 4304 次, 交付仅 508 次——补货线把
+    carrier 霸占后, 各端交付目的地都无人在位 (源容器取出 → cc 的链路停摆, 长腿兜底
+    又慢); 采集 512k 但可吸收端仅 108k, 其余腐烂 (基线同量腐烂, 差在升级线份额)。
+  - 诊断确认: `economy.diagnosis.bottleneck="transport"`, carrierMultiplier=3 ——
+    模型已识别运力瓶颈, 但编制目标 (≈3 只) 与实际可持续孵化量 (孵化入流 1.4 e/t
+    ≈ 8 只/1500t 寿命) 都没把运力抬起来; 这是下一批 (E3 运力总阀/分层) 的主战场。
+- **E2b 判定: 恒提权 = 负收益, 已改修为应急阀** (见 E2 v3)。E1 自环不变量 v2 与
+  haul 职能门保留 (早期胜果来源, 且中后期崩盘与二者无因果)。
+
+### E2 v3: cc 应急阀 (2026-10-19, 待实测)
+
+- `refillLead` 仅在 cc 跌破 `refillEmergencyRatio (0.15×容量)` 时生效 (无敌情时);
+  常态 cc 货运回落到孵化线之下 (基线序), carrier 优先做 fill_spawn;
+  应急阀只防升级断粮 (E1 实证的 starve 螺旋)。
+- 验收: L3 ≤ 17983 且升级 ≥ 58978 且孵化 ≥ 101300 三项同达 (E1 水平);
+  且 L2 ≤ 4324 (保住 v2 早期胜果)。任一项退化即再撤留档。
+
+### E2 v3 / E3a / E4a / E5 系列实测与判定 (2026-10-19, 全 45k, 同场景 speedrun-probe)
+
+- **实测汇总**:
+
+  | 变体 | L2 | L3 | 升级 | 孵化 | 采集 | spawnCreep | transfer |
+  |---|---|---|---|---|---|---|---|
+  | 基线 c29 | 4324 | **17982** | **58978** | 73500 | 535024 | 289 | 11875 |
+  | E2 v3 (v1+v2+应急阀) | 2670 | 未达 | 24535 | 63150 | — | — | 508 |
+  | E3a (v3+运力分层) | 2670 | 未达 | 11087 | 54100 | 573850 | 221 | 332 |
+  | E4a (v3−haul 排他) | 2670 | 未达 | 23619 | 68700 | 511978 | 275 | 969 |
+  | E5a (仅 subjectId+应急阀) | 2670 | 37667 | 52664 | 66550 | 491434 | 266 | 9450 |
+  | E5b (仅 subjectId) | 2670 | 41341 | 48221 | 67200 | 503580 | — | — |
+  | race 参照 (同场景) | **676** | **5624** | **308604** | 155350 | 652532 | 391 | 22219 |
+
+- **判定: E2 批次 + E3 全部回退** (运力分层 / haul 职能门 / cc 应急阀 / subjectId / v1 交付段
+  同源排除), 树回到基线等效态 —— **probe-r2 与基线 p1a 逐位复现** (采集 535024 /
+  升级 58978 / 孵化 73500 / L2@4324 / L3@17982 / 生产 289 / 存活 9 全同)。逐项留档:
+  - **E3a 运力分层** (carrier 在岗 ≥2 后追加运力降档 6): 升级 11087 (−81% vs 基线)。
+    运力是本矿真瓶颈, 削运力 = 削全链; 且降档后 harvester 请求 (任务档 5) 仍持续补员,
+    编制落点从 carrier 偏移到 harvester (采集 573850 反而最高 = 采得出运不走, 全烂)。
+  - **haul 职能门** (`STRICT_EXCLUSIVE_KINDS`): E4a (关) vs E3a (开) 升级 23619 vs 24535,
+    差异在噪声内; arena 教训 (升级体兼差 haul) 在本架构不成立, 单列排他无收益, 机制一并删除。
+  - **cc 应急阀**: E5a (开) vs E5b (关) L3 37667 vs 41341 —— 阀仅小幅改善, 远不足以
+    抵消 subjectId 的中期损失; 且 E2 v2 恒提权已判负收益, 无保留价值。
+  - **subjectId (E1 v2) = 本批最大发现, 双面件**: 唯它一份时 (E5b) 早期大胜
+    L2 2670 (vs 4324, −38%) 但中期大崩 L3 41341 (vs 17982, +130%), 升级 48221。
+    机制: 阻断「以自身填充对象为取能点」后, 孵化线单位的取能点只剩 cc/源容器等远端,
+    涓流收入期补员速度追不上寿命流失 → 编制缩水 (t10000 存活 6 vs 基线 11) → 全链降速。
+    迁回方案应按「早期开 / 中期关」相位阀重做 (RCL≤2 或 sw 水位线), 或放弃该不变量。
+  - **基线 p1a 与 E5a 的体型差异 (新证据轴)**: 单次动作能量密度 (能量/意图次数) ——
+    升级: 基线 6.5 e/次 (大体升级体) vs E5a 1.5 e/次 (小体) ; 采集: 基线 3.7 vs race 9.06。
+    E5a 的早期胜果伴随**系统性小体化** (涓流定档), 这与它的中期崩盘互为因果。
+
+- **race 参照定量差 (下一条主线的靶子)**: 同场景采矿仅 1.2× 我们 (652k vs 535k), 但
+  **升级 5.2×** —— 差距全在「采到的能量送达率」: race 送达 ≈ 92% (升级 308k + 孵化 155k
+  + 建造 136k ≈ 598k), 我们 ≈ 28% (≈150k/535k), 其余在两源容器/地面堆腐烂 (两 run 同量)。
+  指向两条待攻主线: ① **体型档**: 让 RCL2+ 稳定出满速体 (5W 矿 / 5W 升级), 而非 2-4 WORK
+  涓流体 —— 同一采集量 race 只需一半动作; ② **源容器→cc 专线运力与容器水位联动**
+  (容器满 = 采集白采), 运输编制随容器积压而非固定 3-6 只。
+
+### E7-E12 批次: 接力件满速化 + 碎堆门槛 (2026-10-19, 45k, 同场景)
+
+- **E7 (正收益, 保留): 接力路面段 4:1 → 1:1** (`RELAY_CARRIER_SEGMENTS.road` =
+  `[C,M]×4`, 200 容量基数不变): 平原/沼泽全程满速 (旧 4:1 平原 4t/格), 100e 即可出件。
+  实测 **L3@16236 (-1746t vs 基线), 升级 132408 (2.24×), 孵化 85350, 生产 368**。
+  L2@5876 (+1552t, 早期小件化的代价, 净赚)。e7/e7b/e9 三跑终值逐位一致。
+- **E8 (零行为, 保留): carryPartsPerBody 口径同源** —— 定编折算改按孵化侧同口径
+  (relay 期 [C,M]×4 = 4C/件, 旧按 [C,C,M]×3 = 6C/件高估单件运力 50%)。实际目标
+  被 rclCap=8 吸收, 但口径 bug 该修。
+- **E9 解剖 (e7 同 bundle + 意图流)**: cc 饥饿 t28249 起持续 16750t; 4 条 cc 补货
+  大单 3 条无人认领; **孵化槽 45k 仅用 3936t (空闲率 91%)** —— carrier 缺口不在
+  孵化产能, 在能量 (eav<200 占 73%, 恒孵 232e 小件)。fill_spawn(优先级 1) 无限
+  再生钉死全部 carrier。
+- **E10 (零行为, 已撤): 源旁 ext 判据带 CARRY** —— `hasSourceAdjacentExtension`
+  恒 false? 不, e9 意图流证明 RCL3 后矿工本就带 C (`workcarrymovework` 84 只) ——
+  判据是冗余的, 撤。
+- **E11 (负收益, 已撤): ext 直填优先于容器** —— 升级 126962 (-4%), 能量分流进
+  孵化池而非 cc 升级链。孵化池与 cc 的边际能量分配仍是无解的旧题, 单动交付序判负。
+- **E12 (正收益, 保留): 碎堆搬运门槛 30 → 100** (`minHaulAmount`): 21 条积压 haul
+  里 14 条是 30e 微单 (carrier 走 19 格搬 30e)。实测 **L3@15434 (新纪录)**, 孵化
+  126650 (+48%), 腐烂大减; 代价: 升级 112045 (-15%) —— 边际能量转向孵化/建造
+  (编队 17 只, carrier 满编 8, haul 零积压)。对 L4 总账是净赚 (更大舰队 = 更高
+  稳态吞吐), 但 t36000-38000 有升级停摆窗口 (ema=-1 饱和, 升级体饥饿压制定编)。
+- **e12 遗留病理**: `sourceTiming` 494 (钳制值) —— 采样口径是「出生→到岗」含孵化
+  排队, 非纯路程; carrierCountTarget 被推爆但被 rclCap 吸收 (无害但脏)。
+  spawnBalanceEma=-1 饱和 (饥饿信号) —— E13 候补: 饥饿时升 spawn 池优先级而非砍定编。
+
+### E13/E14 批次 (2026-10-19, 45k)
+
+- **E13 (正收益, 保留): 升级断粮应急阀** —— cc 存量 < 25% 容量【且 upgradersStarved>0】
+  双条件时, cc 补货 haul 优先级 -refillLead(1.5) 临时越过孵化线 fill_spawn。
+  与已判负的恒提权 (E2b) / 纯水位提权 (E5a) 区别: 饥饿信号是行为层「cc 空 +
+  工位旁无堆」的实测记账, 只在真断粮时介入。
+  实测: **升级 142395 (+27% vs e12), 孵化 162750 (+29%), 采集 525246 (+21%),
+  生产 430, 存活 18**; 末段速率 3.15-4.58 e/t (e12 是 0.84-3.04);
+  L4 缺口 65502→35152。t0-20k 与 e12 逐位一致, 差异从应急阀首次触发展开。
+- **E14 (负收益, 已撤): relay 段 ×6 (300 容量/600e)** —— 升级 90422 (-36%),
+  采集 -28%。600e 大件在涓流期攒不出 → 换代断档。与 e6 (3:2 配比) 同课:
+  **relay 件的生命线是换代节奏, 不是单件容量**。
+- e13 遗留: 升级体利用率仍 16% (5 只×4W 潜力 20 e/t, 实际 3.2)——
+  运力总量 23 e/t vs 需求 25 e/t 差一口气; courier 五闸门之④ (spawn 满仓)
+  在孵化即时消费下恒 false, 快递机制从未发车 (待重设计: 阈值改孵化请求空档)。
+
+### E13 60k 全程 (2026-10-19)
+
+- **L1@0 / L2@5907 / L3@15434 / L4@50755**, 升级 217235, 孵化 271950, 建造 109585,
+  生产 641。L3 段门槛达标 (≤20000), **L4 未达 (50755 vs ≤40000, 差 10755t)**;
+  race 参照 L4@23209。L3→L4 段 35321t, 段均 ~3.7 e/t, 冲刺段 (t45k-50.7k) 6.1 e/t。
+- 下一步靶子 (按 60k 数据): L3→L4 段的中段 (t20k-40k) 速率 1.6-4.6 e/t 波动,
+  主瓶颈仍是运力总量与升级体利用率 (16%); courier 闸门④重设计是最大未开采杠杆。
+
+### E15 批次 (2026-10-19, 60k)
+
+- **E15 (正收益, 保留): 采集定编按实际体型反馈** —— `harvestStaffingPerSource` 的
+  单只 WORK 从「容量档理论值 (5W→1 只/源)」改为「在岗均值 `avgHarvesterWorkOf`」。
+  断链背景: 涓流期攒能超时降档让实际采集体恒为 2W 小体, 定编却按 5W 折 1 只/源
+  ——采集面锁死 8 e/t (潜力 20), 设计自述的「饱和缺口由攒能升体型承接」从未发生。
+  多只小体铺开 (上限 `maxPerSource: 3`) 后源速铺满, 体型回升定编自动回落单座。
+  同步修 `isProductionSecured` 多只口径 (逐源 WORK 配额, 原口径定编>源数恒 false)。
+  实测 60k: **L4@49335 (-1420t vs e13), 采集 837976 (+9.3%), 升级 229415 (+5.6%)**;
+  L3@16198 (+764t, 多只采集让位窗略长, 仍 ≤20000 ✓); 分相削峰填谷 (24-33k 窗口
+  0.66/1.95 → 3.42/3.85 e/t)。RCL1 期每源 3 只先例本就在案 (harvestSlotsFor
+  多槽位机制现成)。
+- 遗留观察: L3 门槛 20k 已稳定达标 (16198), L4 门槛 40k 差 9335t; 下一杠杆仍是
+  运力 (12.4→13.5 e/t 后 carriers 更紧) 与升级体利用率。
+
+### race 本体机制破译 (2026-10-19, 逐文件读源)
+
+前几轮"抄不动"的根因: 只抄了参数没抄机制。本轮逐文件读 race 源码, 关键事实:
+
+- **采集是比值闭环不是定编只数** (manageSource): `minerRatio = harvestPower/energyPerTick`
+  (harvestPower = 实测在岗 WORK×2, 非理论体型), `haulerRatio = carryPowerLeft/maxCarryPower`
+  (maxCarryPower = 2×distance×energyPerTick, 距离驱动); 缺哪补哪, `income = netIncome ×
+  min(minerRatio, haulerRatio)` (木桶效应)。矿工预算 `income>0 ? capacity : max(300, eav)`
+  (换代等大件, 首只小体快跑), hauler 恒用 `energyAvailable` 小件快跑。
+  `minerRatio<1 && numMiner<numOpen` (源旁可站位数) 才请求矿工; `haulerRatio<minerRatio`
+  才请求 hauler (运力严格跟采矿)。
+- **孵化优先级是三层编码** (SpawnRequest): `taskTypePriority×100000 + taskPriority×100 +
+  rolePriority`, MinHeap 小者优先。序列: LOGISTICS(porter/courier)=1 > OWNED_SOURCE
+  (harvester/carrier)=2 > PREVENT_DOWNGRADE(upgrader 保级)=4 > BUILD=7 > ... > UPGRADE=42。
+  **upgrader 双挂**: 保级走 4, 冲级走 42 垫底——冲级火力永不挤占物流/采集。
+- **upgrader/builder 被 hauler 直接投喂** (manageLogistics.getFillRequests):
+  `room.creepsToFill.push(upgrader/builder)`, 填充优先级 worker=3 > upgrader=5 >
+  container=5; hauler 空闲→`addSpawnBalance`, 断粮→`subtractSpawnBalance` →
+  `maxWork = income × clamp(spawnBalance/2+0.8, 1, 1.2)` (±20% 微调, 从不停孵)。
+  RCL<7 恒 `shouldRelay` (relay 模式, maxCarry=4 小件高频接力)。
+- **源基建是滚动放量** (constructSource): 容器+路一次最多 6 个工地 (CONSTRUCTION_SITE_NUMBER),
+  沿 path 从两端同时铺; `enoughRoad = 建成路距/总距 ≥ 1/3` 才切换 forRoad 体型
+  ([C,C,M]×N 150e/段)。
+- **L2@676 的秘密**: 无任何基建依赖——矿工直采 + upgrader 直立控制器, 200 进度纯靠
+  采集面尽快铺开, ext 都不需要 (RCL2 才解锁)。
+
+### E16 批次 (2026-10-19)
+
+- **根因定位 (冒烟枪)**: 我方开局 4750t 控制器进度为 0 (upgradeController 意图仅 2 次)!
+  UNIV 全程 build(881)+喂 spawn。日志实锤: `develop↔survive` 每 600t 震荡
+  (t1609/2209/3038/3638/4557/5157), stock 瞬时值 32/13/2 反复击穿 critical 40 →
+  `suppressUpgradeBuild` 压 upgrade 任务 + `surviveSpawnPauseRoles` 停孵 upgrader。
+  **stock 口径 = 全房结构瞬时存量, 而涓流经济孵化即时消费天然贴地** —— 把正常态
+  误判为危机态, upgrade 链被压死 5300t, L2 拖到 5907 (race 676)。
+- **E16 (判正待验): stockFloors 涓流期重校准** critical 2→8 / healthy 5→20 /
+  surplus 12→40 (stock<160 才 survive, >400 回 develop)。
+
+### E17-E23 批次 (2026-10-19, 开局升级断链会战)
+
+- **判正保留 (语义修复, 行为与 e16 逐位一致但堵点各归其位)**:
+  - **E17**: `suppressUpgradeBuild` 无 storage 豁免 (涓流期不压制 upgrade 任务)。
+  - **E18**: 采集让位闸放行名单补 upgrader (race: 升级请求从不被闸拦)。
+  - **E19**: pauseRoles 涓流豁免——`filter` 三次写反的教训: 语义是「true=留在
+    暂停名单」, 正确式 `u!=="upgrader" || (!downgradeActive && !trickleEconomy)`。
+  - **-6 真实 bug 修复 (本轮最大单点发现)**: bootstrapHarvest 判定用
+    `max(available, 300)` 虚预算, 执行用裸 available → spawnCreep 恒
+    ERR_NOT_ENOUGH_ENERGY (-6), 每 20t 一次循环打回——**开局 1500t 孵化槽
+    静默的物理根因**。修复: 判定/执行同口径且攒不够真能量不下单。
+  - **E21**: rushUpgradeSpawnPriority 3→4 (不越 carrier L3, race LOGISTICS 恒先)。
+- **判负已撤**: E20 (攒能等待期 fallback 孵次优——容量档版 L3 恶化 4186t,
+  最小件版 L3@25237 小件 churn 668 生产)、E22 (采集面铺满后 upgrader urgent
+  提序, L3@16344)。
+- **重大方法论事故 (sim 审计补充)**: e19 45k 在 load 2.29 下跑出 L2@1171
+  假突破, 干净复跑 (load 0.13) 逐位回到 L2@6209——**挂钟污染能制造任意结论**,
+  之前"load 1.39/1.89 下跑的三场景回归全部作废重跑**。
+- **开局升级断链的完整解剖 (6000t 零升级, upgradeController 仅 68 次)**:
+  ① t0 即放 container 工地 → UNIV 被 build 钉死 (881 意图);
+  ② upgrader 起步 200e 在涓流期 (eav 常年 100-250) 恒被 carrier 段件 (100e)
+  /harvester (250e) 抢先, urgent 段 buildBody(available<200)=null 永不命中;
+  ③ UNIV 一死 (t1500) 全场无 work+carry 兼职件, upgrade 任务 4600t available
+  无人认领; ④ race 对照: 开局【无工地】(满源后才 construct container),
+  upgrader 无 income 前也请求 (UPGRADE=37 垫底但队列空了自然轮到),
+  hauler 恒用 energyAvailable 微件 spawn 从不空转。
+- **下一战役 (E24 候选, 未实施)**: RCL1 期延后 container 工地 (先升级后
+  基建, race 语义) 或 UNIV 开局兼差 upgrade (亲和表加行)。
+
+### 回归结论 (2026-10-19)
+
+- speedrun 45k = e12 逐位复现 (采 435422 / 升 112045 / L3@15434) ✓
+- rcl-sprint 30k: L2@3948, CPU P95 6ms, 0 错误 (门槛 RCL4≤40000 未达——非本次
+  目标场景, 现状与改动前同量级, 待 L4 主线突破) 
+- remote-probe 30k: 采集 387356 升级 83751 L3@15434 无报错 ✓ (与 speedrun 同场景)
+- **boot-from-scratch 20k: L2@5661 FAIL (门槛 ≤5000) —— bisect 定性: 树内既有
+  WIP (13 文件) 单独也 FAIL (L2@6209), 我的 E7/E12 批次反而净改善 548t**。
+  WIP 引入的 boot 退化是历史遗留, 需在 WIP 内部再 bisect (boot 场景的 RCL1 期
+  序列与 speedrun 场景不同: 初始 spawn 能量口径差异)。
+
+### 批次 F: 任务换手病理与滞回豁免收窄 (2026-10-19, race-speedrun 任务 6.1)
+
+**背景**: 现行树 (含 E20-E25 后回滚基线) 的 45k 曲线形状 = 快开局 (L2@1304)
++ L3 后塌方 (t14k 起升级恒 1-3 e/t、人口 33→13、容器/cc 双枯)。上一轮定性
+"分配器换手" 为嫌疑, 本轮做完整尸检并落地修复。
+
+**尸检 (逐 tick 探针窗口 t38900-40300, 只读记录)**:
+
+- **换手规模**: 16,201 creep-tick 里 10,153 次任务换绑 (62.7%), A→B→A 回摆
+  8,795 次; 搬运体最高 98% 的 tick 在换手。任务 id 数量极少 (58 个 fill_spawn /
+  7 个 haul / 5 个 harvest) 而平均占有仅 1 tick——不是任务忙, 是同一池任务在
+  同一批单位之间每 tick 互相夺来夺去。
+- **换手对全部围绕 fill_spawn** (双向计数近似对称 ⇒ 互抢): fill_spawn↔haul
+  1253/1250、↔upgrade 994/989、↔harvest 618/615、↔repair 178/178。
+- **机制**: `allocator.ts` 原判据 `task.priority <= CRITICAL_PRIORITY(2)` 免滞回。
+  数值档里 fill_spawn=1、defend/retreat=2 属生存档, 但**专线 haul 的星饥加速
+  会把 priority 压到 0~1.5** —— 物流任务掉进生存数值区间, 获得每 tick 零成本
+  换绑权; 被换下的任务回池, 下 tick 按亲和(95 权重)又被同一只夺回。设计意图
+  (design/05 §5.6 + SCORE_WEIGHTS 注释) 是**只有 survival 类免滞回**。
+- **标本 1 (对冲)**: 采集体 H-731B 在同容器 (0x345) 上 withdraw=50 / transfer=50
+  每 tick 交替, 容器持续满溢、源旁采集停摆 —— 驻点矿工被专线 haul 抽走做装卸对冲。
+- **标本 2 (原地振荡)**: 搬运体 C-5A7C 满载 150e 在 fill_spawn (最近源取货) 与
+  haul (固定 targetId 取货) 两件任务间每 tick 互换; 两件任务的取货源一南一北,
+  单位被拉成 (9,16)/(9,17) 原地往返 60 tick, 直到任务集变化; 全程 900 tick 只
+  完成 ~4 次交付 (~0.5 e/t, 运力利用率 ~15%)。塔/扩展的 50e 级交付被拉长成
+  35+ 格往返。
+
+**修复实验 (一轮一杠杆, 同场景 45k, 前检 load<1.5 + 首行 cpu≤300ms)**:
+
+| 变体 | 45k 累计升级 | L2/L3 | 人口谷 | 换手率 | 判 |
+|---|---|---|---|---|---|
+| 基线 (probe-window-45k) | 137,222 | 1304/10726 | 13 | 62.7% | — |
+| v1 只保 defend/retreat (probe-hyst-45k) | 113,050 | 1303/10999 | 12 | 0.4% | **负, 已撤** |
+| v2 保 survival+fill_spawn, 同族不互抢 (probe-hyst2-45k) | **168,244** | 1091/13157 | 17+ | 3.6% | **正, 保留** |
+
+- **v1 负因**: fill_spawn 失去零滞回 → 爆窗期 (t8-10k) 孵化线饿死, 人口 33→12
+  后全链塌方。证明 fill_spawn=1 的抢占权是承重的 (与 SCORE_WEIGHTS 注释一致)。
+- **v2 语义**: 零滞回 = 「survival/fill_spawn 抢非同类」; 同族之间仍需滞回
+  (堵死 fill_spawn↔fill_spawn 热土豆 1680 次/窗口)。除互抢对全灭外, 等价于
+  基线保留 fill_spawn 的抢占权。
+- **v2 实证**: 45k 累计升级 +22.6%; t14k 后升级速率 2-5 倍于基线且再未塌方;
+  **落地堆尸腐烂被清零** (t20k 后 2k 快照落地堆 ≈0, 基线恒有 1-3k 在烂);
+  人口维持 17-20 (基线末段 11-13); 采集持平 (634,556 vs 637,882)。
+  代价: 中段爆窗变弱 (t8-12k 孵化支出 7.5k/7.0k vs 12.1k/13.0k → L3@13157
+  vs 10726), 之后一路反超。L4 投影 ~t48-50k (基线 ~t65-70k)。
+- **口径核对**: 同场景 e16 时期曾达 L4@43891 (45k 累计 182k, 但 L2@6210);
+  现行族 L2 提前 5k tick 却在 L3 后塌方 —— v2 修的是塌方, 开局优势保留;
+  与 e16 的差距 (182k vs 168k) 是下一轮 (中段爆窗/cc 水位) 的空间。
+- 留档: E24/E25 两轮变体实验已跑并全部回滚, 回滚确认跑 (probe-e24/e25 ≡
+  probe-window-45k 逐位同签名 6846afbf8742); 变体本身数据未留档 (本轮只补记
+  "已撤销" 状态, 不虚构变体内容)。
+
+**v2 全程与回归 (2026-10-19 收尾)**:
+
+- **60k 全程**: **L4@47727** (升级 210,257 / 采集 823,858 / 孵化 348,250 / 末人口 19);
+  对比 e15 时期 60k 的 L4@49335 (-1608t), 是现行族目前最好纪录; 但 e16 时期
+  曾 L4@43891 (L2 却慢 5.1k tick) —— L2→L4 段的强度仍有历史差距。
+- **中段回归线索 (下一轮靶点, 需 bisect)**: 45k 累计升级 e19b=182,209 (L4@43891)
+  → e21/e23=152,371 (L3@15796, 无 L4) → e24/现行基线=137,222 (L2@1304, L3@10726)。
+  即「-6 修复带来的快开局」与「E19-E24 期间中段变弱」同时发生, 两者叠加后
+  当前树是"快开局+中段塌"; v2 已修复塌方 (168,244 / L4@47727), 但把中段强度
+  恢复到 e19b 口径 (182k) 是可见的历史可达空间 ≈ 让 L4 再提前数千 tick。
+- **全场景回归 (sim-matrix 六场 + run-residue)**:
+  场景自身断言: boot ✓ L2@823 (≤5000) / race-body-audit ✓ L2@1090 /
+  remote-mine ✓ (时间线与参考逐位一致) / run-residue ✓ L2@2364 (≤5000);
+  speedrun ✗ (三档未达, 冲刺诚实态) / arena ✗ (与参考同为 ✗) / sprint ✗ (参考同 ✗,
+  但本期首次跑出 L3@48245)。
+  CPU p95 全场 4-7ms (门限 20); tsc / oxlint / arch-guard / 单测 4/4 全绿。
+  matrix 汇总的两条 RED 是「绿门时间线漂移」(参考快照陈旧, 行为改动为有意),
+  需 `--update` 重设参考或留档说明, 非场景门失败。

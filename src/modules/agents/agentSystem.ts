@@ -263,11 +263,13 @@ function nearestEnergyStructureAboveFloor(
 	room: RoomObservation,
 	x: number,
 	y: number,
+	floorRatioOverride?: number,
 ): EnergyStructureSummary | undefined {
 	let best: EnergyStructureSummary | undefined;
 	let bestScore = Number.POSITIVE_INFINITY;
+	const ratio = floorRatioOverride ?? HAUL_CONFIG.structureFloorRatio;
 	for (const structure of room.energyStructures) {
-		if (structure.energy < structure.energyCapacity * HAUL_CONFIG.structureFloorRatio) {
+		if (structure.energy < structure.energyCapacity * ratio) {
 			continue;
 		}
 		const score = dist(x, y, structure.x, structure.y);
@@ -307,7 +309,8 @@ function fetchEnergy(
 	task: NexusTask,
 	fromId?: string,
 	anchor?: { x: number; y: number },
-): void {	if (fromId) {
+): void {
+	if (fromId) {
 		const pile = room.piles.find((p) => p.id === fromId);
 		if (pile) {
 			submitMoveOrAction(ctx, broker, creep, task, "pickup", "carry", pile, RANGE_ADJACENT);
@@ -330,8 +333,18 @@ function fetchEnergy(
 		submitMoveOrAction(ctx, broker, creep, task, "pickup", "carry", pile, RANGE_ADJACENT);
 		return;
 	}
-	// 供能结构兜底: 库存高于保障线的 spawn/extension 可作取料点 (短腿建造/升级)
-	const energyStructure = nearestEnergyStructureAboveFloor(room, creep.x, creep.y);
+	// 供能结构兜底: 库存高于保障线的 spawn/extension 可作取料点 (短腿建造/升级)。
+	// 孵化需求在线时收紧 (E24): fill_spawn 与兜底取能构成「取出又补回」循环
+	// (carrier 喂 spawn → 就近单位抽走 → 孵化能量恒低水位, sim 实证开局 384 次
+	// withdraw spawn 同量 transfer 回填, race 对照取能只认容器/落地/源)。
+	// 有孵化缺口时只有满仓结构才可抽 (高线), 无缺口时维持原保障线。
+	const spawnDemand = room.energyStructures.some(
+		(structure) => structure.energy < structure.energyCapacity,
+	);
+	const energyStructure =
+		spawnDemand ?
+			nearestEnergyStructureAboveFloor(room, creep.x, creep.y, 1)
+		:	nearestEnergyStructureAboveFloor(room, creep.x, creep.y);
 	if (energyStructure) {
 		submitMoveOrAction(
 			ctx,
@@ -385,7 +398,8 @@ function deliverEnergy(
 	// 目的地) 就地交付——移动腿转化为交付腿; 配额集合是唯一交付事实源
 	if (CARRIER_BEHAVIOR_CONFIG.enrouteTopup) {
 		const topup = quotas.find(
-			(d) => d.id !== task.destId && dist(creep.x, creep.y, d.x, d.y) <= RANGE_ADJACENT,
+			(d) =>
+				d.id !== task.destId && dist(creep.x, creep.y, d.x, d.y) <= RANGE_ADJACENT,
 		);
 		if (topup) {
 			submitAction(ctx, broker, creep, task, "transfer", "carry", topup.id);

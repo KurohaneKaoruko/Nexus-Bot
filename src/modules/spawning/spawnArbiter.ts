@@ -11,6 +11,7 @@ import type { TaskBoard } from "@/modules/tasks";
 import { PRODUCTION_GATE_CONFIG, RELAY_CONFIG, SPAWN_CONFIG } from "@/config/economy";
 import { UNITS } from "@/constant/CreepConstant";
 import { bodyCost, buildBody, type SpawnUnit } from "@/modules/spawning/bodyFactory";
+import { RUSH_WORKER_MIN_BUDGET } from "@/utils/rush";
 import { harvestIncomeOf, isProductionSecured, harvesterTargetTotal } from "@/modules/economy";
 import { isSlowTerrain, terrainProfileFor } from "@/modules/spawning/terrainProfile";
 import type { SpawnRequest } from "@/modules/spawning/demandSources";
@@ -84,18 +85,29 @@ export function arbitrateForSpawn(
 	const harvesterShort =
 		gated.some((r) => r.unit === "harvester") &&
 		staffed("harvester") < Math.max(1, staffingFloor);
+	// 建造紧急豁免: critical worker (priority 2, 容器 decay 维修/重建) 不随采集
+	// 让位出局——维修窗口错过 = 容器死亡 = 升级链断供数千 tick (sim 实证 cc 容器
+	// decay 死后 8.9k tick 断供, 损失 ~35k 进度), 比采集面晚饱和几百 tick 更贵
+	const criticalWorker = (r: { unit: string; priority: number }): boolean =>
+		r.unit === "worker" && r.priority <= 2;
 	const rawPool = harvesterShort
 		? gated.filter(
 				(r) =>
 					r.unit === "harvester" ||
 					r.unit === "defender" ||
 					r.unit === "scout" ||
+					criticalWorker(r) ||
 					// 采集未满编期间 carrier 不超过在岗矿工数 (1 采 1 搬交替孵化)
 					(r.unit === "carrier" && staffed("carrier") < Math.max(1, staffed("harvester"))),
 			)
 		: gated;
 	if (harvesterShort) {
 		const kept = new Set(rawPool.map((r) => r.unit));
+		// 让位窗口内仍放行升级体 (E18): race 本体升级请求虽垫底 (UPGRADE prio 42)
+		// 但从不被闸拦——采集面铺满前压制升级会让开局升级链停摆数千 tick
+		// (sim 实证 upgrade 任务 available 4600t 无人租, L2 拖到 5900+,
+		// race 参照 676); 升级体与采集体消耗不同预算档, 不构成能量挤占。
+		kept.add("upgrader");
 		for (const r of gated) {
 			if (!kept.has(r.unit)) {
 				onDeny?.("yield");
@@ -192,7 +204,17 @@ export function arbitrateForSpawn(
 	let request: SpawnRequest | undefined;
 	if (bootstrapHarvest) {
 		request = bootstrapHarvest;
-		body = buildBody(request.unit, request.budget ?? available, hints);
+		// 执行与判定同口径 (bugs 开局断链·续): 判定预算 max(available, starter)
+		// 是「体型目标」而非「可支付能量」——spawnCreep 按真实存量扣费, 虚预算
+		// 产出 250e 体型在 avail 150 时恒 -6 (ERR_NOT_ENOUGH_ENERGY), 开局
+		// 1500t 孵化槽静默的根因 (sim 探针实锤)。攒不够起步预算就等真攒够,
+		// 不用假设性能量下单。
+		const bootstrapBudget = Math.max(available, SPAWN_CONFIG.harvesterStarterBudget);
+		body =
+			available >= SPAWN_CONFIG.harvesterStarterBudget ||
+			available >= bodyCost(buildBody(request.unit, bootstrapBudget, hints) ?? [])
+				? buildBody(request.unit, bootstrapBudget, hints)
+				: null;
 	} else if (bootstrapUpgrade) {
 		request = bootstrapUpgrade;
 		body = buildBody(request.unit, request.budget ?? available, hints);
@@ -200,6 +222,27 @@ export function arbitrateForSpawn(
 		request = urgent;
 		body = buildBody(urgent.unit, urgent.budget ?? available, hints);
 	} else {
+		// 建造紧急等待窗 (decay 维修): critical worker (L2) 在队但当前能量孵不出
+		// 最低预算 (RUSH_WORKER_MIN_BUDGET) 时, 本 tick 不孵低优先小体——能量让给
+		// 下一波峰 (~50t 内), 否则 fill_spawn/carrier 小体恒把 critical worker 顶掉,
+		// 维修窗口恒错过 (sim 实证 45k 零 worker, cc 容器 decay 死升级链断 8.9k tick)
+		const criticalWorkerWaiting = pool.find(
+			(r) =>
+				r.unit === "worker" &&
+				r.priority <= 2 &&
+				available < RUSH_WORKER_MIN_BUDGET,
+		);
+		// 等待窗上限 (c16-c18 死锁实证): 采集面崩溃后 eAvail 恒 < 200, 无限等待
+		// 吞掉整条孵化线 → 能量面更瘫 → 恶性循环 (creeps 冻结 6 只 10k tick)。
+		// 超窗即放行低优先小体——恢复能量面 (fill_spawn/harvester) 比无限干等强
+		const waitExpired =
+			criticalWorkerWaiting !== undefined &&
+			ctx.tick - idle >= SPAWN_CONFIG.capacityWaitTicks;
+		if (criticalWorkerWaiting && !waitExpired) {
+			idleSince[spawn.id] = idle;
+			ctx.cpu.recordSkip("spawn-director", "critical-worker-wait");
+			return undefined;
+		}
 		// 涓流期体型钳 (race 微型件口径): 存量不足容量档的一半时, 攒能 desired
 		// 钳到 1 段微型件——按容量定档在涓流期恒付不起, 每只都烧满等待窗后
 		// 降档, 孵化节律 200t/只锁死小体 (sim 实证 main 档 30k 仅 6 只存活);
@@ -242,6 +285,12 @@ export function arbitrateForSpawn(
 		}
 	}
 	if (!request || !body) {
+		if (ctx.tick < 1600 && ctx.tick % 50 === 0) {
+			ctx.logger?.warn?.(
+				"probe-arb",
+				`t${ctx.tick} avail=${available} urgent=${urgent?.unit ?? "-"} bootH=${bootstrapHarvest ? "y" : "n"} bootU=${bootstrapUpgrade ? "y" : "n"} req=${request?.unit ?? "-"} booted=${request ? "y" : "n"}`,
+			);
+		}
 		// 能量不足以生产任何请求: 等待积累, 计入跳过指标
 		idleSince[spawn.id] = idle;
 		ctx.cpu.recordSkip("spawn-director", "budget");

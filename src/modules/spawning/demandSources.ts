@@ -9,6 +9,7 @@ import { roomModeFor } from "@/modules/strategy";
 import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import type { TaskBoard } from "@/modules/tasks";
+import { createTaskBoard } from "@/modules/tasks";
 import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy";
 import {
 	isSpawnUnit,
@@ -225,20 +226,32 @@ function aliveWorkerCount(ctx: TickContext): number {
 /** worker 缺位建造紧急 (race 换班制语义): 工地积压且 worker 全灭——
  * cc/ext 不成则升级体长腿/容量锁死。开局豁免: 无 worker 出生史时不提级
  * (sim 实证开局 worker 插队打断 carrier 供能泵建立, 孵化节律 94t→268t),
- * 建造由 harvester 兼差 (allocator affinity) 承接 */
-export function workerBuildCriticalOf(ctx: TickContext): boolean {
+ * 建造由 harvester 兼差 (allocator affinity) 承接。
+ * decay 语义补充: 维修任务在场 (容器/道路持续掉血) 同样构成紧急——
+ * 容器 25k tick 寿命, 死后重建 5000e + 数千 tick 断供 (sim 实证 cc 容器
+ * decay 死后升级链断 8.9k tick), 维修窗口错过比新工地更贵 */
+export function workerBuildCriticalOf(ctx: TickContext, board?: TaskBoard): boolean {
 	let sites = 0;
-	let workerEverBorn = false;
+	let repairPending = false;
 	for (const room of Object.values(ctx.world.current?.rooms ?? {})) {
 		sites += room.sites.length;
 	}
-	for (const record of Object.values(ctx.memory.units)) {
-		if (unitCode(record.unitCode) === UNIT_CODES.worker) {
-			workerEverBorn = true;
+	const taskBoard = board ?? createTaskBoard(ctx.memory.tasks);
+	for (const task of taskBoard.list({ kinds: ["repair"], statuses: ["available", "leased", "in_progress"] })) {
+		if (!task.assignedTo) {
+			repairPending = true;
 			break;
 		}
 	}
-	return sites > 0 && workerEverBorn && aliveWorkerCount(ctx) === 0;
+	// 出生史用累计标记而非活体表: units 记录死亡即删, 全灭后活体口径恒空,
+	// 「曾有 worker」的豁免语义会被全灭态反杀 (紧急提级永不可达)。
+	// 豁免只防开局无需求的盲目插队; 有真实维修/建造需求时豁免不适用
+	// (sim 实证: repair 任务在场但 worker 从未出生过, 豁免把首孵也挡死,
+	// 容器 decay 无人修, 升级链断供 8.9k tick)
+	const workerEverBorn = ctx.memory.economy.workerEverBorn === true || aliveWorkerCount(ctx) > 0;
+	return (
+		(sites > 0 || repairPending) && (workerEverBorn || repairPending) && aliveWorkerCount(ctx) === 0
+	);
 }
 
 /** 己方房最高 RCL */

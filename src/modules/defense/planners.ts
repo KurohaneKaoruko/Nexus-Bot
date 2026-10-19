@@ -13,6 +13,7 @@ import {
 	STAFFING_CONFIG,
 	THREAT_CONFIG,
 } from "@/config/defense";
+import { RUSH_BUILD_CONFIG } from "@/config/economy";
 import type { TickContext } from "@/core";
 import { directiveFor } from "@/modules/strategy";
 import type { CreepSummary, DamageableSummary, RoomObservation } from "@/core/world";
@@ -60,7 +61,24 @@ export function maintainTargetOf(structure: DamageableSummary): number {
 	return structure.hitsMax * REPAIR_CONFIG.maintainRatio;
 }
 
+/**
+ * 是否低于维修触发线。比例线对 decay 结构 (容器/道路) 太迟钝:
+ * 90% 线意味着容器掉 25000 血 (5000t decay) 后才触发——一旦 worker 编制
+ * 空缺就追不上 decay, 容器必死 (250k 血 25k tick 寿命), 死后重建 5000e +
+ * 数千 tick 断供 (sim 实证 cc 容器 decay 死, 升级链断 8.9k tick)。
+ * decay 结构改用绝对余量线: 掉到「预警窗口内 decay 量」即触发, 持续小补。
+ */
+const DECAY_STRUCTURE_TYPES: ReadonlySet<string> = new Set(["container", "road"]);
+
+/** decay 结构的每 tick 衰减速率 (自有房口径: 容器 5000/500t, 道路 100/1000t) */
+function decayRateOf(structure: DamageableSummary): number {
+	return structure.structureType === "road" ? 0.1 : 10;
+}
+
 function belowMaintainLine(structure: DamageableSummary): boolean {
+	if (DECAY_STRUCTURE_TYPES.has(structure.structureType)) {
+		return structure.hitsMax - structure.hits >= REPAIR_CONFIG.decayLeadTicks * decayRateOf(structure);
+	}
 	return structure.hits < maintainTargetOf(structure);
 }
 
@@ -117,6 +135,14 @@ export function planRepairRoom(
 		const dedupeKey = `repair:${room.roomName}:${structure.id}`;
 		expected.add(dedupeKey);
 		let priority = priorityFor("repair") + bias;
+		// decay 结构维修提级 (RUSH_BUILD_CONFIG.criticalInfraPriority 档): 容器
+		// 25k tick 寿命, 死后重建 5000e + 8.9k tick 断供; 与关键基建建造同档,
+		// 让 harvester (亲和 build, repair 无 carry 门槛) 经 criticality 通道承接。
+		// road 不提级 (c22 实证: 提级后 10 条路的恒 decay 把 6/9 人力吸进维修,
+		// RCL3 段升级速率 0.55/t)——道路维修维持常规档殿后
+		if (structure.structureType === "container") {
+			priority = Math.min(priority, RUSH_BUILD_CONFIG.criticalInfraPriority);
+		}
 		if (threatActive && isWallLike(structure)) {
 			priority -= REPAIR_CONFIG.defenseLineThreatBonus;
 		}

@@ -13,7 +13,7 @@ import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
 import type { NexusTask } from "@/core/store/taskSchema";
 import type { HarvestSplitRecord } from "@/core/store/memorySchema";
-import { CARRY_STAFFING_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
+import { CARRY_STAFFING_CONFIG, RELAY_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { buildBody } from "@/modules/spawning";
@@ -462,7 +462,15 @@ export function carryCapacityPerBody(ctx: TickContext, roomName: string): number
 /** 当前孵化口径下单只搬运体的 CARRY 部件数 (运力公式分母是部件口径, 勿与容量混用) */
 export function carryPartsPerBody(ctx: TickContext, roomName: string): number {
 	const capacity = roomCapacity(ctx, roomName);
-	const body = buildBody("carrier", capacity);
+	// 与孵化侧同口径 (spawnArbiter hints): RCL < 等级门孵化的是接力件, 定编必须
+	// 按同一分段折算 CARRY 数——旧口径按默认直运段 [C,C,M] (6 C/件) 折算, 而
+	// 实际 relay 件是低配比件, 运力目标被高估 → haul 积压无人认领 (sim 实证
+	// 21 条 available + 升级体利用率 11%)
+	const rcl = ctx.memory.rooms[roomName]?.rclTimeline
+		? Math.max(...Object.values(ctx.memory.rooms[roomName].rclTimeline as Record<string, number>))
+		: 0;
+	const relay = rcl < RELAY_CONFIG.maxRcl;
+	const body = buildBody("carrier", capacity, relay ? { slowTerrain: false, relayCarrier: true } : undefined);
 	let parts = 0;
 	for (const part of body ?? []) {
 		if (part === CARRY) {

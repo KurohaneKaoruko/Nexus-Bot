@@ -95,20 +95,31 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 
 	// 战略指令 (设计 D5): survive 姿态暂停非关键岗位的新排 (缺口与替补均停),
 	// carrier/harvester 与从零起步的 bootstrap 不受影响; 不做身体缩水 (避免与替补窗口耦合);
-	// 降级紧急时 upgrader 豁免暂停名单 (bugs/P1-10: 保升级岗位不断供, 宁可挤占也要保级)
+	// 降级紧急时 upgrader 豁免暂停名单 (bugs/P1-10: 保升级岗位不断供, 宁可挤占也要保级);
+	// 涓流期 (全场无 storage) upgrader 同豁免 (E18): 低 RCL 库存天然贴地, 瞬时
+	// 存量击穿临界线是常态——开局 survive 窗口把 upgrader/worker 全停会让升级链
+	// 与基建停摆数千 tick (sim 实证 t0-5300 控制器进度 0, upgrade 任务 available
+	// 4600t 无人认领, race 参照 L2@676)。
 	const downgradeActive = Object.values(world.rooms).some((room) =>
 		downgradeEmergency(room.controller),
+	);
+	const trickleEconomy = !Object.values(world.rooms).some((room) =>
+		room.stores.some((store) => store.structureType === "storage"),
 	);
 	const pauseRoles =
 		directiveFor(ctx).posture === "survive"
 			? STRATEGY_CONFIG.surviveSpawnPauseRoles.filter(
-					(unit) => unit !== "upgrader" || !downgradeActive,
+					// upgrader 仅在【非涓流且非降级紧急】时才随 survive 暂停:
+					// 涓流期 (无 storage) 豁免见上; 降级紧急豁免 (bugs/P1-10)。
+					(unit) =>
+						unit !== "upgrader" || (!downgradeActive && !trickleEconomy),
 				)
 			: [];
 
 	// ── Demand Sources (demandSources.ts): 四路需求聚合 ──────────────────
 	// 单需求源异常不阻断孵化线 (任务 6.4): 每源独立 try/catch, 失败记遥测继续
 	const requests = new Map<string, SpawnRequest>();
+	let targetsProbe: number | string = "?";
 	const addRequest = (unit: SpawnRequest["unit"], priority: number, purpose: string): void => {
 		if (pauseRoles.includes(unit)) {
 			return;
@@ -169,6 +180,9 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		safeSource("unit-targets", () => {
 			targets = unitTargets(ctx, board);
 		});
+		if (ctx.tick < 6000 && ctx.tick % 100 === 0) {
+			targetsProbe = targets?.upgrader ?? "?";
+		}
 		safeSource("standing", () => {
 			if (!targets) {
 				return;
@@ -213,7 +227,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					let priority = basePriority;
 					if (unitName === "upgrader" && anyRush) {
 						priority = Math.min(priority, SPAWN_CONFIG.rushUpgradeSpawnPriority);
-					} else if (unitName === "worker" && workerBuildCriticalOf(ctx)) {
+					} else if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
 						priority = Math.min(priority, 2);
 					}
 					addRequest(unitName as never, priority, `staffing:${unitName}`);
@@ -302,6 +316,12 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	}
 
 	const ordered = [...requests.values()].sort((a, b) => a.priority - b.priority);
+	if (ctx.tick < 6000 && ctx.tick % 100 === 0) {
+		ctx.logger?.warn?.(
+			"probe-pool",
+			`t${ctx.tick} pause=[${pauseRoles.join(",")}] upgraderTarget=${targetsProbe} pool=[${ordered.map((r) => r.unit).join(",")}]`,
+		);
+	}
 	for (const spawn of spawns) {
 		if (spawn.spawning) {
 			continue;
@@ -349,6 +369,12 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				bornAt: ctx.tick,
 				lastTaskChange: ctx.tick,
 			};
+			// worker 出生史累计标记 (workerBuildCriticalOf 豁免口径, 死亡不清)。
+			// request.unit 是角色名 (SpawnUnit), 与 UNIT_CODES 代号 ("W") 比较
+			// 恒 false 会导致标记永不落盘 (c16 实锤 economy.workerEverBorn 缺失)
+			if (request.unit === "worker") {
+				ctx.memory.economy.workerEverBorn = true;
+			}
 			// 等待时长 EMA 结算 (6.4): 入池→孵化成交的等待时长
 			const since = pendingSince[request.unit];
 			if (since !== undefined) {

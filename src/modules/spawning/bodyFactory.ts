@@ -66,8 +66,11 @@ export const TERRAIN_CARRIER_SEGMENT: SegmentDef = { segment: ["carry", "move", 
 export const RELAY_CARRIER_SEGMENTS = {
 	/** 慢地形 (路网未达标): [C,M,M]×2 口径 = 每基数 4 CARRY 2 MOVE */
 	offroad: { segment: ["carry", "move", "move", "carry", "move", "move"], min: 1, max: 2 } as SegmentDef,
-	/** 路面配比 (路网达标, forRoad 口径): 每基数 4 CARRY 1 MOVE */
-	road: { segment: ["carry", "carry", "carry", "carry", "move"], min: 1, max: 3 } as SegmentDef,
+	/** 路面/平原配比: 1:1 满速件 —— 平原满载疲劳 2×段重、回复 2×MOVE, 1t/格
+	 *  (旧 4:1 平原 4t/格、路面 2t/格, 裸地期往返 2.5×); ×4 基数 = 200 容量不变,
+	 *  100e 即可出件 (涓流预算即时变现, 旧口径起步价 250e)。×6 大件 (600e) 实测
+	 *  断代负收益 (升级 -36%), 涓流期换代节奏 > 单件容量 */
+	road: { segment: ["carry", "move"], min: 1, max: 4 } as SegmentDef,
 };
 
 const ECONOMY_ROLES: ReadonlySet<string> = new Set([
@@ -153,12 +156,16 @@ export function buildBody(
 			return buildRushWorkerBody(budget, { slowTerrain: hints?.slowTerrain === true });
 		case "carrier":
 			if (hints?.relayCarrier) {
-				return buildSegmented(
+				const relayBody = buildSegmented(
 					hints.slowTerrain
 						? RELAY_CARRIER_SEGMENTS.offroad
 						: RELAY_CARRIER_SEGMENTS.road,
 					budget,
 				);
+				if (relayBody !== null) {
+					return relayBody;
+				}
+				return null;
 			}
 			if (hints?.directCarrier) {
 				// 直运期 (达等级门): 大件摊薄往返, 段数上限放大
