@@ -23,6 +23,10 @@ const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9
 		// L3 门需 15/t (占单房天花板 75%), L4+ 必须外矿补收入 (2026-10-15 勘误:
 		// 原配置为无源空房, L3~L6 门全部物理不可达)
 		sources: { count: 2, energy: 3000 },
+		// 中立控制器: 官方世界规则所有房都有 controller, 外矿链 (reserve/remotePlan)
+		// 依赖其存在; 缺失时外矿侦查在 targetRoom.controller 处断链 (2026-10-19
+		// race 对照实证: remotes 恒空, 外矿永不激活)
+		controller: { level: 0, pos: [25, 25] as [number, number], mine: false },
 		alwaysVisible: false,
 		objects: [] as unknown[],
 	}),
@@ -32,7 +36,9 @@ export default defineSim({
 	name: 'speedrun',
 	description: '私服冲级分段门: RCL4≤10k / RCL5≤20k / RCL6≤40k',
 	seed: 7,
-	ticks: 45000,
+	// 40k = 私服赛制窗口 (speedrun mod bracket [20000, 40000], 4wt 自动重开);
+	// RCL6 门即截止时刻达标, 无 5k 余量
+	ticks: 40000,
 	cpu: { limit: 100, bucket: 10000 },
 	deterministicRandom: true,
 	rooms: [

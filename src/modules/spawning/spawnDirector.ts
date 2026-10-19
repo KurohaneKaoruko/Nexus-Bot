@@ -120,13 +120,18 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	// 单需求源异常不阻断孵化线 (任务 6.4): 每源独立 try/catch, 失败记遥测继续
 	const requests = new Map<string, SpawnRequest>();
 	let targetsProbe: number | string = "?";
-	const addRequest = (unit: SpawnRequest["unit"], priority: number, purpose: string): void => {
+	const addRequest = (
+		unit: SpawnRequest["unit"],
+		priority: number,
+		purpose: string,
+		taskId?: string,
+	): void => {
 		if (pauseRoles.includes(unit)) {
 			return;
 		}
 		const existing = requests.get(unit);
 		if (!existing || priority < existing.priority) {
-			requests.set(unit, { unit, priority, purpose });
+			requests.set(unit, { unit, priority, purpose, taskId });
 		}
 	};
 	/** 需求源隔离执行器: 抛错只告警, 孵化线不瘫 (6.4) */
@@ -237,6 +242,25 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		safeSource("task-driven", () => {
 			if (!targets) {
 				return;
+			}
+			// 外矿定向替补 (批次 H 环 1): 远程 harvest 任务 available 且无同目标
+			// 在岗租约时, 绕过编制总量门直接请求——本地 6 槽位评分恒优, 靠总量门的
+			// 孵化体全被本地吸收, 远程任务在人口崩溃后断供 28.7k tick (12k dump 实证)。
+			// 定向绑定 taskId, 新体出生即接管该任务 (race 无缝换班口径)。
+			// 在岗判据 = 同目标房的 harvest 任务处于 leased/in_progress (租约即人在)。
+			const remoteRoomsOnDuty = new Set(
+				board
+					.list({ kinds: ["harvest"], statuses: ["leased", "in_progress"] })
+					.filter((t) => t.targetPos?.roomName !== undefined && t.targetPos.roomName !== t.roomName)
+					.map((t) => t.targetPos?.roomName),
+			);
+			for (const task of board.list({ kinds: ["harvest"], statuses: ["available"] })) {
+				const remoteRoom = task.targetPos?.roomName;
+				if (!remoteRoom || remoteRoom === task.roomName) continue;
+				if (remoteRoomsOnDuty.has(remoteRoom)) continue;
+				// 定向替补优先级严格压过普通任务驱动请求 (批次 K: 同级先到
+				// 先占坑, 普通请求把 remote 挤出池——矿工死后 30k 无替补)
+				addRequest("harvester", task.priority - 1, `remote:harvest:${task.id}`, task.id);
 			}
 			for (const task of board.list({ statuses: ["available"] })) {
 				const unit = unitForTaskKind(task.kind);
@@ -359,7 +383,13 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		// 经 intent 管线会推迟到 commit 阶段造成整链时序漂移 (6.1 拆分实证 L3 +1261t)。
 		// 原生调用权收编进 broker 属 6.2 范围, 与 directSpawn 一并迁移。
 		const code = spawn.spawnCreep(body, name, {
-			memory: { unit: request.unit, homeRoom: spawn.room.name },
+			memory: {
+				unit: request.unit,
+				homeRoom: spawn.room.name,
+				// 定向任务绑定 (外矿替补): 出生即指向目标任务, 分配器沿既有
+				// 租约路径接管 (claim 要求 available, 抢先占位防本地槽虹吸)
+				...(request.taskId ? { taskId: request.taskId } : {}),
+			},
 		});
 		if (code === OK) {
 			ctx.memory.units[name] = {

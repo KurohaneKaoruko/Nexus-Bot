@@ -6,6 +6,8 @@ const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9
 		name,
 		terrain: { kind: 'flat' } as const,
 		sources: { count: 2, energy: 3000 },
+		// 中立控制器: 外矿链依赖 (2026-10-19 勘误)
+		controller: { level: 0, pos: [25, 25] as [number, number], mine: false },
 		alwaysVisible: false,
 		objects: [] as unknown[],
 	}),

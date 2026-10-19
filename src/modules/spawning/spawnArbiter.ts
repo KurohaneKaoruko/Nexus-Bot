@@ -22,6 +22,13 @@ export interface BodyHints {
 	relayCarrier: boolean;
 	directCarrier: boolean;
 	noCarrierOnSite: boolean;
+	/** 外矿采集件 (自回运): 必带 CARRY, 满载跨房回本矿卸货 */
+	remoteHarvester: boolean;
+}
+
+/** 请求池里是否存在指定用途前缀的请求 (外矿采集件体型判据) */
+function requestStartsWith(pool: readonly SpawnRequest[], prefix: string): boolean {
+	return pool.some((r) => r.purpose.startsWith(prefix));
 }
 
 export interface ArbitrationResult {
@@ -124,22 +131,17 @@ export function arbitrateForSpawn(
 	// 会 -1 WORK 且把源能量导向 ext/spawn 而非 cc 升级链, 升级总量 17658→4614 恶化;
 	// 直供泵的 carry 前提由生成器的 1-CARRY 下限自然满足 (预算 ≥650 即 RCL3 起)
 	// 开局无搬运工在场 → 采集体自带 CARRY (否则地面堆无人收, 控制器拿不到能量)。
-	// 远程采集件另判: 本地矿工 0 CARRY 靠 carrier 回收 drop, 但远程件是自回运
-	// (满载跨房走回本矿卸 cc), 无 CARRY 则永远驻源 drop, 能量全烂在外矿地板。
-	const remoteHarvestActive = board
-		.list({ kinds: ["harvest"] })
-		.some(
-			(t) =>
-				(t.status === "available" || t.status === "leased" || t.status === "in_progress") &&
-				t.targetPos?.roomName !== t.roomName,
-		);
+	// 远程采集件是自回运 (满载跨房走回本矿卸 cc), 无 CARRY 则永远驻源 drop——
+	// 由「请求用途」驱动 (remote:harvest 前缀), 不再用 remoteHarvestActive 全局
+	// 污染本地矿工 (批次 H 环 2: 恒真 flag 让本地 RCL2 期全部带上 CARRY,
+	// 纯泵纪元终结, 250 直供泵断供——同因引发的本地塌方)。
 	const hints: BodyHints = {
 		slowTerrain: isSlowTerrain(terrainProfileFor(spawn.room.name, ctx.tick)),
 		// 接力期档 (specs/relay-hauling): RCL < 等级门用微型接力件, 达门大件直运
 		relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl,
 		directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl,
+		remoteHarvester: requestStartsWith(pool, "remote:harvest:"),
 		noCarrierOnSite:
-			remoteHarvestActive ||
 			!Object.values(Game.creeps).some(
 				(c) =>
 					c.room.name === spawn.room.name &&

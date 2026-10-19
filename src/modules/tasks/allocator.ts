@@ -5,7 +5,7 @@
  */
 import type { CreepSummary } from "@/core/world";
 import type { NexusTask } from "@/core/store/taskSchema";
-import { leaseTicksFor } from "@/core/store/taskSchema";
+import { leaseTicksFor, remoteLeaseTicksFor } from "@/core/store/taskSchema";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 
 export interface CapabilityProfile {
@@ -375,6 +375,17 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			const candidateScore = scoreCandidate(profile, task, travel, switchCost, input.now);
 			if (isSwitch) {
 				const current = input.getTask(currentTaskId);
+				// 外矿驻场保护 (批次 H 环 1): 跨房采集/回运的持有者在途无产出,
+				// 按分抢走 = 反复 preempted (实证: failureReason=preempted 链,
+				// 39 只交互者接力粥)——回程卸货是采集环的组成部分, 不可被本地任务虹吸
+				const holdingRemote =
+					current !== undefined &&
+					current.targetPos?.roomName !== undefined &&
+					current.targetPos.roomName !== current.roomName &&
+					(current.kind === "harvest" || current.kind === "haul");
+				if (holdingRemote) {
+					continue;
+				}
 				// 紧急任务抢非紧急: 零滞回; 其余 (含紧急抢紧急) 需过阈值
 				const freePreempt =
 					SWITCH_EXEMPT_KINDS.has(task.kind) &&
@@ -390,7 +401,17 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 				best = { profile, score: candidateScore };
 			}
 		}
-		if (best && input.claim(task.id, best.profile.creepName, input.now, leaseTicksFor(task.kind))) {
+		if (
+			best &&
+			input.claim(
+				task.id,
+				best.profile.creepName,
+				input.now,
+				task.targetPos?.roomName !== undefined && task.targetPos.roomName !== task.roomName
+					? remoteLeaseTicksFor(task.kind)
+					: leaseTicksFor(task.kind),
+			)
+		) {
 			taken.add(best.profile.creepName);
 			assignments.push({ creepName: best.profile.creepName, taskId: task.id, score: best.score });
 		}

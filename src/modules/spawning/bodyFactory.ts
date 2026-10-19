@@ -42,6 +42,8 @@ export interface BodyHints {
 	 * 能量会烂在源边、控制器永远拿不到, RCL 无法起步。
 	 */
 	noCarrierOnSite?: boolean;
+	/** 外矿采集件 (自回运): 必带 CARRY, 满载跨房回本矿卸货 */
+	remoteHarvester?: boolean;
 }
 
 interface SegmentDef {
@@ -148,7 +150,10 @@ export function buildBody(
 		case "harvester":
 			return buildRushHarvesterBody(budget, {
 				speed: hints?.slowTerrain ? 1 : 0.5,
-				needCarry: hints?.noCarrierOnSite === true,
+				needCarry:
+					hints?.noCarrierOnSite === true ||
+					// 外矿采集件自回运: 无 CARRY 则满载判定永不成立, 驻源死循环
+					hints?.remoteHarvester === true,
 			});
 		case "upgrader":
 			return buildRushUpgraderBody(budget);

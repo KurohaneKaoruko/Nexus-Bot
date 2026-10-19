@@ -76,6 +76,9 @@ export interface SpawnRequest {
 	purpose: string;
 	/** 快递等按请求给定预算编译的角色 (缺省走容量/存量定档) */
 	budget?: number;
+	/** 定向任务绑定 (外矿替补): 孵化成功即写入新体 memory.taskId,
+	 * 分配器沿既有租约路径接管, 不依赖「本地槽满后的盈余溢出」 */
+	taskId?: string | undefined;
 }
 
 /** 存活/在途角色计数 (staffed 的分母来源) */

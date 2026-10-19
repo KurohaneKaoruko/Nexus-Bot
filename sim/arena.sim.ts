@@ -10,6 +10,9 @@ const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9
 	name,
 	terrain: { kind: 'flat' } as const,
 	sources: { count: 2, energy: 3000 },
+		// 中立控制器: 官方世界规则所有房都有 controller, 外矿链依赖其存在
+		// (2026-10-19 race 对照实证: 缺失则外矿侦查断链)
+		controller: { level: 0, pos: [25, 25] as [number, number], mine: false },
 }))
 
 export default defineSim({

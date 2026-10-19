@@ -100,6 +100,8 @@ export const LEASE_POLICY = {
 		reserve: 500,
 	} as Partial<Record<TaskKind, number>>,
 	heartbeatGraceTicks: 20,
+	/** 跨房驻场租约 (外矿 harvest/haul): 覆盖单程路程 + 驻场周期 */
+	remoteStationTicks: 800,
 	maxAttemptsByKind: {
 		harvest: 5,
 		haul: 6,
@@ -114,11 +116,18 @@ export const LEASE_POLICY = {
 	defaultTicks: number;
 	heartbeatGraceTicks: number;
 	byKind: Partial<Record<TaskKind, number>>;
+	/** 跨房驻场租约 (外矿 harvest/haul) */
+	remoteStationTicks: number;
 	maxAttemptsByKind: Partial<Record<TaskKind, number>>;
 };
 
 export function leaseTicksFor(kind: TaskKind): number {
 	return LEASE_POLICY.byKind[kind] ?? LEASE_POLICY.defaultTicks;
+}
+
+/** 跨房任务的驻场租约 (外矿 harvest/haul: 单程路程 > 普通租约, 见 LEASE_POLICY 注) */
+export function remoteLeaseTicksFor(kind: TaskKind): number {
+	return kind === "harvest" || kind === "haul" ? LEASE_POLICY.remoteStationTicks : leaseTicksFor(kind);
 }
 
 export function maxAttemptsFor(kind: TaskKind): number {
