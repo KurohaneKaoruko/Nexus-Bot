@@ -10,7 +10,7 @@ import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import type { TaskBoard } from "@/modules/tasks";
 import { createTaskBoard } from "@/modules/tasks";
-import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy";
+import { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeScoutCount } from "@/modules/economy";
 import {
 	isSpawnUnit,
 	typicalSpawnTime,
@@ -57,7 +57,7 @@ export function unitForTaskKind(kind: string): SpawnUnit | undefined {
 		case "claim":
 			return "claimer"; // 扩张占领件 [CLAIM,MOVE]: universal 无 CLAIM 部件领不了任务
 		case "fill_spawn":
-		case "haul":
+		case "carry":
 			return "carrier";
 		case "defend":
 			return "defender";
@@ -163,6 +163,7 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 	let pileBoost = 0;
 	let reserverNeed = 0;
 	const remoteHarvest = activeRemoteHarvestCount(ctx, board);
+	const remoteCarryBacklog = activeRemoteCarryBacklog(ctx, board);
 	const scoutNeed = activeScoutCount(ctx, board);
 	for (const room of rooms) {
 		sites += room.sites.length;
@@ -194,7 +195,14 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 				1 + Math.floor(sites / SPAWN_CONFIG.workers.sitesPerWorker),
 			),
 		),
-		carrier: Math.max(1, carrierNeed + pileBoost),
+		carrier: Math.max(
+			1,
+			carrierNeed +
+				pileBoost +
+				// 外矿回运积压加编 (与本矿 pile 同口径): 远程容器/掉落堆存量
+				// 是回运缺口信号, 不编则源头能量按衰减白白流失
+				(remoteCarryBacklog > 3000 ? 2 : remoteCarryBacklog > 1000 ? 1 : 0),
+		),
 		"rush-courier": 0,
 		// 特化单位: 结构到位才激活 (RCL 门控短路, 避免低 RCL 每帧遍历)
 		manager: rooms.some((r) => r.rcl >= 4 && r.stores.some((s) => s.structureType === "storage")) ? 1 : 0,

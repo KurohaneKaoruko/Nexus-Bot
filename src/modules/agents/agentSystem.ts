@@ -20,10 +20,10 @@ import { clearBlocked, congestionAction } from "@/modules/movement/trafficMonito
 import { ccUpgradeReserveOf, hasHungryUpgrader, recordTravelSample, registerUpgraderStarve } from "@/modules/economy";
 import { destinationQuotas } from "@/modules/economy";
 import { roomModeProfileFor } from "@/modules/strategy";
-import { relayHandoffAllowed, type RelayCreepView } from "@/utils/haulRelay";
-import { CARRIER_BEHAVIOR_CONFIG, RELAY_CONFIG, REMOTE_HAUL_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
+import { relayHandoffAllowed, type RelayCreepView } from "@/utils/carryRelay";
+import { CARRIER_BEHAVIOR_CONFIG, RELAY_CONFIG, REMOTE_CARRY_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { COMBAT_CONFIG, RETREAT_CONFIG } from "@/config/defense";
-import { COURIER_CONFIG, HAUL_CONFIG } from "@/config/economy";
+import { COURIER_CONFIG, CARRY_CONFIG } from "@/config/economy";
 import { rankHostiles } from "@/modules/defense";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 import { acquire } from "@/runtime/actorOwnership";
@@ -267,7 +267,7 @@ function nearestEnergyStructureAboveFloor(
 ): EnergyStructureSummary | undefined {
 	let best: EnergyStructureSummary | undefined;
 	let bestScore = Number.POSITIVE_INFINITY;
-	const ratio = floorRatioOverride ?? HAUL_CONFIG.structureFloorRatio;
+	const ratio = floorRatioOverride ?? CARRY_CONFIG.structureFloorRatio;
 	for (const structure of room.energyStructures) {
 		if (structure.energy < structure.energyCapacity * ratio) {
 			continue;
@@ -551,16 +551,16 @@ function runCreep(
 			return;
 		}
 		case "fill_spawn":
-		case "haul": {
-			// 跨房 haul (W1-2 远程容器回运): 取料点在外矿房, 本矿分支的
+		case "carry": {
+			// 跨房 carry (W1-2 远程容器回运): 取料点在外矿房, 本矿分支的
 			// room.piles/stores 是错房快照——走独立跨房状态机
 			if (task.targetPos?.roomName && task.targetPos.roomName !== room.roomName) {
-				runRemoteHaul(ctx, broker, creep, task);
+				runRemoteCarry(ctx, broker, creep, task);
 				return;
 			}
 			// 满载迟滞: 拿满才交付; 源枯竭时带余量交付
 			const live = Game.creeps[creep.name];
-			const fromId = task.kind === "haul" ? task.targetId : undefined;
+			const fromId = task.kind === "carry" ? task.targetId : undefined;
 			if (live?.memory.mode === "deliver") {
 				if (creep.carryEnergy === 0) {
 					live.memory.mode = "fetch";
@@ -1053,7 +1053,7 @@ function runRemoteHarvest(
 	if (!targetRoom) return;
 
 	// 满载且在目标房: 优先卸源旁容器 (W1-2 carrier 链, 驻点化零往返);
-	// 无容器再走自回运兜底 (远程容器由本矿 carrier 跨房 haul 接力)
+	// 无容器再走自回运兜底 (远程容器由本矿 carrier 跨房 carry 接力)
 	if (creep.carryEnergy > 0 && creep.freeCapacity === 0 && creep.roomName === targetRoom) {
 		const remoteRoom = Game.rooms[targetRoom];
 		const source = remoteRoom
@@ -1065,7 +1065,7 @@ function runRemoteHarvest(
 						.find(FIND_STRUCTURES, {
 							filter: (s): s is StructureContainer =>
 								s.structureType === STRUCTURE_CONTAINER &&
-								s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange) &&
+								s.pos.inRangeTo(source.pos, REMOTE_CARRY_CONFIG.containerRange) &&
 								s.store.getFreeCapacity(RESOURCE_ENERGY) > 0,
 						})
 						.find((c) => dist(creep.x, creep.y, c.pos.x, c.pos.y) <= 1)
@@ -1086,13 +1086,13 @@ function runRemoteHarvest(
 			return;
 		}
 		// 无成品容器但有自家工地 (W2 建设期): 满载去工地浇筑, 不走自回运——
-		// 回运一趟 2×路程 tick, 容器不落地 haul 链永远不开
+		// 回运一趟 2×路程 tick, 容器不落地 carry 链永远不开
 		const liveRoomFull = Game.rooms[targetRoom];
 		const ownSiteFull = liveRoomFull
 			? liveRoomFull.find(FIND_CONSTRUCTION_SITES, {
 					filter: (s) =>
 						s.structureType === STRUCTURE_CONTAINER &&
-						Math.max(Math.abs(s.pos.x - (task.targetPos?.x ?? 0)), Math.abs(s.pos.y - (task.targetPos?.y ?? 0))) <= REMOTE_HAUL_CONFIG.containerRange + 1,
+						Math.max(Math.abs(s.pos.x - (task.targetPos?.x ?? 0)), Math.abs(s.pos.y - (task.targetPos?.y ?? 0))) <= REMOTE_CARRY_CONFIG.containerRange + 1,
 				})[0]
 			: undefined;
 		if (ownSiteFull && creep.bodyWork > 0) {
@@ -1182,7 +1182,7 @@ function runRemoteHarvest(
 				const existing = liveRoom.find(FIND_STRUCTURES, {
 					filter: (s): s is StructureContainer =>
 						s.structureType === STRUCTURE_CONTAINER &&
-						s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange),
+						s.pos.inRangeTo(source.pos, REMOTE_CARRY_CONFIG.containerRange),
 				});
 				const site = liveRoom.find(FIND_CONSTRUCTION_SITES, {
 					filter: (s) => s.structureType === STRUCTURE_CONTAINER,
@@ -1215,7 +1215,7 @@ function runRemoteHarvest(
 					? liveRoom.find(FIND_CONSTRUCTION_SITES, {
 							filter: (s) =>
 								s.structureType === STRUCTURE_CONTAINER &&
-								Math.max(Math.abs(s.pos.x - source.pos.x), Math.abs(s.pos.y - source.pos.y)) <= REMOTE_HAUL_CONFIG.containerRange,
+								Math.max(Math.abs(s.pos.x - source.pos.x), Math.abs(s.pos.y - source.pos.y)) <= REMOTE_CARRY_CONFIG.containerRange,
 						})[0]
 					: undefined;
 				if (buildTarget && creep.carryEnergy > 0 && dist(creep.x, creep.y, buildTarget.pos.x, buildTarget.pos.y) <= 3) {
@@ -1233,13 +1233,13 @@ function runRemoteHarvest(
 					return;
 				}
 				// 容器维修 (W2): 成品容器耐久低于阈值即修——不修则 decay 拆链,
-				// haul 回运的取料点周期性消失 (sim 实证 cont 周期性归零重放)
+				// carry 回运的取料点周期性消失 (sim 实证 cont 周期性归零重放)
 				const wornContainer = liveRoom
 					? liveRoom.find(FIND_STRUCTURES, {
 							filter: (s): s is StructureContainer =>
 								s.structureType === STRUCTURE_CONTAINER &&
-								s.hits < s.hitsMax * REMOTE_HAUL_CONFIG.repairRatio &&
-								s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange + 1),
+								s.hits < s.hitsMax * REMOTE_CARRY_CONFIG.repairRatio &&
+								s.pos.inRangeTo(source.pos, REMOTE_CARRY_CONFIG.containerRange + 1),
 						})[0]
 					: undefined;
 				if (wornContainer && creep.carryEnergy > 0) {
@@ -1336,11 +1336,11 @@ function pickRemoteContainerSpot(
 }
 
 /**
- * 跨房 haul (W1-2 远程容器回运): fetch 腿在容器房 (withdraw 装满),
+ * 跨房 carry (W1-2 远程容器回运): fetch 腿在容器房 (withdraw 装满),
  * deliver 腿回本矿卸货点 (remoteDropoffFor)——与 runRemoteHarvest 的
  * 自回运兜底同构, 但由专职 carrier 承担, 5W 矿工驻源不出场。
  */
-function runRemoteHaul(
+function runRemoteCarry(
 	ctx: TickContext,
 	broker: ActionBroker,
 	creep: CreepSummary,
@@ -1381,7 +1381,7 @@ function runRemoteHaul(
 						: { x: 25, y: 25, roomName: task.roomName },
 					priority: task.priority,
 					pipeline: "move",
-					reason: "haul-deliver",
+					reason: "carry-deliver",
 					dedupeKey: `${creep.name}:move:${task.id}`,
 				});
 			}
@@ -1393,16 +1393,20 @@ function runRemoteHaul(
 		if (live) live.memory.mode = "deliver";
 		return;
 	}
-	const container = Game.getObjectById(task.targetId ?? "") as StructureContainer | null;
-	if (container && container.store.energy > 0) {
-		if (creep.roomName === container.pos.roomName && dist(creep.x, creep.y, container.pos.x, container.pos.y) <= 1) {
+	// 取料点可能是容器 (稳态) 或掉落堆 (矿工 drop 期): 掉落堆按 amount, 容器按 store
+	const target = Game.getObjectById(task.targetId ?? "") as StructureContainer | Resource | null;
+	const targetEnergy =
+		target === null ? 0 : "store" in target ? target.store.energy : target.amount;
+	if (target !== null && targetEnergy > 0) {
+		const isDrop = !("store" in target);
+		if (creep.roomName === target.pos.roomName && dist(creep.x, creep.y, target.pos.x, target.pos.y) <= 1) {
 			broker.submit({
 				id: `${creep.name}-rhf-${ctx.tick}`,
 				tick: ctx.tick,
 				taskId: task.id,
 				actorName: creep.name,
-				kind: "withdraw",
-				targetId: container.id,
+				kind: isDrop ? "pickup" : "withdraw",
+				targetId: target.id,
 				resourceType: "energy",
 				priority: task.priority,
 				pipeline: "carry",
@@ -1415,10 +1419,10 @@ function runRemoteHaul(
 				taskId: task.id,
 				actorName: creep.name,
 				kind: "move",
-				targetPos: { x: container.pos.x, y: container.pos.y, roomName: container.pos.roomName },
+				targetPos: { x: target.pos.x, y: target.pos.y, roomName: target.pos.roomName },
 				priority: task.priority,
 				pipeline: "move",
-				reason: "haul-fetch",
+				reason: "carry-fetch",
 				dedupeKey: `${creep.name}:move:${task.id}`,
 			});
 		}
@@ -1442,8 +1446,8 @@ function remoteDropoffFor(ctx: TickContext, roomName: string): { id: string } | 
 }
 
 /**
- * 接力搬运交接 (specs/relay-hauling): 满载供方与空载受方在通道上相向对穿时
- * 同 Tick 整仓移交——判据纯函数在 utils/haulRelay, 意图格为朝任务锚点的几何步进。
+ * 接力搬运交接 (specs/接力搬运): 满载供方与空载受方在通道上相向对穿时
+ * 同 Tick 整仓移交——判据纯函数在 utils/carryRelay, 意图格为朝任务锚点的几何步进。
  * 任务随货走: 受方承接供方的交付任务租约、供方转回受方的取货任务;
  * 交接 transfer 不带 taskId (broker 免租约校验, 快递 lease-lost 教训不重演)。
  * 返回交接后的两个 (creep, task) 对, 调用方同 Tick 重跑双方行为; 未命中返回 null。
@@ -1472,8 +1476,8 @@ function tryRelayHandoff(
 	const selfSupplying =
 		selfMode === "deliver" && creep.carryEnergy > 0 && creep.freeCapacity === 0;
 	const selfAnchor = selfSupplying ? (task.destPos ?? task.targetPos) : task.targetPos;
-	// 受方相位要求 haul 取货 (fill_spawn 取货无确定锚点, 不参与)
-	if (!selfSupplying && task.kind !== "haul") {
+	// 受方相位要求 carry 取货 (fill_spawn 取货无确定锚点, 不参与)
+	if (!selfSupplying && task.kind !== "carry") {
 		return null;
 	}
 	const relayedSelf = liveSelf.memory.relayedTick === ctx.tick;
@@ -1502,18 +1506,18 @@ function tryRelayHandoff(
 		if (
 			!otherTask ||
 			otherTask.assignedTo !== other.name ||
-			(otherTask.kind !== "haul" && otherTask.kind !== "fill_spawn")
+			(otherTask.kind !== "carry" && otherTask.kind !== "fill_spawn")
 		) {
 			continue;
 		}
 		const otherMode = otherLive.memory.mode;
 		const otherSupplying =
 			otherMode === "deliver" && other.carryEnergy > 0 && other.freeCapacity === 0;
-		// 相位必须相反: 供方=满载交付, 受方=空载取货 (haul)
+		// 相位必须相反: 供方=满载交付, 受方=空载取货 (carry)
 		if (selfSupplying === otherSupplying) {
 			continue;
 		}
-		if (!otherSupplying && otherTask.kind !== "haul") {
+		if (!otherSupplying && otherTask.kind !== "carry") {
 			continue;
 		}
 		const otherAnchor = otherSupplying
@@ -1666,7 +1670,7 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 			}
 			board.heartbeat(taskId, creep.name, ctx.tick);
 			acquire(creep.name, "nexus-agent", ctx.tick);
-			// 接力搬运 (specs/relay-hauling): 相向对穿整仓交接, 任务随货走后双方同 Tick 重跑
+			// 接力搬运 (specs/接力搬运): 相向对穿整仓交接, 任务随货走后双方同 Tick 重跑
 			const relay = tryRelayHandoff(ctx, broker, board, room, creep, task, processed);
 			if (relay) {
 				for (const name of [relay.supplierName, relay.receiverName]) {

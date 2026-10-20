@@ -5,12 +5,12 @@
  */
 
 /** 运输与搬运 (docs/nexus-design/06 §6.4) */
-export const HAUL_CONFIG = {
+export const CARRY_CONFIG = {
 	/** 落地能量低于该值不专门派搬运 (不值得) */
 	/** 单堆能量低于该值不派搬运 (碎堆任其自然聚拢/被矿工直供泵吸收,
-	 *  走 19 格只搬 30e 的微单是行程浪费——sim 实证 21 条积压 haul 里
+	 *  走 19 格只搬 30e 的微单是行程浪费——sim 实证 21 条积压 carry 里
 	 *  14 条是 30e 碎堆单, 大单反而饿死) */
-	minHaulAmount: 100,
+	minCarryAmount: 100,
 	/** 容器/Storage 库存低于该值不派搬运 */
 	minStoreAmount: 100,
 	/** 单批搬运量估算 (按典型 carrier 段容量, 上限为实际身体容量) */
@@ -505,17 +505,19 @@ export const REMOTE_INCOME_CONFIG = {
 } as const;
 
 /** 远程搬运链 (bugs/race-strategy-port W1-2: 自查式改独立 carrier 链):
- *  远程矿工驻源满载卸源旁容器, 本矿 carrier 跨房 haul 回家——
+ *  远程矿工驻源满载卸源旁容器, 本矿 carrier 跨房 carry 回家——
  *  5W 矿工走长途是运力浪费 (往返 2×路程 tick 全程 0 采集)。 */
-export const REMOTE_HAUL_CONFIG = {
+export const REMOTE_CARRY_CONFIG = {
 	/** 源旁容器搜索半径 (切比雪夫): 容器与源的距离上限 */
 	containerRange: 2,
-	/** 容器维修线: 耐久低于 hitsMax × 该值即修 (不修则 decay 拆 haul 链取料点) */
+	/** 容器维修线: 耐久低于 hitsMax × 该值即修 (不修则 decay 拆 carry 链取料点) */
 	repairRatio: 0.5,
-	/** haul 任务发起阈值: 容器存量占容量比例达到即产任务 (拉空触发, 防空跑) */
-	haulTriggerRatio: 0.3,
-	/** haul 任务等级: 与本矿 haul 同档 L4 (收入实现线, 远程采集同源) */
-	haulPriority: 4,
+	/** carry 任务发起阈值: 容器存量占容量比例达到即产任务 (拉空触发, 防空跑) */
+	carryTriggerRatio: 0.3,
+	/** carry 任务等级: 与本矿 carry 同档 L4 (收入实现线, 远程采集同源) */
+	carryPriority: 4,
+	/** 掉落堆回运线 (能量): 矿工 drop 期无容器可等, 堆量过线即发跨房 carry */
+	dropMinAmount: 500,
 } as const;
 
 /** 升级体体型参数 (specs/workforce-staffing「升级定编 WORK 口径目标」):
@@ -534,7 +536,7 @@ export const UPGRADER_BODY_CONFIG = {
 	minMove: 1,
 } as const;
 
-/** 接力搬运 (specs/relay-hauling): 低等级期微型件相向整仓交接 */
+/** 接力搬运 (specs/接力搬运): 低等级期微型件相向整仓交接 */
 export const RELAY_CONFIG = {
 	/** 接力启用等级门: RCL < 该值恒接力; 达门转大件直运 */
 	maxRcl: 7,
@@ -577,7 +579,7 @@ export const BUILD_COMPLETION_CONFIG = {
 /** 关键基建建造档 (race 本体 building 开关的本项目口径) */
 export const RUSH_BUILD_CONFIG = {
 	/** 源容器/cc 容器工地的任务等级: L4 压过采集 L5——容器不成则采集 (drop 地面
-	 *  → haul 爆炸) 与升级链 (cc 缺位断供) 都缺前提物, 换班语义由 criticality
+	 *  → carry 爆炸) 与升级链 (cc 缺位断供) 都缺前提物, 换班语义由 criticality
 	 *  通道 (权重 100) 自然承接 (c16-c20 实证源容器 19k tick 无人认领死锁) */
 	criticalInfraPriority: 4,
 	/** 扩容工地存续期的升级降档 (4→7): 扩容任务 (5) 因此排到升级之前, 建成

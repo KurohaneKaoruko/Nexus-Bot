@@ -20,7 +20,7 @@ function myUsername(): string | undefined {
 
 /** 邻房名计算: 已抽公共 utils/roomCoord (bugs/P1-17), 此处仅再导出兼容本文件内引用 */
 import { neighborRooms, roomWorldCoord } from "@/utils/roomCoord";
-import { REMOTE_HAUL_CONFIG } from "@/config/economy";
+import { REMOTE_CARRY_CONFIG } from "@/config/economy";
 import { remoteSourceWeightOf } from "@/modules/economy/income";
 import { isProductionSecured } from "@/modules/economy/productionGate";
 
@@ -33,46 +33,93 @@ function remoteSourceContainer(
 		.find(FIND_STRUCTURES, {
 			filter: (s): s is StructureContainer =>
 				s.structureType === STRUCTURE_CONTAINER &&
-				s.pos.inRangeTo(source.pos, REMOTE_HAUL_CONFIG.containerRange),
+				s.pos.inRangeTo(source.pos, REMOTE_CARRY_CONFIG.containerRange),
 		})
 		.find((c) => c.store.getFreeCapacity(RESOURCE_ENERGY) > 0 || c.store.energy > 0);
 }
 
 /**
  * 远程容器回运任务 (bugs/race-strategy-port W1-2): 源旁容器存量过阈值即产
- * haul (容器→本矿), 远程矿工驻源卸容器、本矿 carrier 跨房拉回——
+ * carry (容器→本矿), 远程矿工驻源卸容器、本矿 carrier 跨房拉回——
  * 5W 矿工自回运的长途往返是采集面塌陷主因 (2×路程 tick 全程 0 采集)。
  */
-function upsertRemoteHaul(
+function upsertRemoteCarry(
 	ctx: TickContext,
 	board: TaskBoard,
 	homeRoomName: string,
 	remoteRoom: Room,
 	source: Source,
+	expected: Set<string>,
 ): void {
 	const container = remoteSourceContainer(remoteRoom, source);
 	if (
-		!container ||
-		container.store.energy < container.store.getCapacity(RESOURCE_ENERGY) * REMOTE_HAUL_CONFIG.haulTriggerRatio
+		container &&
+		container.store.energy >= container.store.getCapacity(RESOURCE_ENERGY) * REMOTE_CARRY_CONFIG.carryTriggerRatio
 	) {
-		return;
-	}
-	board.upsert(
-		{
-			dedupeKey: `haul:${homeRoomName}:remote:${container.id}`,
-			kind: "haul",
-			roomName: homeRoomName,
-			targetId: container.id,
-			targetPos: {
-				x: container.pos.x,
-				y: container.pos.y,
-				roomName: remoteRoom.name,
+		const key = `carry:${homeRoomName}:remote:${container.id}`;
+		expected.add(key);
+		board.upsert(
+			{
+				dedupeKey: key,
+				kind: "carry",
+				roomName: homeRoomName,
+				targetId: container.id,
+				targetPos: {
+					x: container.pos.x,
+					y: container.pos.y,
+					roomName: remoteRoom.name,
+				},
+				amount: container.store.energy,
+				priority: REMOTE_CARRY_CONFIG.carryPriority,
+				requiredCapabilities: ["carry", "move"],
 			},
-			priority: REMOTE_HAUL_CONFIG.haulPriority,
-			requiredCapabilities: ["carry", "move"],
-		},
-		ctx.tick,
-	);
+			ctx.tick,
+		);
+	}
+	// 无容器/容器未到发车线的矿工 drop: 堆量过线即回运——远程能量不回运
+	// 等于白挖 (堆按 ENERGY_DECAY 衰减), 这是外矿收入真正的实现段。
+	// 仅限己方预订在身的源: 未预订源容量减半 (1500) 产出细流, 派 carrier
+	// 跨房拉小堆的往返成本 > 货值 (boot 实证 L3 慢 1,374t)。
+	const reservedByMe =
+		myUsername() !== undefined &&
+		remoteRoom.controller?.reservation?.username === myUsername();
+	if (!reservedByMe) return;
+	for (const drop of remoteRoom.find(FIND_DROPPED_RESOURCES, {
+		filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= REMOTE_CARRY_CONFIG.dropMinAmount,
+	})) {
+		const key = `carry:${homeRoomName}:remote:drop:${drop.pos.x},${drop.pos.y}`;
+		expected.add(key);
+		board.upsert(
+			{
+				dedupeKey: key,
+				kind: "carry",
+				roomName: homeRoomName,
+				targetId: drop.id,
+				targetPos: { x: drop.pos.x, y: drop.pos.y, roomName: remoteRoom.name },
+				amount: drop.amount,
+				priority: REMOTE_CARRY_CONFIG.carryPriority,
+				requiredCapabilities: ["carry", "move"],
+			},
+			ctx.tick,
+		);
+	}
+}
+
+/** 外矿回运任务自清: 未被本轮货源覆盖的空闲任务 (容器拆/堆消失) 取消。
+ *  已租用/在途任务保留——载体可能在返程, 撤销会让载着的能量失去交付目标。 */
+function cancelStaleRemoteCarryTasks(
+	ctx: TickContext,
+	board: TaskBoard,
+	roomName: string,
+	expected: ReadonlySet<string>,
+): void {
+	for (const task of board.list({ kinds: ["carry"], roomName, statuses: ["available"] })) {
+		const target = task.targetPos?.roomName;
+		if (!target || target === task.roomName) continue;
+		if (!expected.has(task.dedupeKey)) {
+			board.cancel(task.id, ctx.tick, "subject-gone");
+		}
+	}
 }
 
 /**
@@ -94,11 +141,14 @@ export function planRemoteHarvest(
 	//    的老顾虑由该闸承接, 不再用 RCL3 一刀切 (sim 实证 L3@19049 → 外矿永不启动,
 	//    收入上限锁死 20/t, 升级速率 2.65/t);
 	// ② rush auto 档才低门放行; manual 档维持 RCL3 (显式登记房由用户自己把关)。
-	// 外矿采集件无 CARRY 的 drop 风险由外矿 haul 任务闭环承接 (upsertRemoteHaul),
+	// 外矿采集件无 CARRY 的 drop 风险由外矿 carry 任务闭环承接 (upsertRemoteCarry),
 	// 不再依赖 harvester 体型档。
 	if (room.rcl < 3 && !(profile.remoteMining === "auto" && isProductionSecured(ctx, room))) {
 		return;
 	}
+
+	// 本轮实际存在的回运货源 (容器/掉落堆), 用于清掉消失货源的残留任务
+	const expectedCarryKeys = new Set<string>();
 
 	if (profile.remoteMining === "manual") {
 		const targets = ctx.memory.economy.remoteTargets ?? [];
@@ -155,9 +205,10 @@ export function planRemoteHarvest(
 					priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
 					requiredCapabilities: ["work", "move"],
 				}, ctx.tick);
-				upsertRemoteHaul(ctx, board, room.roomName, remoteRoom, source);
+				upsertRemoteCarry(ctx, board, room.roomName, remoteRoom, source, expectedCarryKeys);
 			}
 		}
+		cancelStaleRemoteCarryTasks(ctx, board, room.roomName, expectedCarryKeys);
 		return;
 	}
 
@@ -240,9 +291,10 @@ export function planRemoteHarvest(
 				priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
 				requiredCapabilities: ["work", "move"],
 			}, ctx.tick);
-			upsertRemoteHaul(ctx, board, room.roomName, neighbor, source);
+			upsertRemoteCarry(ctx, board, room.roomName, neighbor, source, expectedCarryKeys);
 		}
 	}
+	cancelStaleRemoteCarryTasks(ctx, board, room.roomName, expectedCarryKeys);
 }
 
 /** 活跃远程采集任务数 (定编口径: 本矿 harvester 编制 = 本矿源数 + 远程任务数) */
@@ -252,6 +304,29 @@ export function activeRemoteHarvestCount(ctx: TickContext, board: TaskBoard): nu
 		if (task.targetPos?.roomName && task.targetPos.roomName !== task.roomName) n++;
 	}
 	return n;
+}
+
+/**
+ * 活跃外矿回运任务数 (定编口径): 每个容器/掉落堆回运点都需要专属运力。
+ * 本矿 carrier 定编只覆盖本矿货源, 不计这批任务则外矿能量在源头衰减,
+ * 回运任务恒 available。
+ */
+export function activeRemoteCarryCount(ctx: TickContext, board: TaskBoard): number {
+	let n = 0;
+	for (const task of board.list({ kinds: ["carry"] })) {
+		if (task.targetPos?.roomName && task.targetPos.roomName !== task.roomName) n++;
+	}
+	return n;
+}
+
+/** 外矿待回运存量 (能量): 容器/掉落堆任务登记量之和, 作为运力加编信号 */
+export function activeRemoteCarryBacklog(ctx: TickContext, board: TaskBoard): number {
+	let total = 0;
+	for (const task of board.list({ kinds: ["carry"] })) {
+		if (!task.targetPos?.roomName || task.targetPos.roomName === task.roomName) continue;
+		total += task.amount ?? 0;
+	}
+	return total;
 }
 
 /** 活跃侦查任务数 (定编口径): rush 档 3 房预算下 scout 任务 ≤3, 并行侦察

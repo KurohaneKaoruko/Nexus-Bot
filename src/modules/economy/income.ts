@@ -5,6 +5,8 @@
  * 与 remoteMining 预订线 (specs/race-remote) 一致。
  */
 import type { TickContext } from "@/core";
+import type { NexusTask } from "@/core/store/taskSchema";
+import { REMOTE_CARRY_CONFIG } from "@/config/economy";
 
 /** 能源再生周期 (ENERGY_REGEN_TIME) */
 const ENERGY_REGEN_TIME = 300;
@@ -25,7 +27,39 @@ export interface ReservationLike {
 }
 
 /**
+ * 外矿源是否具备回运通道 (收入记账前置):
+ * - 可见且源旁已有容器: 稳态回运点, 能量有稳定去处;
+ * - 不可见/容器未建: 以源附近的在板回运任务为准 (矿工 drop 期的掉落堆回运)。
+ * 无回运通道的远程源, 挖出的能量只会在原地衰减, 不计入收入——否则升级定编
+ * 按虚高收入超编, 外矿能量却没回本矿。
+ */
+function hasReturnPath(
+	target: string,
+	x: number,
+	y: number,
+	carryTasks: readonly NexusTask[],
+): boolean {
+	const room = Game.rooms[target];
+	if (room) {
+		const containers = room.find(FIND_STRUCTURES, {
+			filter: (s): s is StructureContainer =>
+				s.structureType === STRUCTURE_CONTAINER &&
+				Math.max(Math.abs(s.pos.x - x), Math.abs(s.pos.y - y)) <= REMOTE_CARRY_CONFIG.containerRange,
+		});
+		if (containers.length > 0) return true;
+	}
+	return carryTasks.some(
+		(t) =>
+			t.targetPos !== undefined &&
+			t.targetPos.roomName === target &&
+			Math.max(Math.abs(t.targetPos.x - x), Math.abs(t.targetPos.y - y)) <=
+				REMOTE_CARRY_CONFIG.containerRange + 1,
+	);
+}
+
+/**
  * 统一外矿折算: 遍历本矿登记在板的远程采集任务, 按预订状态加权求和。
+ * 仅计入具备回运通道的远程源 (容器或源旁在板回运任务)。
  * 直读 memory.tasks 原始记录 (逐 tick 逐房调用, 不重复建板)。
  */
 export function remoteSourceWeightOf(ctx: TickContext, roomName: string): number {
@@ -34,12 +68,22 @@ export function remoteSourceWeightOf(ctx: TickContext, roomName: string): number
 		me = spawn.owner?.username;
 		break;
 	}
+	const tasks = Object.values(ctx.memory.tasks);
+	const carryTasks = tasks.filter(
+		(task) =>
+			task.kind === "carry" &&
+			task.roomName === roomName &&
+			task.status !== "completed" &&
+			task.status !== "cancelled" &&
+			task.status !== "failed",
+	);
 	let weight = 0;
-	for (const task of Object.values(ctx.memory.tasks)) {
+	for (const task of tasks) {
 		if (task.kind !== "harvest" || task.roomName !== roomName) continue;
-		const target = task.targetPos?.roomName;
-		if (!target || target === roomName) continue;
-		const reservation = Game.rooms[target]?.controller?.reservation;
+		const pos = task.targetPos;
+		if (!pos || pos.roomName === roomName) continue;
+		if (!hasReturnPath(pos.roomName, pos.x, pos.y, carryTasks)) continue;
+		const reservation = Game.rooms[pos.roomName]?.controller?.reservation;
 		weight += reservationFactor(me, reservation ?? {});
 	}
 	return weight;
