@@ -283,10 +283,16 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					if (!unit) {
 						continue;
 					}
-					if (creep.ticksToLive >= replacementLead(ctx, unit, room.roomName, creep.name)) {
+					const target = effectiveTarget(ctx, unit, targets);
+					// 错峰窗口按批规模放大 (race-speedrun 6.1): 窗口 = 定编 × 生产
+					// 周期, 替补触发点错峰 ≥ 整代替补的孵化时长, 消灭「整代到期 →
+					// 孵化槽排队 → 在岗阶梯下滑」潮 (40k 实证 t28.5-29.9k 全代重孵)
+					if (
+						creep.ticksToLive >=
+						replacementLead(ctx, unit, room.roomName, creep.name, target)
+					) {
 						continue;
 					}
-					const target = effectiveTarget(ctx, unit, targets);
 					const overlapping = REPLACEMENT_KEY_ROLES.includes(unit)
 						? staffed(unit) <= target
 						: staffed(unit) < target;

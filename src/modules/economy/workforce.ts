@@ -15,7 +15,7 @@ import type { NexusTask } from "@/core/store/taskSchema";
 import type { HarvestSplitRecord } from "@/core/store/memorySchema";
 import { CARRY_STAFFING_CONFIG, RELAY_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { UNIT_CODES } from "@/constant/UnitConstant";
-import { roomModeProfileFor } from "@/modules/strategy";
+import { roomModeFor, roomModeProfileFor } from "@/modules/strategy";
 import { buildBody } from "@/modules/spawning";
 import { destinationQuotas } from "@/modules/economy/quota";
 import { incomeWithRemoteOf } from "@/modules/economy/income";
@@ -328,10 +328,15 @@ export function upgradeWorkTargetOf(ctx: TickContext, room: RoomObservation): nu
 	// 模板放量后开启); 该期升级定编归零——建造与升级抢同一批边际能量。
 	// 保级窗口 (upgradeNeeded) 恒豁免; 冲级建设期 (ext/storage/cc/link 工地)
 	// 不让位——那是升级的助推器而非竞争者 (race bot 的 building 不含此期)。
+	// rush 档恒豁免 (race-speedrun 6.1): rush 档 rampartMinRcl=4 起例行放量
+	// rampart 工地 (防御例行, 非 building 期), 误判为 building 会让升级定编
+	// 归零——40k 实证 L3 后 upgrader 定编跌到 1, 末段段速 4384→1433 崩;
+	// race 本体 building 只在布局模板全部建完后开启, 冲级档无此语义
 	if (
 		room.rcl >= 2 &&
 		room.rcl < 8 &&
 		!upgradeNeeded &&
+		roomModeFor(ctx, room.roomName) !== "rush" &&
 		room.sites.some((site) => site.structureType === "rampart" || site.structureType === "wall")
 	) {
 		return 0;

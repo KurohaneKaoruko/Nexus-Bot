@@ -287,11 +287,20 @@ export function effectiveTarget(ctx: TickContext, unit: SpawnUnit, targets: Reco
  * 替补提前量 (docs/nexus-design/07 §7.5): 生产时间 + 实测路程 P95 + 安全余量, 按单位名确定性抖动 ±jitterRatio
  * (bugs/P2-8: 同龄单位同拍进入替补窗口会成对孵化, 抖动使其错峰)。
  */
+/**
+ * 替补提前量 (docs/nexus-design/07 §7.5): 生产时间 + 实测路程 P95 + 安全余量, 按单位名确定性抖动 ±jitterRatio
+ * (bugs/P2-8: 同龄单位同拍进入替补窗口会成对孵化, 抖动使其错峰)。
+ * @param cohortSize 该角色当前定编数 (错峰窗口按批规模放大: 大件批 13 只 × 72t
+ *  生产周期 = 936t 孵化时长, 窗口小于它时整代替补触发点挤在孵化时长内, 死亡
+ *  后空窗 = 窗口 − 孵化时长, 在岗数阶梯下滑 = 潮; 40k 实证 t28.5-29.9k 全代
+ *  重孵, 末段段速 4384→1433 崩)
+ */
 export function replacementLead(
 	ctx: TickContext,
 	unit: SpawnUnit,
 	roomName: string,
 	creepName: string,
+	cohortSize?: number,
 ): number {
 	const spawnTime = typicalSpawnTime(unit);
 	const base =
@@ -301,14 +310,15 @@ export function replacementLead(
 	// 均匀落在 [base, base+窗口] 内; 窗口上限钳制在寿命的一半内——
 	// lead 是「TTL 低于此值即触发」的阈值, 若 lead 可超过寿命, 单位从出生起
 	// 永远处于替补窗口, 孵化队列被常驻替补请求淹没 (sim 实锤人口 23→8 平台下移)。
+	// 批规模取调用方现算的定编数 (大件批 13 只 × 72t > 寿命一半 → cap 675 兜底);
+	// 缺省退历史常数 (小件批 4-6 只 × 21-33t ≈ 2.5 只等效, 行为不变)。
 	// 同名恒定 (无随机源), sim 可复现。
+	const cohort = cohortSize ?? REPLACEMENT_CONFIG.disperseCohortSize;
 	const windowCap = Math.floor(
 		(CREEP_LIFE_TIME - base) * REPLACEMENT_CONFIG.disperseLifeShare,
 	);
 	const disperseWindow = Math.min(
-		REPLACEMENT_CONFIG.disperseWindowFactor *
-			REPLACEMENT_CONFIG.disperseCohortSize *
-			spawnTime,
+		REPLACEMENT_CONFIG.disperseWindowFactor * cohort * spawnTime,
 		windowCap,
 	);
 	const jittered = base * (1 + nameJitter(creepName));
