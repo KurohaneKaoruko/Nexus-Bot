@@ -1,11 +1,11 @@
 
 import { log } from '@/utils/log';
 
-import { ensureTeamData, getTeamData, getTeamSpawnQueue } from "@/core/store/accessor";
+import { ensureTeamData, getTeamData, getTeamSpawnQueue, getTeamPendingSpawns } from "@/core/store/accessor";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
 import { getTeamConfig } from "@/modules/teams/config/TeamConfig";
 import { directSpawn } from "@/modules/spawning/spawnDirector";
-import { combatCreateFlag, combatRemoveFlag } from "@/modules/combat";
+import { combatRemoveFlag } from "@/modules/combat";
 
 /** 旗名解析出的孵化参数（各旗型解析器归一后的产出） */
 export type TeamSpawnSpec = {
@@ -13,11 +13,11 @@ export type TeamSpawnSpec = {
     kind: string;
     config: string;
     /** 孵化房；缺省 = 主房暂无视野（是否等待由 keepOnMissingRoom 决定） */
-    spawnRoomName?: string;
+    spawnRoomName?: string | undefined;
     /** 目标房 */
     targetRoom?: string;
     /** 最大派兵次数；undefined = 由 noMaxIsInfinite 决定无 N 时的行为 */
-    maxCount?: number;
+    maxCount?: number | undefined;
     /** 孵化间隔 tick；0 = 无定时，队列空闲即派 */
     interval: number;
     /** 无 N（或 N0）时是否无限派兵（false = 一次性派送后撤旗） */
@@ -32,8 +32,28 @@ export type TeamSpawnSpec = {
     teamCap?: number;
 };
 
+/** 待补孵的单个成员：跨 tick 重试直至成功 */
+export type PendingSpawnMember = {
+    unit: string;
+    memory: CreepMemory;
+    body: BodyPartConstant[];
+};
+
 /** 旗型解析器：旗名 + 旗对象 → 归一孵化参数（TEAM_ 内置解析之外的旗型由表层模块注册） */
 export type SpecProvider = (flagName: string, flag: Flag) => TeamSpawnSpec | undefined;
+
+/** 把 `[[part, count], ...]` 压缩体展开为逐部件数组（保留声明顺序） */
+const expandBodyParts = (bodypart: unknown): BodyPartConstant[] => {
+    if (!Array.isArray(bodypart)) return [];
+    const body: BodyPartConstant[] = [];
+    for (const entry of bodypart as [BodyPartConstant, number][]) {
+        if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Number.isFinite(entry[1])) {
+            continue;
+        }
+        for (let i = 0; i < entry[1]; i += 1) body.push(entry[0]);
+    }
+    return body;
+};
 
 const TeamSpawner = {
     /**
@@ -44,6 +64,9 @@ const TeamSpawner = {
      * `Memory.Nexus.TeamSpawnQueue[roomName] = { queue: {flagName, enqueueTime}[], active?: {teamID, flagName, startTime, timedOut?}, ignoreTeams?: { [teamID]: expireTick } }`
      */
     QUEUE_MEMORY_KEY: 'TeamSpawnQueue',
+
+    /** 待补孵成员的 Memory Key（teamID → { roomName, members[] }；global 重置后不丢） */
+    PENDING_MEMORY_KEY: 'TeamPendingSpawns',
     /**
      * 写入到孵化旗 flag.memory 的“已入队”标记，用于去重。
      *
@@ -84,6 +107,9 @@ const TeamSpawner = {
      * 旗名协议（攻击旗）：`ATK[/_孵化房][/_配置][/_N次数][/_T间隔]`，`/` 与 `_` 均可作分隔。
      */
     run(): void {
+        // 补孵队列每 tick 推进：单 spawn 一 tick 只能下一单，整队成员须跨 tick 补位
+        this.retryPendingSpawns();
+
         // 孵化四人小队
         if (Game.time % 10) return;
         getTeamData();
@@ -111,6 +137,48 @@ const TeamSpawner = {
         }
 
         this.dispatchQueues(specs);
+    },
+
+    /**
+     * 跨 tick 补孵：对每支队伍的待孵成员逐 tick 尝试 directSpawn。
+     *
+     * @remarks
+     * - 队列落在 Memory.Nexus.TeamPendingSpawns（global 重置后不丢）。
+     * - 每 tick 每支队伍只尝试孵化 1 名成员，避免同一房间多队竞争同一 spawn。
+     * - directSpawn 返回 OK 时移除该成员；ERR_BUSY 时保留下 tick 重试。
+     * - 队伍已删除（TeamData 不存在）或成员为空时清理条目，避免僵尸条目。
+     */
+    retryPendingSpawns(): void {
+        const pending = getTeamPendingSpawns();
+        for (const teamID of Object.keys(pending)) {
+            const entry = pending[teamID];
+            if (!entry || !getTeamData(teamID) || !entry.members?.length) {
+                delete pending[teamID];
+                continue;
+            }
+
+            const room = entry.roomName ? Game.rooms[entry.roomName] : undefined;
+            if (!room) continue;
+
+            const member = entry.members[0];
+            if (!member) {
+                delete pending[teamID];
+                continue;
+            }
+            const result = directSpawn(room, {
+                mode: "direct",
+                unit: member.unit,
+                memory: member.memory,
+                body: member.body as BodyPartConstant[],
+            });
+
+            if (result === OK) {
+                entry.members.shift();
+                if (entry.members.length === 0) {
+                    delete pending[teamID];
+                }
+            }
+        }
     },
 
     // ── 旗名解析 ──
@@ -501,8 +569,12 @@ const TeamSpawner = {
     createTeam(teamID: string, Team_Config: any[], room: Room, flag: Flag, configKey: string): void {
         // 创建小队
         const teamMem = ensureTeamData(teamID);
-        // 配置键推导队形：/5 → cross（八向十字）、/9 → square3（三方阵），其余 line
-        const formation = configKey.endsWith('/5') ? 'cross' : configKey.endsWith('/9') ? 'square3' : 'line';
+        // 配置键推导队形：/4 且含 2 个以上治疗成员 → quad（2x2 抗伤阵），/5 → cross（八向十字）、/9 → square3（三方阵），其余 line
+        const healCount = Team_Config.filter((m: any) => m?.unit === 'team-heal').length;
+        const formation = configKey.endsWith('/9') ? 'square3'
+            : configKey.endsWith('/5') ? 'cross'
+            : (Team_Config.length === 4 && healCount >= 2) ? 'quad'
+            : 'line';
         Object.assign(teamMem, {
             name: teamID,
             status: 'ready',
@@ -513,10 +585,12 @@ const TeamSpawner = {
             time: Game.time,
             homeRoom: room.name,
             targetRoom: flag.pos.roomName,
+            configKey,
         });
         try {
-            // pos.createFlag 已重写，理论上无视野房可用；建不出就不建——无旗队伍按 targetRoom 推进开打（GatherLine/execMove/chooseTargets 均有无旗锚点）
-            combatCreateFlag(flag.pos.roomName, flag.pos.x, flag.pos.y, `Team-${teamID}`);
+            // pos.createFlag 原型重写 (伪 Room 借原生实现): 无视野目标房也能建指挥旗;
+            // 继承指令旗颜色, 保留 actionMode/targetMode 语义
+            flag.pos.createFlag(`Team-${teamID}`, flag.color, flag.secondaryColor) as number;
         } catch {
             // 引擎抛异常口径：放弃建旗
         }
@@ -530,22 +604,24 @@ const TeamSpawner = {
      * @param room 孵化房间（通过 `room.SpawnMissionAdd` 下发任务）
      *
      * @remarks
-     * `compressBodyConfig` 用于把 `[ [part, count], ... ]` 压缩成孵化系统可识别的格式。\n
+     * 要塞服口径：不一次性循环 directSpawn（单 spawn 一 tick 仅能下一单，其余成员会丢失）。
+     * 改为将全部成员写入待补孵队列，由 retryPendingSpawns() 每 tick 逐名重试直至全部出生。
+     * bodypart 为 `[[part, count], ...]` 压缩格式，须展开为逐部件数组
+     * （`.flat()` 会把计数混进 body 导致 ERR_INVALID_ARGS，见 broker invalid 日志）。
      * 这里保持原调用参数不变，避免影响孵化系统的调度优先级与任务结构。
      */
     spawnTeamCreeps(teamID: string, Team_Config: any[], room: Room): void {
-        // 孵化小队成员 (直接孵化, 绕池): 显式压缩体, emergency 语义无需等待
-        for (const c of Team_Config) {
-            directSpawn(room, {
-                mode: "direct",
+        getTeamPendingSpawns()[teamID] = {
+            roomName: room.name,
+            members: Team_Config.map((c) => ({
                 unit: c.unit,
                 memory: {
                     teamID,
                     ...(isBoostResCheckEnabled() ? { boostmap: { ...c.boostmap } } : {}),
-                },
-                body: (c.bodypart as BodyPartConstant[]).flat(),
-            });
-        }
+                } as CreepMemory,
+                body: expandBodyParts(c.bodypart),
+            })),
+        };
     },
 
     /**

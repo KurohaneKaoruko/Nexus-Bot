@@ -3084,6 +3084,9 @@ function endTickResolve(userIsWorkTile: any) {
 				}
 				const creepPos = creep!.pos!;
 				const pos = tile2Pos(target);
+				// 站在出口格且目标格在邻房: 发指令会取消引擎的边界自动传送,
+				// 跳过本 tick 让 creep 静止待传 (方向指向房内的不受影响)
+				if (creep!.pos!.isRoomEdge!() && pos.roomName !== creepPos.roomName) continue;
 				if (pos.x !== creepPos.x || pos.y !== creepPos.y) {
 					// 如果 target !== start 当前所在位置才需要移动
 					// creep.room.visual.line(creep.pos, pos, lineStyle[0]);
@@ -3103,6 +3106,8 @@ function endTickResolve(userIsWorkTile: any) {
 				}
 				const creepPos = creep!.pos!;
 				const pos = tile2Pos(target);
+				// 同上: 出口格 + 邻房目标 = 静止待传送
+				if (creep!.pos!.isRoomEdge!() && pos.roomName !== creepPos.roomName) continue;
 				if (pos.x !== creepPos.x || pos.y !== creepPos.y) {
 					// 如果 target !== start 当前所在位置才需要移动
 					// creep.room.visual.line(creep.pos, pos, lineStyle[0]);
@@ -3124,6 +3129,8 @@ function endTickResolve(userIsWorkTile: any) {
 				}
 				const creepPos = creep!.pos!;
 				const pos = tile2Pos((target as any) [i]);
+				// 出口格 + 邻房目标 = 静止待传送 (发指令会取消边界自动传送)
+				if (creep!.pos!.isRoomEdge!() && pos.roomName !== creepPos.roomName) continue;
 				if (pos.x !== creepPos.x || pos.y !== creepPos.y) {
 					// 如果 target !== start 当前所在位置才需要移动
 					// if (pos.roomName === creepPos.roomName) creep.room.visual.line(creep.pos, pos, lineStyle[start % lineStyle.length]);

@@ -139,6 +139,14 @@ export function combatRangedHeal(creep: Creep, target: Creep): number {
 
 /** 定向移动 (move) */
 export function combatMove(creep: Creep, direction: DirectionConstant): number {
+	// 站在出口格且方向指向房外: 发指令走不进邻房还会取消引擎的边界自动传送,
+	// 静止一 tick 等传送 (方向指向房内的照常移动)
+	if (
+		creep.pos.isRoomEdge() &&
+		creep.pos.getDirectPos(direction).roomName !== creep.pos.roomName
+	) {
+		return OK;
+	}
 	hold(creep.name);
 	return submitCombat({
 		actorName: creep.name,

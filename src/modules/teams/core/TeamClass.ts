@@ -4,7 +4,6 @@ import TeamAction from '@/modules/teams/core/TeamAction';
 import TeamBattle from '@/modules/teams/core/TeamBattle';
 import TeamVisual from '@/modules/teams/core/TeamVisual';
 import { type TeamFormationName, type TowardName } from '@/modules/teams/core/FormationTables';
-import { combatCreateFlag } from '@/modules/combat';
 
 /**
  * 小队实体（Team 状态机）。
@@ -127,13 +126,10 @@ class Team {
      * - 防止对穿：当队形稳定时设置 creep.memory.dontPullMe=true，减少 moveOptimization 的对穿打散。
      */
     execUpdate(): void {
-        // 指挥旗丢失时在队首脚下补建（官方口径），但队首还在孵化房时不补——
-        // 孵化房里的旗会把 targetRoom 牵引回自己家（要塞服无视野建旗必失败的场景）
-        if (!this.flag && this.creeps && this.creeps.length > 0) {
-            const head = this.creeps[0];
-            if (head?.pos && head.room.name !== this.homeRoom) {
-                try { combatCreateFlag(head.room.name, head.pos.x, head.pos.y, `Team-${this.name}`); } catch { /* 引擎拒绝时下 tick 重试 */ }
-            }
+        // 指挥旗丢失时在目标房中心补建 (pos.createFlag 原型重写, 无视野可用)。
+        // 不建在队首脚下: 队首还在孵化房时, 旗会把 targetRoom 牵引回孵化房。
+        if (!this.flag && this.creeps && this.creeps.length > 0 && this.targetRoom) {
+            try { new RoomPosition(25, 25, this.targetRoom).createFlag(`Team-${this.name}`) as number; } catch { /* 引擎拒绝时下 tick 重试 */ }
         }
         // 指挥旗位置重定义目标房（已有逻辑）
         if (this.flag && this.targetRoom != this.flag.pos.roomName) {
@@ -326,7 +322,9 @@ class Team {
                 return;
             }
 
-            TeamAction.LinearMove(this, this.creeps[this.creeps.length - 1]!.pos, true);
+            // 穿边破阵且无路: 不倒退拉扯 (会在门口反复横跳), 散装推进穿过
+            TeamAction.noteStuck(this);
+            TeamAction.looseAdvance(this, anchor);
             this.moved = true;
         } else if (this.formation === 'quad') {
             if (isQuad || this.status === 'flee') {
@@ -341,10 +339,31 @@ class Team {
                         TeamAction.move(this, direction);
                         this.moved = true;
                         TeamVisual.drawMoveDirection(this)
+                    } else if (isQuad) {
+                        // 成阵但整阵无路 (窄门摆不下 2x2): 散装窗口内直接散装穿门,
+                        // 否则累计受卡到阈值切散装窗口——鱼贯而过, 过门后再重组
+                        const isLoose = (this.cache.looseUntilTick ?? 0) > Game.time;
+                        if (isLoose) {
+                            TeamAction.looseAdvance(this, anchor);
+                            this.moved = true;
+                        } else {
+                            TeamAction.noteStuck(this);
+                        }
                     }
                 }
             }
-            if (!this.moved && !isQuad) this.moved = TeamAction.Gather(this);
+            if (!this.moved && !isQuad) {
+                // 破阵集结: 散装窗口内直接散装推进 (窄口永远凑不齐 2x2 = 死锁);
+                // 否则尝试集结, 受卡累计到阈值自动切散装窗口
+                const isLoose = (this.cache.looseUntilTick ?? 0) > Game.time;
+                if (isLoose) {
+                    TeamAction.looseAdvance(this, anchor);
+                    this.moved = true;
+                } else {
+                    TeamAction.noteStuck(this);
+                    this.moved = TeamAction.Gather(this);
+                }
+            }
         }
     }
 

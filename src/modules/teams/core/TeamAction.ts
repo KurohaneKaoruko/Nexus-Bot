@@ -7,6 +7,7 @@ import TeamVisual from '@/modules/teams/core/TeamVisual';
 import RoomArray from '@/modules/teams/core/RoomArray'
 import { formationTemplate, sectorToward, shapeOfCount, type TowardName } from '@/modules/teams/core/FormationTables';
 import { combatMove, combatMoveTo } from '@/modules/combat';
+import { TEAM_MOVE_CONFIG } from '@/config/combat';
 
 const emptyCostMatrix = new PathFinder.CostMatrix()
 const tempRoomArray = new RoomArray()
@@ -407,7 +408,7 @@ const TeamAction = {
     },
 
     /**
-     * 线性队形组成四人队形
+     * 线性队形组成连结队形
      */
     formLineToQuad(team: Team) {
         if (team.creeps.length < 3) return false;
@@ -663,11 +664,33 @@ const TeamAction = {
                     const holdQuad = TeamUtils.willTeamBeQuadNextTick(team, undefined)
                     const moveQuad = TeamUtils.willTeamBeQuadNextTick(team, direction)
                     if (holdQuad && !moveQuad) {
-                        team.cache.lastMoveHold = true
-                        return
+                        // 保形驻留最多持续 holdLimitTicks: 超时说明对岸格被占/不可达,
+                        // 放弃保形强制下发移动 (否则门口永久站桩)
+                        team.cache.holdTicks = (team.cache.holdTicks ?? 0) + 1
+                        if (team.cache.holdTicks < TEAM_MOVE_CONFIG.quadHoldLimitTicks) {
+                            team.cache.lastMoveHold = true
+                            return
+                        }
                     }
                 }
-                creeps.forEach((creep) => combatMove(creep, direction))
+                team.cache.holdTicks = 0
+                // 出口格上的成员不指令 (发过指令会被引擎取消边界自动传送),
+                // tick 结束自动传送到对岸; 其余成员照常同向移动, 鱼贯而过。
+                // 出口格外向房内一步的成员若前方是待传送成员, 本 tick 让行。
+                const occupied = new Set(
+                    creeps
+                        .filter((c) => c.pos.isRoomEdge() && c.pos.getDirectPos(direction).roomName != c.pos.roomName)
+                        .map((c) => `${c.pos.x},${c.pos.y},${c.pos.roomName}`),
+                )
+                creeps.forEach((creep) => {
+                    if (
+                        creep.pos.isRoomEdge() &&
+                        creep.pos.getDirectPos(direction).roomName != creep.pos.roomName
+                    ) return // 站在出口: 等待自动传送
+                    const next = creep.pos.getDirectPos(direction)
+                    if (occupied.has(`${next.x},${next.y},${next.roomName}`)) return // 前方是待传送成员: 让行
+                    combatMove(creep, direction)
+                })
                 return
             }
         }
@@ -774,25 +797,66 @@ const TeamAction = {
     /**
      * 扩展队形（cross/square3）移动入口：同房散队模板集结；成阵后按索敌目标/锚点八向群移。
      */
+    /**
+     * 散装推进: 成员各自向目标步进 (动态组合降级态)。
+     *
+     * @remarks
+     * 同房 combatMoveTo 贴近 (range 2); 跨房按 findRoute 出口方向步进
+     * (moveTo 系不支持跨房目标)。已就位/疲劳/站出口格待传送的成员跳过——
+     * 站上出口格不发指令, tick 结束引擎自动传送到对岸。
+     */
+    looseAdvance(team: Team, looseGoal: RoomPosition): void {
+        let progressing = false;
+        for (const c of team.creeps) {
+            if (c.fatigue > 0) continue;
+            if (c.room.name === looseGoal.roomName) {
+                // 同房照常走 (刚传送到对岸站在边缘的成员向房内推进合法且必要)
+                if (!c.pos.inRangeTo(looseGoal, 2)) {
+                    combatMoveTo(c, looseGoal, { range: 2 });
+                    progressing = true;
+                }
+            } else {
+                // 跨房出口步进: 站在出口格待传送的情形由 combatMove 内部拦 (方向指向房外才等),
+                // 这里照常下发
+                const dir = TeamUtils.routeExitDir(c.room.name, looseGoal.roomName);
+                if (dir) { combatMove(c, dir); progressing = true; }
+            }
+        }
+        // 有成员仍在推进则续期散装窗口: 门口长队列没穿完时不强制回阵型 (回阵型 = 再卡一次)
+        if (progressing) team.cache.looseUntilTick = Math.max(team.cache.looseUntilTick ?? 0, Game.time + TEAM_MOVE_CONFIG.looseDurationTicks);
+    },
+
+    /**
+     * 卡死计数: 阵型受卡 (无方向/破阵/集结失败) 逐 tick 累计,
+     * 达阈值切散装窗口; 任何一次整阵成功推进都会清零。
+     */
+    noteStuck(team: Team): void {
+        // 散装窗口内仍在推进 (有成员未到位且在动) 则续期, 防止长门口
+        // 队列没穿完就被强制拉回阵型再卡一次
+        team.cache.stuckTicks = (team.cache.stuckTicks ?? 0) + 1;
+        if ((team.cache.stuckTicks ?? 0) >= TEAM_MOVE_CONFIG.stuckTriggerTicks) {
+            team.cache.looseUntilTick = Game.time + TEAM_MOVE_CONFIG.looseDurationTicks;
+            team.cache.stuckTicks = 0;
+        }
+    },
+
     execMoveExtended(team: Team, anchor: RoomPosition | undefined): boolean {
         const shape = shapeOfCount(team.creeps.length);
         if (!shape) return false;
         const goal = team['_targets']?.[0]?.pos ?? anchor;
 
-        // 临时痕迹：扩展队形逐 tick 分支去向（查完移除）
-        const dbg = ((Memory as any).xtrace ??= []) as any[];
-        const say = (did: string) => {
-            const last = dbg[dbg.length - 1];
-            if (last && last.t === Game.time && last.team === team.name) last.did = did;
+        // ── 动态组合 (窄门/墙角防卡死): 严格阵型受卡累计到阈值后, 切散装推进
+        // (成员各自寻路, 单爬可穿窄门/绕角); 窗口到期自动重试阵型, 有空间即恢复 ──
+        const isLoose = (team.cache.looseUntilTick ?? 0) > Game.time;
+        const noteStuck = () => TeamAction.noteStuck(team);
+        const clearStuck = () => { team.cache.stuckTicks = 0; };
+        const tryEnterLoose = () => {
+            if ((team.cache.stuckTicks ?? 0) < TEAM_MOVE_CONFIG.stuckTriggerTicks) return false;
+            team.cache.looseUntilTick = Game.time + TEAM_MOVE_CONFIG.looseDurationTicks;
+            team.cache.stuckTicks = 0;
+            return true;
         };
-        if (!dbg.length || dbg[dbg.length - 1].t !== Game.time || dbg[dbg.length - 1].team !== team.name) {
-            dbg.push({
-                t: Game.time, at: 'ext', team: team.name, status: team.status, n: team.creeps.length,
-                same: TeamUtils.inSameRoom(team), shaped: TeamUtils.isExtendedShape(team),
-                goal: goal ? `${goal.x},${goal.y},${goal.roomName}` : null,
-            });
-            if (dbg.length > 40) dbg.shift();
-        }
+        const looseAdvance = (looseGoal: RoomPosition) => TeamAction.looseAdvance(team, looseGoal);
 
         const inTargetCount = team.creeps.filter(c => c.room.name === team.targetRoom).length;
 
@@ -802,7 +866,7 @@ const TeamAction = {
             for (const c of team.creeps) {
                 if (c.room.name === team.targetRoom) continue;  // 已过门的就位（execAttack 自动开火）
                 if (c.fatigue > 0) continue;                    // 疲劳自然滞留
-                // 跨房用 findRoute 出口方向步进（moveTo 不支持跨房）；同房向队首聚拢
+                // 跨房出口步进: 出口格待传送的拦截在 combatMove 内部 (方向指向房外才等)
                 if (c.room.name === leader.room.name) {
                     if (!c.pos.inRangeTo(leader.pos, 2)) combatMoveTo(c, leader.pos, { range: 2 });
                 } else {
@@ -810,7 +874,6 @@ const TeamAction = {
                     if (dir) combatMove(c, dir);
                 }
             }
-            say('split-rally');
             return true;
         }
 
@@ -820,43 +883,65 @@ const TeamAction = {
 
             // 目标房内：成阵 → 集火整队推进（execAttack 同步开火）
             if (inTargetRoom) {
-                if (!TeamUtils.isExtendedShape(team)) { say('target-form'); return TeamAction.GatherByTemplate(team, shape); }
-                if (team.creeps.some(c => c.fatigue > 0)) { say('target-fatigue'); return true; }
+                if (!TeamUtils.isExtendedShape(team)) {
+                    // 散装窗口内不强制成阵, 直接散装推进; 受卡累计到阈值也切散装
+                    noteStuck();
+                    const looseGoal = goal ?? TeamUtils.getTeamPos(team);
+                    if ((isLoose || tryEnterLoose()) && looseGoal) { looseAdvance(looseGoal); return true; }
+                    return TeamAction.GatherByTemplate(team, shape);
+                }
+                if (team.creeps.some(c => c.fatigue > 0)) return true;
                 const focus = TeamAction.focusTarget(team, TeamUtils.getTeamPos(team));
                 const goalPos = (focus ? focus.pos : null) ?? goal;
-                if (!goalPos) { say('no-goal'); return false; }
+                if (!goalPos) return false;
                 const direction = TeamAction.getTeamMoveDirection(team, [{ pos: goalPos }]);
-                say(direction ? 'target-advance:' + direction : 'no-direction');
-                if (!direction) return false;
-                TeamAction.move(team, direction);
-                return true;
+                if (direction) {
+                    clearStuck();
+                    TeamAction.move(team, direction);
+                    return true;
+                }
+                // 阵型整体无路 (窄门/墙角): 切散装逐个穿行
+                noteStuck();
+                if (tryEnterLoose()) { looseAdvance(goalPos); return true; }
+                return false;
             }
 
             // 孵化房：先成阵（锚点已离 spawn 群）；集结超时未成阵也整队向目标房推进
             if (!TeamUtils.isExtendedShape(team)) {
                 if (!team.cache.gatherSince) team.cache.gatherSince = Game.time;
-                if (Game.time - team.cache.gatherSince < 40) { say('home-gather'); return TeamAction.GatherByTemplate(team, shape); }
+                if (Game.time - team.cache.gatherSince < TEAM_MOVE_CONFIG.gatherWindowTicks) {
+                    return TeamAction.GatherByTemplate(team, shape);
+                }
                 delete team.cache.gatherSince;
             }
             const exitGoal = team.targetRoom ? new RoomPosition(25, 25, team.targetRoom) : goal;
-            if (!exitGoal) { say('no-exit'); return false; }
-            if (team.creeps.some(c => c.fatigue > 0)) { say('home-fatigue'); return true; }
+            if (!exitGoal) return false;
+            if (team.creeps.some(c => c.fatigue > 0)) return true;
             const direction = TeamAction.getTeamMoveDirection(team, [{ pos: exitGoal }]);
-            say(direction ? 'home-march:' + direction : 'no-direction');
-            if (!direction) return false;
-            TeamAction.move(team, direction);
-            return true;
+            if (direction) {
+                clearStuck();
+                TeamAction.move(team, direction);
+                return true;
+            }
+            // 阵型无路: 切散装逐个穿行
+            noteStuck();
+            if (isLoose || tryEnterLoose()) { looseAdvance(exitGoal); return true; }
+            return false;
         }
 
         // ── 全员在第三房（路过的过渡态）：整队向目标房推进 ──
         const exitGoal = team.targetRoom ? new RoomPosition(25, 25, team.targetRoom) : goal;
-        if (!exitGoal) { say('no-transit'); return false; }
-        if (team.creeps.some(c => c.fatigue > 0)) { say('transit-fatigue'); return true; }
+        if (!exitGoal) return false;
+        if (team.creeps.some(c => c.fatigue > 0)) return true;
         const direction = TeamAction.getTeamMoveDirection(team, [{ pos: exitGoal }]);
-        say(direction ? 'transit-march:' + direction : 'no-direction');
-        if (!direction) return false;
-        TeamAction.move(team, direction);
-        return true;
+        if (direction) {
+            clearStuck();
+            TeamAction.move(team, direction);
+            return true;
+        }
+        noteStuck();
+        if (isLoose || tryEnterLoose()) { looseAdvance(exitGoal); return true; }
+        return false;
     },
 
     /**
@@ -914,8 +999,26 @@ const TeamAction = {
         const slots = formationTemplate(shape, team.toward as TowardName);
         const clamp = (v: number) => Math.max(1, Math.min(48, v));
         const anchor = TeamAction.stagingAnchorOf(team.name, team.creeps, team.targetRoom);
-        const cx = clamp(anchor.x), cy = clamp(anchor.y);
+        let cx = clamp(anchor.x), cy = clamp(anchor.y);
         const roomName = team.creeps[0].room.name!;
+
+        // 锚点贴墙/贴建筑时模板槽位会被钳进不可走格 (成员追一个到不了的槽位 = 卡角落):
+        // 沿朝房间中心方向逐格试, 找到全部槽位可走的锚点; 找不到维持原锚点 (散装推进兜底)
+        const shapeFits = (x: number, y: number) => {
+            for (const s of slots) {
+                const pos = new RoomPosition(clamp(x + s.x), clamp(y + s.y), roomName);
+                if (!pos.walkable()) return false;
+            }
+            return true;
+        };
+        if (!shapeFits(cx, cy)) {
+            const dx = Math.sign(25 - cx), dy = Math.sign(25 - cy);
+            for (let step = 1; ; step += 1) {
+                const nx = clamp(cx + dx * step), ny = clamp(cy + dy * step);
+                if (nx === cx && ny === cy) break; // 贴住房间边界仍无解, 放弃 (散装推进兜底)
+                if (shapeFits(nx, ny)) { cx = nx; cy = ny; break; }
+            }
+        }
 
         const remaining = [...team.creeps];
         const heals = remaining.filter(c => c.getActiveBodyparts(HEAL) > 0);

@@ -58,11 +58,11 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	"double-dismantle": "双人拆除体",
 	"double-heal": "双人治疗体",
 
-	/* 四人队 */
-	"team-attack": "四人队突击体",
-	"team-dismantle": "四人队拆除体",
-	"team-heal": "四人队治疗体",
-	"team-ranged": "四人队远程体",
+	/* 连结队 */
+	"team-attack": "连结突击体",
+	"team-dismantle": "连结拆除体",
+	"team-heal": "连结治疗体",
+	"team-ranged": "连结远程体",
 
 	/* 主动防御 */
 	defender: "防御体",

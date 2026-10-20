@@ -253,6 +253,28 @@ export function ensureTeamData(teamID: string): any {
 	return root[teamID];
 }
 
+// ── Team 待补孵队列 ─────────
+
+/**
+ * 获取编队待补孵队列（TeamPendingSpawns）。
+ * @param teamID 可选；传入则仅返回该条目（不创建）。
+ */
+export function getTeamPendingSpawns(): BotMemory['TeamPendingSpawns'];
+export function getTeamPendingSpawns(teamID: string): any | undefined;
+export function getTeamPendingSpawns(teamID?: string) {
+	const mem = getBotMemory();
+	mem.TeamPendingSpawns ??= {};
+	if (teamID) return mem.TeamPendingSpawns[teamID];
+	return mem.TeamPendingSpawns;
+}
+
+/** 确保指定 teamID 的待补孵条目存在（唯一允许创建的入口） */
+export function ensureTeamPendingSpawns(teamID: string): any {
+	const root = getTeamPendingSpawns();
+	root[teamID] ??= {} as any;
+	return root[teamID];
+}
+
 // ── 散键收口：原 Memory 根级自建键 → Nexus ──
 // 迁移为一次性引用搬移；旧键残留由 ClearModule 清理。
 

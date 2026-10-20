@@ -599,17 +599,24 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 				if (!plan.targetPos || !payload.flagName) {
 					return invalid("createFlag-missing-args");
 				}
-				const room = Game.rooms[plan.targetPos.roomName];
-				if (!room) {
-					return invalid("room-not-visible");
-				}
-				const code = room.createFlag(
-					plan.targetPos.x,
-					plan.targetPos.y,
-					payload.flagName,
-					payload.color,
-					payload.secondaryColor,
-				);
+				// 无视野房借引擎原生实现 + 伪 room 接收者建旗 (与 RoomPosition.createFlag
+				// 原型重写同口径); 编队指挥旗常落在尚无视野的目标房
+				const visibleRoom = Game.rooms[plan.targetPos.roomName];
+				const pos = new RoomPosition(plan.targetPos.x, plan.targetPos.y, plan.targetPos.roomName);
+				// RoomPosition.createFlag 原型重写: 无视野房借原生实现 + 伪 room 建旗
+				const code = visibleRoom
+					? visibleRoom.createFlag(
+							plan.targetPos.x,
+							plan.targetPos.y,
+							payload.flagName,
+							payload.color,
+							payload.secondaryColor,
+						)
+					: pos.createFlag(
+							payload.flagName,
+							payload.color ?? COLOR_WHITE,
+							payload.secondaryColor ?? COLOR_WHITE,
+						);
 				// createFlag 成功返回旗标名 (字符串), 失败返回负数错误码
 				if (typeof code === "string") {
 					return { ...base, accepted: true, category: "accepted" };

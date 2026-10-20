@@ -7,7 +7,6 @@ import { getTeamCreeps } from "@/utils/creepTickIndex";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
 import { getBoostCache } from "@/proto";
 import { combatMove, combatMoveTo, combatRemoveFlag, combatSuicide, holdActor, releaseTeamActors } from "@/modules/combat";
-
 /**
  * Team 执行调度器（运行时）。
  *
@@ -131,7 +130,15 @@ const TeamController = {
                 // 未进目标房的成员向目标房中心行进；已进目标房的在进门处原地待机（房间门口待机），
                 // 聚齐后由 attack 状态整队推进
                 if (teamData.creeps.length < teamData.num) {
-                    const teamFlag = Game.flags[`Team-${teamID}`]
+                    let teamFlag = Game.flags[`Team-${teamID}`]
+                    // 指挥旗自愈: 目标房中心补建 (pos.createFlag 原型重写, 无视野可用)。
+                    // 不建在孵化房: 旗位置会牵引 targetRoom 回老家 (以旗为准口径)。
+                    if (!teamFlag && teamData.targetRoom) {
+                        try {
+                            new RoomPosition(25, 25, teamData.targetRoom).createFlag(`Team-${teamID}`) as number;
+                            teamFlag = Game.flags[`Team-${teamID}`];
+                        } catch { /* 引擎拒绝时下 tick 重试 */ }
+                    }
                     if (teamFlag) {
                         teamData.creeps.forEach((creepID: any) => {
                             const creep = Game.getObjectById(creepID) as Creep;
@@ -144,12 +151,15 @@ const TeamController = {
                             }
                         });
                     } else {
-                        // 无指挥旗：跨房用 findRoute 出口方向步进（moveTo 不支持跨房）；
-                        // 已进目标房的在进门边缘待机（房间门口待机），聚齐后整队推进
-                        for (const creep of teamData.creeps.map(Game.getObjectById).filter(Boolean) as Creep[]) {
-                            if (creep.room.name === teamData.targetRoom) continue;
-                            const dir = TeamUtils.routeExitDir(creep.room.name, teamData.targetRoom!);
-                            if (dir) combatMove(creep, dir);
+                        // 无指挥旗：目标房无视野时按兵不动（在孵化房待命）。
+                        // 指挥旗落点通常在无视野的目标房, 建旗失败/延迟期间若按目标房推进,
+                        // 未集齐的散队会被要塞火力逐个击杀。目标房有视野时仍向房门推进。
+                        if (Game.rooms[teamData.targetRoom!]) {
+                            for (const creep of teamData.creeps.map(Game.getObjectById).filter(Boolean) as Creep[]) {
+                                if (creep.room.name === teamData.targetRoom) continue;
+                                const dir = TeamUtils.routeExitDir(creep.room.name, teamData.targetRoom!);
+                                if (dir) combatMove(creep, dir);
+                            }
                         }
                     }
                     continue;

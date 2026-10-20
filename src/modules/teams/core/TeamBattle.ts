@@ -4,6 +4,7 @@ import TeamCache from "@/modules/teams/core/TeamCache";
 import TeamAction from "@/modules/teams/core/TeamAction";
 import TeamUtils from "@/modules/teams/core/TeamUtils";
 import { combatAttack, combatHeal, combatRangedAttack, combatRangedMassAttack } from "@/modules/combat";
+import { TEAM_VOLLEY_CONFIG } from "@/config/combat";
 
 /**
  * 战斗类
@@ -280,6 +281,15 @@ const TeamBattle = {
         const creep = team.creeps.find((c: any) => c.room.name === scanRoomName)
 
         if (room && creep) {
+            // 要塞核心在射程内时直击核心 (跳过其余目标选择, 打掉核心即胜利)
+            const core = room.find(FIND_STRUCTURES, {
+                filter: (s) => s.structureType === STRUCTURE_INVADER_CORE,
+            })[0];
+            if (core && team.creeps.some((c) => c.pos.getRangeTo(core.pos) <= 3)) {
+                (team as any)['_targets'] = [core];
+                return;
+            }
+
             if (preferFlag) {
                 const targets = [...team.flag.pos.lookFor(LOOK_STRUCTURES)].filter((s) => s.structureType !== STRUCTURE_ROAD)
                 if (targets.length) {
@@ -399,6 +409,17 @@ const TeamBattle = {
 
                 // 与目标相邻且有 owner 属性
                 if (creep.pos.isNearTo(target) && 'owner' in target) {
+                    combatRangedMassAttack(creep)
+                } else if (
+                    // 齐射增强: 2 格内堆叠多个 rampart 时 mass 收益高于单体
+                    // (3x3 溅射同时削 2+ 目标)
+                    creep.room
+                        .find(FIND_HOSTILE_STRUCTURES, {
+                            filter: (s: Structure) =>
+                                s.structureType === STRUCTURE_RAMPART &&
+                                creep.pos.getRangeTo(s) <= TEAM_VOLLEY_CONFIG.massAttackRange,
+                        }).length >= TEAM_VOLLEY_CONFIG.massAttackRampartCount
+                ) {
                     combatRangedMassAttack(creep)
                 } else {
                     combatRangedAttack(creep, target)

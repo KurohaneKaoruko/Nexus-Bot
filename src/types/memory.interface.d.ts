@@ -68,6 +68,15 @@ interface BotMemory {
     ResourceManage: { [roomName: string]: ResourceManageMemory };
     TeamData: Record<string, any>;
     TeamSpawnQueue: Record<string, any>;
+    /** 编队待补孵成员（跨 tick 补孵, global 重置后不丢）: teamID → 待孵条目 */
+    TeamPendingSpawns: Record<string, {
+        roomName: string;
+        members: { unit: string; memory: CreepMemory; body: string[] }[];
+    }>;
+    /** 闪电战调度状态（stronghold 分支: 盾队满员时刻等, global 重置后不丢） */
+    BlitzState?: {
+        guardReadyTick?: number | undefined;
+    };
     NukerData: NukerDataMemory;
     // ── 自建散键收口（原 Memory 根散落字段，迁移见 memory/roots.ts）──
     // 注：房间记忆不走本命名空间——`Room.memory` 是引擎原生通道，桥接 `Memory.rooms`。

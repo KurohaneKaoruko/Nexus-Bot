@@ -146,8 +146,8 @@ export const UnitData = {
         executor: 'double-heal',
     },
 
-    /* 四人队 */
-    // 四人队成员由 Team 模块统一接管行动，因此不绑定常规 executor。
+    /* 连结队 */
+    // 连结队成员由 Team 模块统一接管行动，因此不绑定常规 executor。
     'team-attack': { bodypart: [], level: 10, code: 'xA' },
     'team-dismantle': { bodypart: [], level: 10, code: 'xD' },
     'team-heal': { bodypart: [], level: 10, code: 'xH' },
