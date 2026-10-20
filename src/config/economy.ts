@@ -224,8 +224,10 @@ export const DOWNGRADE_CONFIG = {
 
 /** 控制器缓冲 cc (bugs/P1-14 根因① / specs/controller-upgrade-buffer): 升级工就位直供的货源容器 */
 export const CONTROLLER_BUFFER_CONFIG = {
-	/** cc 规划的最低 RCL (容器 RCL1 即可建, 冲级房开局直供) */
-	minRcl: 1,
+	/** cc 规划的最低 RCL: 容器 RCL1 即可建, 但 RCL1 期无 courier 闭环,
+	 *  cc 只换来一条 L0 建造任务抢占首只 upgrader (4000 WORK-tick 建造窗),
+	 *  RCL2 前的升级链靠 RCL1 断粮自采闭环 */
+	minRcl: 2,
 	/** 水位门缓冲 tick 数: cc 存量 < 在座升级 WORK×2×该值 时暂停升级体孵化 (让位物流) */
 	spawnGateBufferTicks: 10,
 	/** 采纳半径: 控制器该范围内的既有容器/容器工地直接采纳为 cc, 不另建 */

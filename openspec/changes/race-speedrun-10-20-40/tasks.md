@@ -32,7 +32,7 @@
 
 ## 6. 批次 C：冲刺迭代（循环直至三档全绿）
 
-- [ ] 6.1 冲刺循环：跑 speedrun → 读三档达成 → 未达标轴定位（升级均速/采集面/孵化节律）→ 针对 race bot 对应机制移植或调参 → 全场景回归 → commit；每轮记录到 race-strategy-port.md（含负收益撤销留档）；验证：RCL4≤10000 达成
+- [ ] 6.1 冲刺循环：跑 speedrun → 读三档达成 → 未达标轴定位（升级均速/采集面/孵化节律）→ 针对 race bot 对应机制移植或调参 → 全场景回归 → commit；每轮记录到 race-strategy-port.md（含负收益撤销留档）；验证：RCL4≤10000 达成（用户口径 2026-10-20：RCL2 ≤500 为达标线、≤1000 为合格线——批次 Q 已达 458，见档案）
 - [ ] 6.2 冲刺循环（续）：同 6.1 程序推进；验证：RCL5≤20000 达成
 - [ ] 6.3 冲刺循环（续）：同 6.1 程序推进；验证：RCL6≤40000 达成，且 speedrun 全断言（三档 + noErrors + cpuP95Below 20）全绿
 - [ ] 6.4 全场景回归总验：六场景门（boot/sprint/remote-mine/arena/speedrun/run-residue）+ tsc + oxlint + arch-guard 全绿；boot L2 漂移 ≤10% 核对；验证：`npm run sim` 全场景输出全绿留档

@@ -630,9 +630,16 @@ function runCreep(
 				// 保级窗口由 registerUpgraderStarve 内部豁免), 原地待命保租约。
 				// 分档直采 (bugs/P1-14 cc 断粮, (十) 方向2): 无 courier 投喂经济的
 				// 档位退化为长腿自取 (fetchEnergy 最近货源), cc 有货自动回归直供;
-				// rush/mini 靠墓碑投喂闭环, 保持钉工位
+				// rush/mini 靠墓碑投喂闭环, 保持钉工位。
+				// 无 cc 期豁免 (race-speedrun 6.1 第五轮, RCL2 提速): 直供链的
+				// 前提物是 cc, cc 未成/未建 (含 RCL1, cc 规划 RCL2 起) 时钉工位
+				// 没有任何投喂来源——开局首 200 进度全靠偶发顺路升级, 实测 t851
+				// 才有点数; 自采自升是唯一闭环, cc 有货即回归既有直供语义。
 				registerUpgraderStarve(ctx, room);
-				if (roomModeProfileFor(ctx, room.roomName).upgraderForageOnStarve) {
+				if (
+					roomModeProfileFor(ctx, room.roomName).upgraderForageOnStarve ||
+					!room.controllerBuffer
+				) {
 					fetchEnergy(ctx, broker, room, creep, task, undefined, {
 						x: buffer.x,
 						y: buffer.y,

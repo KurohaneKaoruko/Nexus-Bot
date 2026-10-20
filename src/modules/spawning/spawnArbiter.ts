@@ -104,8 +104,16 @@ export function arbitrateForSpawn(
 					r.unit === "defender" ||
 					r.unit === "scout" ||
 					criticalWorker(r) ||
+					// 升级体恒随行 (E18 实现修正, race-speedrun 6.1 第五轮): 原实现
+					// 只把 upgrader 从拒绝计数里排除, 并未加回仲裁池——采集让位窗口内
+					// 升级请求实际被丢弃, 与下方注释语义相反。RCL1 首 300t 恒让位,
+					// 首只 upgrader 拖到 t1215 (本可 t~100 上岗), 前 850t 升级进度 0。
+					// 升级体与采集体消耗不同预算档, 不构成能量挤占。
+					(r.unit === "upgrader" && (spawn.room.controller?.level ?? 0) <= 1) ||
 					// 采集未满编期间 carrier 不超过在岗矿工数 (1 采 1 搬交替孵化)
-					(r.unit === "carrier" && staffed("carrier") < Math.max(1, staffed("harvester"))),
+					(r.unit === "carrier" &&
+						((spawn.room.controller?.level ?? 0) > 1 || staffed("harvester") > 0) &&
+						staffed("carrier") < Math.max(1, staffed("harvester"))),
 			)
 		: gated;
 	if (harvesterShort) {
@@ -174,7 +182,17 @@ export function arbitrateForSpawn(
 				// 归零角色立即小体复产 (自举通道): 攒能等待的前提是职能在岗——
 				// 全灭后等待只会让能量链死锁 (50k 普查 harvester 0 存活实锤;
 				// carrier 全灭则 spawn 永远等不到拉能, bugs/P1-19 断供环)
-				staffed(r.unit) <= bootstrapFloorOf(r.unit)) &&
+				staffed(r.unit) <= bootstrapFloorOf(r.unit) ||
+				// RCL1 升级面优先铺满 (race-speedrun 6.1 第六轮): 首 200 进度
+				// 只需升级体, 而 carrier L3 常驻池会把每只 upgrader 压到换代
+				// 才上槽 (实测第二只拖到 t461); 请求在池 = 定编有缺口, 放行
+				(r.unit === "upgrader" && (spawn.room.controller?.level ?? 0) <= 1)) &&
+			// 首只矿工前不放行载体 (race-speedrun 6.1 第六轮): 无矿工在场时
+			// 载体无货可拉, 只吃掉开局唯一的百点能量与孵化槽 (实测 t9 孵出后
+			// ~290t 才有第一桶可搬能量, 同期升级链停摆)
+			!(r.unit === "carrier" &&
+				(spawn.room.controller?.level ?? 0) <= 1 &&
+				staffed("harvester") === 0) &&
 			buildBody(r.unit, r.budget ?? available, hints) !== null,
 	);
 	// 自举硬保障 (实服 4wt 重置路径, bugs (十七)): harvester 全灭时其请求恒过

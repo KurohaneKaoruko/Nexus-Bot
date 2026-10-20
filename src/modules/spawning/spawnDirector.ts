@@ -181,6 +181,8 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		// 任务被租住或处于失败冷却期时缺口仍可见, 否则岗位长期空转;
 		// carrier 可按角色覆盖优先级 (物流骨干不被任务驱动请求永久压队)
 		const anyRush = anyRoomRush(ctx);
+		const spawnRoomCreeps = Object.values(world.rooms)[0]?.creeps ?? [];
+		const spawnRoomObs = Object.values(world.rooms)[0];
 		let targets: Record<SpawnUnit, number> | undefined;
 		safeSource("unit-targets", () => {
 			targets = unitTargets(ctx, board);
@@ -222,22 +224,31 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 							continue;
 						}
 					}
-				}					const basePriority =
-						SPAWN_CONFIG.standingPriorityByRole[unitName] ?? SPAWN_CONFIG.standingPriority;
-					// 冲级档孵化提级传导 (bugs/P1-19): rush 期 upgradeBias 在任务层
-					// 提前, 孵化层 upgrader 请求若恒 6 会被 fill_spawn 1 恒压队——
-					// 冲级期把缺编 upgrader 提到 L5 (等级小者优先, 不越搬运 L4)。
-					// worker 缺位建造提级 (race 换班制语义): 工地存在而 worker 全灭
-					// 时提到 L2——cc/ext 不成则升级体长腿/容量锁死, 建造是唯一出口。
-				// 缺编建立期维持 standing 序 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
-					// 收窄为「只作用于换代替补」——建立期 upgrader 越过 carrier 会让能量通道
-					// 晚建 (boot 绿门 L3 9066→10550 漂移 +16%), P1-19 的顾虑在建立期成立;
-					// rush 提级语义保留在 replacement 通道 (spawnDirector 替补源)。
-					let priority = basePriority;
-					if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
-						priority = Math.min(priority, 2);
-					}
-					addRequest(unitName as never, priority, `staffing:${unitName}`);
+				}
+				const basePriority =
+					SPAWN_CONFIG.standingPriorityByRole[unitName] ?? SPAWN_CONFIG.standingPriority;
+				// 冲级档孵化提级传导 (bugs/P1-19): rush 期 upgradeBias 在任务层提前,
+				// 孵化层 upgrader 请求若恒 6 会被 fill_spawn 1 恒压队。
+				// 分档 (race-speedrun 6.1 第六轮 A/B):
+				// - RCL1: 首只即提级——RCL2 只需 200 进度, 升级体早 ~400t 上岗;
+				// - RCL2: 不提级 (建立期越位让升级体吸干孵化能量, 40k L3 实测 -3k);
+				// - RCL3 起在册 ≥1 后提级: 第三只起 staffing 请求恒输 carrier churn
+				//   (L3), 末段定编只到位 2 只, 每代空窗 (40k 实证 t39362-39902)。
+				// worker 缺位建造提级 (race 换班制语义): 工地存在而 worker 全灭时
+				// 提到 L2——cc/ext 不成则升级体长腿/容量锁死, 建造是唯一出口。
+				let priority = basePriority;
+				if (
+					unitName === "upgrader" &&
+					anyRush &&
+					((spawnRoomObs?.rcl ?? 99) <= 1 ||
+						((spawnRoomObs?.rcl ?? 0) >= 3 &&
+							spawnRoomCreeps.some((c) => c.unitCode === UNIT_CODES.upgrader)))
+				) {
+					priority = Math.min(priority, SPAWN_CONFIG.rushUpgradeSpawnPriority);
+				} else if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
+					priority = Math.min(priority, 2);
+				}
+				addRequest(unitName as never, priority, `staffing:${unitName}`);
 				}
 			}
 		});
