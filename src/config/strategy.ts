@@ -67,7 +67,7 @@ export const STRATEGY_CONFIG: StrategyConfig = {
 	},
 	postureBias: {
 		/** 等级偏置 (小者优先): survive 提前供能/采集、推后建造/升级 */
-		survive: { fill_spawn: -1, harvest: -1, haul: 0, build: 2, upgrade: 2 },
+		survive: { fill_spawn: -1, harvest: -1, carry: 0, build: 2, upgrade: 2 },
 		develop: {},
 		expand: {},
 		war: { fill_spawn: -1, defend: -1, repair: 0, build: 2, upgrade: 2 },

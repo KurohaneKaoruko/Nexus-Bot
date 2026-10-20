@@ -397,6 +397,43 @@ export const migrateV12ToV13: MigrationFn = (memory) => {
 	return {};
 };
 
+/**
+ * v13 → v14: 搬运任务词表统一为 carry (与 carrier 单位/搬运语义对齐)。
+ * 旧 haul 任务不迁移: planner 下一 Tick 即按新键重建, 直接剔除避免新旧双份;
+ * 经济诊断累加器 haulBusyTicks/haulIdleTicks 改名并保留窗口计数。迁移幂等。
+ */
+export const migrateV13ToV14: MigrationFn = (memory) => {
+	const tasks = memory["tasks"];
+	if (isPlainObject(tasks)) {
+		for (const [id, entry] of Object.entries(tasks)) {
+			if (!isPlainObject(entry) || entry["kind"] === "haul") {
+				delete tasks[id];
+			}
+		}
+	}
+	const economy = memory["economy"];
+	if (isPlainObject(economy)) {
+		const accumulators = economy["accumulators"];
+		if (isPlainObject(accumulators)) {
+			if (
+				accumulators["carryBusyTicks"] === undefined &&
+				typeof accumulators["haulBusyTicks"] === "number"
+			) {
+				accumulators["carryBusyTicks"] = accumulators["haulBusyTicks"];
+			}
+			if (
+				accumulators["carryIdleTicks"] === undefined &&
+				typeof accumulators["haulIdleTicks"] === "number"
+			) {
+				accumulators["carryIdleTicks"] = accumulators["haulIdleTicks"];
+			}
+			delete accumulators["haulBusyTicks"];
+			delete accumulators["haulIdleTicks"];
+		}
+	}
+	return {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -411,4 +448,5 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV10ToV11,
 	migrateV11ToV12,
 	migrateV12ToV13,
+	migrateV13ToV14,
 ];

@@ -30,7 +30,7 @@ export type SpawnUnit = EconomyRole | CombatRole;
 /** 地形编译提示 (spawnDirector 按房间地形画像填充): 慢地形 = 沼泽密度高且路网未达标 */
 export interface BodyHints {
 	slowTerrain: boolean;
-	/** 接力期 (specs/relay-hauling): RCL < RELAY_CONFIG.maxRcl 时微型接力件口径 */
+	/** 接力期 (specs/接力搬运): RCL < RELAY_CONFIG.maxRcl 时微型接力件口径 */
 	relayCarrier?: boolean;
 	/** 直运期大件上限 (RCL ≥ 等级门) */
 	directCarrier?: boolean;
@@ -64,7 +64,7 @@ export const ROAD_SEGMENTS: Record<"universal" | "carrier" | "defender", Segment
 /** 慢地形搬运组: 1 CARRY 配 2 MOVE, 沼泽 2.5t/格 (1:1 配 5t/格, 路面组 10t/格) */
 export const TERRAIN_CARRIER_SEGMENT: SegmentDef = { segment: ["carry", "move", "move"], min: 1, max: 4 };
 
-/** 接力微型件 (specs/relay-hauling): 200 容量基数, 相等容量才有对穿交接 */
+/** 接力微型件 (specs/接力搬运): 200 容量基数, 相等容量才有对穿交接 */
 export const RELAY_CARRIER_SEGMENTS = {
 	/** 慢地形 (路网未达标): [C,M,M]×2 口径 = 每基数 4 CARRY 2 MOVE */
 	offroad: { segment: ["carry", "move", "move", "carry", "move", "move"], min: 1, max: 2 } as SegmentDef,

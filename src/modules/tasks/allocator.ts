@@ -64,9 +64,9 @@ export const SWITCH_MARGIN = 15;
 /**
  * 零滞回抢占种类: 紧急防御/撤离 + 孵化线供能 (design/05 §5.6「紧急事件可以抢占」,
  * fill_spawn 是 spawn 队列的生存线)。判据必须是种类语义, 不得用 priority 数值档位——
- * 专线 haul 的星饥加速会把 priority 压到 0~1.5, 数值落入与 survival 档相同的区间,
+ * 专线 carry 的星饥加速会把 priority 压到 0~1.5, 数值落入与 survival 档相同的区间,
  * 按数值豁免等于让物流任务每 tick 零成本换绑: 被换下的任务回池后下 tick 按亲和
- * 又被同一只夺回, 形成 A→B→A 零进度振荡 (实测: 驻点矿工被专线 haul 反复抽走做
+ * 又被同一只夺回, 形成 A→B→A 零进度振荡 (实测: 驻点矿工被专线 carry 反复抽走做
  * 容器 withdraw/transfer 对冲; 载体被两地货源的两件任务拉成原地往返, 窗口期 62.7%
  * creep-tick 换手)。
  * 同族之间不豁免: 紧急任务只抢「非紧急」, 不与另一个紧急任务互相热土豆——
@@ -110,18 +110,18 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 		return false;
 	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标; harvest/haul: 本矿登记的外矿源/容器) 放行,
+		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标; harvest/carry: 本矿登记的外矿源/容器) 放行,
 		// 由评分的 travel 成本约束
 		if (
 			task.kind !== "claim" &&
 			task.kind !== "reserve" &&
 			task.kind !== "harvest" &&
-			task.kind !== "haul"
+			task.kind !== "carry"
 		) {
 			return false;
 		}
 	}
-	// 升级体钉死本房: 外矿 harvest/haul 是长腿差事, 升级体越界会被几百 tick
+	// 升级体钉死本房: 外矿 harvest/carry 是长腿差事, 升级体越界会被几百 tick
 	// 困在邻房取能, 本房 cc 断供 (工位任务同房, 不依赖跨房货源)
 	if (profile.unitCode === UNIT_CODES.upgrader) {
 		const targetRoom = task.targetPos?.roomName;
@@ -179,7 +179,7 @@ const KIND_UTILITY: Record<string, number> = {
 	defend: 0.9,
 	retreat: 0.8,
 	harvest: 0.8,
-	haul: 0.6,
+	carry: 0.6,
 	// 维修压过新建: decay 结构 (容器 25k tick 寿命) 死后重建 5000e + 数千 tick,
 	// 而及时维修只花 decay 速率的血 (容器 10e/t 血) —— 断供代价远高于新建收益
 	// (sim 实证 cc 容器 decay 死后升级链断供 8.9k tick, 损失 ~35k 进度)
@@ -202,7 +202,7 @@ const UNIT_TASK_AFFINITY: Record<string, readonly string[]> = {
 	[UNIT_CODES.worker]: ["build", "repair"],
 	[UNIT_CODES.harvester]: ["harvest", "build"],
 	[UNIT_CODES.reserver]: ["reserve"],
-	[UNIT_CODES.carrier]: ["fill_spawn", "haul"],
+	[UNIT_CODES.carrier]: ["fill_spawn", "carry"],
 	[UNIT_CODES.defender]: ["defend"],
 };
 
@@ -261,12 +261,12 @@ function travelCostOf(profile: CapabilityProfile, task: NexusTask, world: WorldV
 		return 50 + dist * 50;
 	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim/reserve/harvest/haul) 用房名线性距离折算, 不做无穷大排除
+		// 跨房任务 (claim/reserve/harvest/carry) 用房名线性距离折算, 不做无穷大排除
 		if (
 			task.kind !== "claim" &&
 			task.kind !== "reserve" &&
 			task.kind !== "harvest" &&
-			task.kind !== "haul"
+			task.kind !== "carry"
 		) {
 			return Number.POSITIVE_INFINITY;
 		}
@@ -395,7 +395,7 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 					current !== undefined &&
 					current.targetPos?.roomName !== undefined &&
 					current.targetPos.roomName !== current.roomName &&
-					(current.kind === "harvest" || current.kind === "haul");
+					(current.kind === "harvest" || current.kind === "carry");
 				if (holdingRemote) {
 					continue;
 				}

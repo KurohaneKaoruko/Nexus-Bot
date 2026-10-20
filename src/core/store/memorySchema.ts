@@ -9,7 +9,7 @@ import { STRATEGY_CONFIG } from "@/config/strategy";
 import type { RoomModeName } from "@/config/roomMode";
 import type { NexusTask, TaskKind } from "./taskSchema";
 
-export const CURRENT_SCHEMA_VERSION = 13;
+export const CURRENT_SCHEMA_VERSION = 14;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
 
@@ -230,8 +230,8 @@ export interface EconomyMemory {
 	accumulators: {
 		spawnIdleTicks: number;
 		starvationTicks: number;
-		haulBusyTicks: number;
-		haulIdleTicks: number;
+		carryBusyTicks: number;
+		carryIdleTicks: number;
 		energyStockDelta: number;
 	};
 	/** worker 出生史累计标记 (workerBuildCriticalOf 豁免口径; 死亡不清除) */
@@ -499,8 +499,8 @@ export const SUBSYSTEM_DEFAULTS: {
 		accumulators: {
 			spawnIdleTicks: 0,
 			starvationTicks: 0,
-			haulBusyTicks: 0,
-			haulIdleTicks: 0,
+			carryBusyTicks: 0,
+			carryIdleTicks: 0,
 			energyStockDelta: 0,
 		},
 		lastStockTotal: 0,

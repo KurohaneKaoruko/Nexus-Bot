@@ -6,7 +6,7 @@
  * 升级饥饿记账负反馈收缩编制 (惰性衰减)。
  * 与参照实现的口径差异 (主线架构适配, 见 openspec workforce-logistics design D1):
  * - 让位闸门只保留保级窗口语义 (主线降级走 DOWNGRADE 紧急通道, 不归零升级);
- * - rush 净收入折旧口径未移植 (miner/hauler 折旧模型属外矿步), 以毛收入×EMA 乘数近似;
+ * - rush 净收入折旧口径未移植 (miner/carrier 折旧模型属外矿步), 以毛收入×EMA 乘数近似;
  * - 源定编的多采集位窗口不移植 (主线 worksite 单座语义, 饱和由攒能升体型承接)。
  */
 import type { TickContext } from "@/core";
@@ -469,7 +469,7 @@ export function carryPartsPerBody(ctx: TickContext, roomName: string): number {
 	const capacity = roomCapacity(ctx, roomName);
 	// 与孵化侧同口径 (spawnArbiter hints): RCL < 等级门孵化的是接力件, 定编必须
 	// 按同一分段折算 CARRY 数——旧口径按默认直运段 [C,C,M] (6 C/件) 折算, 而
-	// 实际 relay 件是低配比件, 运力目标被高估 → haul 积压无人认领 (sim 实证
+	// 实际 relay 件是低配比件, 运力目标被高估 → carry 积压无人认领 (sim 实证
 	// 21 条 available + 升级体利用率 11%)
 	const rcl = ctx.memory.rooms[roomName]?.rclTimeline
 		? Math.max(...Object.values(ctx.memory.rooms[roomName].rclTimeline as Record<string, number>))

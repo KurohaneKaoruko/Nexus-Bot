@@ -4,7 +4,7 @@
  */
 
 import { getRoomMode, isHighLikeMode } from '@/modules/strategy';
-import { buildHaulerBodyConfig, buildRemoteMinerBody } from '@/utils/remoteBody';
+import { buildCarrierBodyConfig, buildRemoteMinerBody } from '@/utils/remoteBody';
 import { readRecordedSourceSlotCounts } from '@/core/store/accessor';
 import { ExternalMineState } from '@/modules/external/mine/state';
 import { ExternalMine } from '@/modules/external/mine/runtime';
@@ -143,7 +143,7 @@ export const ExternalMineMath = {
         // 接力车道（rush）：C4 微型件口径，定编按 200 容量/件折算——
         // 定编必须与实际孵出的体型一致，否则车队目标会被低估 4-6 倍
         if (getRoomMode(sourceRoom) === 'rush') return 200;
-        const body = buildHaulerBodyConfig(sourceRoom.energyCapacityAvailable, { forRoad: true, maxCarry: 16 });
+        const body = buildCarrierBodyConfig(sourceRoom.energyCapacityAvailable, { forRoad: true, maxCarry: 16 });
         if (Array.isArray(body) && body.length > 0) {
             let carryParts = 0;
             for (const part of body as ((BodyPartConstant | number)[])[]) {

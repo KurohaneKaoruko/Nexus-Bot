@@ -79,6 +79,6 @@ export {
 	isRoomRemoteUnlocked,
 } from "@/modules/economy/productionGateAccess";
 export { destinationQuotas } from "@/modules/economy/quota";
-export { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy/remoteMining";
+export { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeRemoteCarryCount, activeScoutCount } from "@/modules/economy/remoteMining";
 export { getCoreDepotContainer, isCoreDepotContainer, isCoreDepotContainerDraining } from "@/modules/economy/coreDepot";
 export { FunnelModule } from "@/modules/economy/FunnelModule";

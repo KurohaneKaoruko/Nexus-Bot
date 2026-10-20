@@ -46,7 +46,7 @@ Screeps 的主循环每 Tick 读取一个状态快照并运行代码。代码调
 
 基础循环是：
 
-`Source → 矿工/采集者 → Container/Link → Hauler/物流设施 → Spawn/Extension/Controller/建筑`。
+`Source → 矿工/采集者 → Container/Link → Carrier/物流设施 → Spawn/Extension/Controller/建筑`。
 
 中后期资源类别会增加：
 

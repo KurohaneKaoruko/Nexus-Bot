@@ -97,9 +97,9 @@ export function accumulateTick(ctx: TickContext, world: WorldView): void {
 				continue;
 			}
 			if (Game.creeps[creep.name]?.memory.taskId !== undefined) {
-				accumulators.haulBusyTicks += 1;
+				accumulators.carryBusyTicks += 1;
 			} else {
-				accumulators.haulIdleTicks += 1;
+				accumulators.carryIdleTicks += 1;
 			}
 		}
 	}
@@ -209,8 +209,8 @@ export function diagnose(ctx: TickContext, world: WorldView): void {
 	// 累加器清零 (指标窗口即诊断窗口) + 热点衰减
 	accumulators.spawnIdleTicks = 0;
 	accumulators.starvationTicks = 0;
-	accumulators.haulBusyTicks = 0;
-	accumulators.haulIdleTicks = 0;
+	accumulators.carryBusyTicks = 0;
+	accumulators.carryIdleTicks = 0;
 	accumulators.energyStockDelta = 0;
 	decayHotspots(ctx);
 }
@@ -225,7 +225,7 @@ export interface EconomyIndicators {
 	/** 关键结构缺货 tick */
 	criticalStructureStarvation: number;
 	/** 搬运工忙碌占比 (0..1), 无样本时 -1 */
-	haulUtilization: number;
+	carryUtilization: number;
 	/** 采集实际产出对理论产能比例 (0..∞), 无源时 -1 */
 	sourceHarvestEfficiency: number;
 	/** 预留与可用库存比值 */
@@ -255,7 +255,7 @@ export function economyIndicators(ctx: TickContext): EconomyIndicators {
 	for (const reservation of Object.values(ctx.memory.ledger.reservations)) {
 		reserved += reservation.amount;
 	}
-	const haulSamples = accumulators.haulBusyTicks + accumulators.haulIdleTicks;
+	const carrySamples = accumulators.carryBusyTicks + accumulators.carryIdleTicks;
 	const hunger: EconomyIndicators["hunger"] = {};
 	for (const [roomName, vitals] of Object.entries(ctx.memory.ledger.hunger)) {
 		hunger[roomName] = {
@@ -268,7 +268,7 @@ export function economyIndicators(ctx: TickContext): EconomyIndicators {
 		energyNetDelta: accumulators.energyStockDelta,
 		spawnIdleTicks: accumulators.spawnIdleTicks,
 		criticalStructureStarvation: accumulators.starvationTicks,
-		haulUtilization: haulSamples > 0 ? accumulators.haulBusyTicks / haulSamples : -1,
+		carryUtilization: carrySamples > 0 ? accumulators.carryBusyTicks / carrySamples : -1,
 		sourceHarvestEfficiency: sourceCount > 0 ? production / (sourceCount * 10) : -1,
 		reservedVsAvailable: stock > 0 ? reserved / stock : 0,
 		overdueReclaimed: ctx.memory.ledger.overdueCount,

@@ -8,7 +8,7 @@ import { CARRY_STAFFING_CONFIG } from '@/config/economy';
 import { getRoomMode, getRoomModeProfile } from '@/modules/strategy';
 import { UNITS, UnitData, type UnitId } from '@/constant/CreepConstant';
 import { decompressBodyConfig } from '@/utils/compress';
-import { buildHaulerBodyConfig, buildOutBuildBody, buildRemoteMinerBody } from '@/utils/remoteBody';
+import { buildCarrierBodyConfig, buildOutBuildBody, buildRemoteMinerBody } from '@/utils/remoteBody';
 import { getCreepByTargetRoom } from '@/utils/creepTickIndex';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 import { countPendingEconomyMissions, countPendingMissions, OUTMINE_CARRY_ROLE_SET, OUTMINE_HARVEST_ROLE_SET, shouldDropPlannedMission, sortOutMineSpawnTargets } from '@/modules/external/externalScheduler';
@@ -583,7 +583,7 @@ export const ExternalMineSpawner = {
             : (energyState === 'LOW' || energyState === 'CRITICAL')
                 ? Math.max(150, sourceRoom.energyAvailable)
                 : sourceRoom.energyCapacityAvailable;
-        const carryBody = buildHaulerBodyConfig(energyBudget, { forRoad: true, maxCarry: carryRush ? 4 : 16 });
+        const carryBody = buildCarrierBodyConfig(energyBudget, { forRoad: true, maxCarry: carryRush ? 4 : 16 });
 
         const totalCarry = outerCarry + spawnCarryNum;
         // 车队上限：接力链按吞吐定编（num 自适应），绝对上限只防病态堆积

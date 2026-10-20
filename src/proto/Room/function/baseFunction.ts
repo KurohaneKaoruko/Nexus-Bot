@@ -4,7 +4,7 @@ import { addMissionToPool, updateMissionPool, deleteMissionFromPool, submitMissi
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';
 import { UnitData, UnitLevelData } from '@/constant/CreepConstant';
-import { buildHaulerBodyConfig, RELAY_HAULER_CARRY_SIZE, DIRECT_HAULER_CARRY_SIZE } from '@/utils/remoteBody';
+import { buildCarrierBodyConfig, RELAY_CARRIER_CARRY_SIZE, DIRECT_CARRIER_CARRY_SIZE } from '@/utils/remoteBody';
 import { getBuiltRoadCoverage } from '@/modules/external';
 import { inWhitelist } from '@/utils/whitelist';
 import { getRoomData, getStructData } from '@/core/store/accessor';
@@ -514,9 +514,9 @@ export default class BaseFunction extends Room {
         if (unit === UNITS.carrier) {
             const relay = this.level < 7;
             const forRoad = getBuiltRoadCoverage(this.name) >= 1 / 3;
-            return buildHaulerBodyConfig(budget, {
+            return buildCarrierBodyConfig(budget, {
                 forRoad,
-                maxCarry: relay ? RELAY_HAULER_CARRY_SIZE : DIRECT_HAULER_CARRY_SIZE,
+                maxCarry: relay ? RELAY_CARRIER_CARRY_SIZE : DIRECT_CARRIER_CARRY_SIZE,
             });
         }
 

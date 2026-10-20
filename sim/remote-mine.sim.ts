@@ -15,8 +15,8 @@ const presetMemory = JSON.stringify({
 			accumulators: {
 				spawnIdleTicks: 0,
 				starvationTicks: 0,
-				haulBusyTicks: 0,
-				haulIdleTicks: 0,
+				carryBusyTicks: 0,
+				carryIdleTicks: 0,
 				energyStockDelta: 0,
 			},
 			lastStockTotal: 0,

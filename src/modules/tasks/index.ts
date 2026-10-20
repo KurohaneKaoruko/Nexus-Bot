@@ -22,7 +22,7 @@ export const Tasks: TickModule = {
 		// 跨 run 残留清理 (实服 4wt 重开路径): 服务器重置清 Game 对象但 Memory
 		// 持久, 旧 run 的任务 (roomName 指向已非我房的房间) 无人生产无人认领,
 		// 永生堆积抬定编。claim 任务例外——roomName 本就是待声称的目标房。
-		// 第二判据: 远程经济任务 (harvest/haul, 目标房 ≠ 挂靠房) 的目标房已无
+		// 第二判据: 远程经济任务 (harvest/carry, 目标房 ≠ 挂靠房) 的目标房已无
 		// 视野且挂靠房也非我房时失效——旧世界的远程采集任务 targetId 已死,
 		// 领到的矿工只会站桩到老死 (run#20 实服事故); 视野存活期内不误杀
 		// (scout 点亮→planRemoteHarvest 重建同键任务, 断视野窗口由租约回收兜底)。
@@ -33,7 +33,7 @@ export const Tasks: TickModule = {
 			}
 			const targetRoomName = task.targetPos?.roomName;
 			const remoteEconomic =
-				(task.kind === "harvest" || task.kind === "haul") &&
+				(task.kind === "harvest" || task.kind === "carry") &&
 				targetRoomName !== undefined &&
 				targetRoomName !== task.roomName;
 			const targetVisible = targetRoomName !== undefined && Game.rooms[targetRoomName] !== undefined;

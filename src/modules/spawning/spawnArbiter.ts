@@ -145,7 +145,7 @@ export function arbitrateForSpawn(
 	// 纯泵纪元终结, 250 直供泵断供——同因引发的本地塌方)。
 	const hints: BodyHints = {
 		slowTerrain: isSlowTerrain(terrainProfileFor(spawn.room.name, ctx.tick)),
-		// 接力期档 (specs/relay-hauling): RCL < 等级门用微型接力件, 达门大件直运
+		// 接力期档 (specs/接力搬运): RCL < 等级门用微型接力件, 达门大件直运
 		relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl,
 		directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl,
 		remoteHarvester: requestStartsWith(pool, "remote:harvest:"),

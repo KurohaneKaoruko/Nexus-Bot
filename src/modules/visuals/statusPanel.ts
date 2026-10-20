@@ -134,7 +134,7 @@ function worldHudLines(ctx: TickContext, room: Room): HudLine[] {
 	const indicators = economyIndicators(ctx);
 	const diagnosis = ctx.memory.economy.diagnosis;
 	const utilization =
-		indicators.haulUtilization >= 0 ? Math.round(indicators.haulUtilization * 100) : 0;
+		indicators.carryUtilization >= 0 ? Math.round(indicators.carryUtilization * 100) : 0;
 	const harvest =
 		indicators.sourceHarvestEfficiency >= 0
 			? Math.round(indicators.sourceHarvestEfficiency * 100)

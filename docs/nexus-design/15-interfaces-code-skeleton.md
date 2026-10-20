@@ -62,7 +62,7 @@ export function loop(): void {
 
 ```ts
 export type TaskKind =
-  | "harvest" | "haul" | "fill_spawn" | "upgrade"
+  | "harvest" | "carry" | "fill_spawn" | "upgrade"
   | "build" | "repair" | "scout" | "reserve" | "claim"
   | "defend" | "attack" | "heal" | "boost"
   | "terminal_transfer" | "factory_produce";

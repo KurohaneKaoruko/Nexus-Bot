@@ -40,7 +40,7 @@ stateDiagram-v2
 - **结果**：已完成数量、失败原因、最近错误 Tick。
 - **去重键**：例如 `harvest:room:sourceId`、`repair:room:structureId`，防止每 Tick 创建重复任务。
 
-任务类型可以是 `harvest`、`haul`、`fill_spawn`、`upgrade`、`build`、`repair`、`scout`、`reserve`、`claim`、`defend`、`attack`、`heal`、`boost`、`terminal_transfer`、`factory_produce` 等。不要用字符串散落在各处；集中注册、校验和定义所需能力。
+任务类型可以是 `harvest`、`carry`、`fill_spawn`、`upgrade`、`build`、`repair`、`scout`、`reserve`、`claim`、`defend`、`attack`、`heal`、`boost`、`terminal_transfer`、`factory_produce` 等。不要用字符串散落在各处；集中注册、校验和定义所需能力。
 
 ## 5.4 任务不只是“优先级数字”
 

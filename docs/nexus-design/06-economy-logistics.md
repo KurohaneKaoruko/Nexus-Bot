@@ -99,7 +99,7 @@
 - `energyNetDelta`：滚动窗口能源净变化；
 - `spawnIdleTicks`：Spawn 因能源不足或无生产计划闲置的时间；
 - `criticalStructureStarvation`：关键结构缺货 Tick；
-- `haulUtilization`：搬运工在运输/等待/空跑的比例；
+- `carryUtilization`：搬运工在运输/等待/空跑的比例；
 - `sourceHarvestEfficiency`：实际产出对理论可用产能的比例；
 - `reservedVsAvailable`：预留与可用库存比值；
 - `remoteMineNetValue`：远程采集产出减去搬运、替换与防御成本后的估算净值。
