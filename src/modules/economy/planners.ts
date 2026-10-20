@@ -166,6 +166,7 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 	const modeProfile = roomModeProfileFor(ctx, room.roomName);
 	if (room.controller) {
 		const controller = room.controller;
+		const extSitePending = room.sites.some((site) => site.structureType === "extension");
 		const emergency = downgradeEmergency(controller);
 		const modeBias =
 			modeProfile.upgradeBias && room.rcl <= modeProfile.upgradeBias.belowRcl
@@ -180,7 +181,10 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 				targetPos: { x: pos.x, y: pos.y, roomName: room.roomName },
 				priority: emergency
 					? DOWNGRADE_CONFIG.upgradePriority
-					: priorityFor("upgrade") + bias("upgrade") + modeBias,
+					: priorityFor("upgrade") +
+						bias("upgrade") +
+						modeBias +
+						(extSitePending ? RUSH_BUILD_CONFIG.upgradeDemoteWhileExtSite : 0),
 				requiredCapabilities: ["work", "carry", "move"],
 			};
 			if (emergency) {
@@ -334,17 +338,6 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 	}
 	const supplyLineTight =
 		CONTROLLER_BUFFER_CONFIG.supplyLineGateEnabled && idleCarriers <= dedicatedCarry;
-	/** 在途 haul 货源键集 (bugs 取消风暴): dedupeKey 含目的地 id, 目的地轮换
-	 *  (spawn 满 → ext → cc) 会产生同货源不同键的「新任务」——按全键判 expected
-	 *  会把在途旧任务误判 subject-gone 取消, carrier 半程反复易主, 有效运力大减
-	 *  (sim 实证 21 个 haul cancelled 全是同货源多目的地轮换)。货源在 → 该货源
-	 *  的全部在途任务保留, 由目的地配额 (headroom) 自然收敛。 */
-	const inflightHaulSourceKeys = new Set(
-		board
-			.list({ roomName: room.roomName, kinds: ["haul"] })
-			.filter((task) => task.status !== "completed" && task.status !== "cancelled")
-			.map((task) => task.dedupeKey.split(":")[2]),
-	);
 	const haulSources: Array<{ key: string; id: string; x: number; y: number; amount: number }> = [];
 	for (const pile of room.piles) {
 		if (pile.amount >= HAUL_CONFIG.minHaulAmount) {
@@ -359,6 +352,12 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 			haulSources.push({ key: store.id, id: store.id, x: store.x, y: store.y, amount: store.energy });
 		}
 	}
+	/** 在途 haul 货源键集 = 当前实际存在的货源 (堆坐标/容器 id);
+	 *  货源消失 → 其任务不再豁免, 由 subject-gone 取消——否则僵尸任务会让
+	 *  搬运工停在已消失的取货点原地等 (源堆合并/衰减后 targetId 失效)。
+	 *  货源仍在 → 该货源的全部在途任务保留, 由目的地配额 (headroom) 自然收敛
+	 *  (同货源多目的地轮换不误杀)。 */
+	const inflightHaulSourceKeys = new Set(haulSources.map((source) => source.key));
 	const ledger = createLedger(ctx);
 	for (const source of haulSources) {
 		const destination = pickDestination(destinations, source.x, source.y);
@@ -437,7 +436,8 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 		if (task.targetPos?.roomName !== undefined && task.targetPos.roomName !== task.roomName) {
 			continue;
 		}
-		if (task.kind === "haul" && inflightHaulSourceKeys.has(task.dedupeKey.split(":")[2])) {
+		const sourceKey = task.dedupeKey.split(":")[2];
+		if (task.kind === "haul" && sourceKey !== undefined && inflightHaulSourceKeys.has(sourceKey)) {
 			continue;
 		}
 		if (

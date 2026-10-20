@@ -570,7 +570,7 @@ export const BUILD_PRIORITY_BONUS: Readonly<Record<string, number>> = {
 export const BUILD_COMPLETION_CONFIG = {
 	/** 进度占比阈值 (0..1): 达到才提权 */
 	progressRatio: 0.6,
-	/** 提级幅度 (负数=提前): 压过其他在建 ext/road, 不越升级常规档 */
+	/** 提级幅度 (负数=提前): 压过其他在建 ext/road, 收尾优先于摊开新工地 */
 	bonus: -2,
 } as const;
 
@@ -580,6 +580,10 @@ export const RUSH_BUILD_CONFIG = {
 	 *  → haul 爆炸) 与升级链 (cc 缺位断供) 都缺前提物, 换班语义由 criticality
 	 *  通道 (权重 100) 自然承接 (c16-c20 实证源容器 19k tick 无人认领死锁) */
 	criticalInfraPriority: 4,
+	/** 扩容工地存续期的升级降档 (4→7): 扩容任务 (5) 因此排到升级之前, 建成
+	 *  即恢复; 只降升级不升扩容——扩容若升到 4 会与源容器/cc 工地同级, 把
+	 *  关键基建挤后。升级体本身仍按亲和留在工位, 降档只改变可建造单位的选择 */
+	upgradeDemoteWhileExtSite: 3,
 } as const;
 
 /** 低频经济模型 (docs/nexus-design/06 §6.7/§6.8) */

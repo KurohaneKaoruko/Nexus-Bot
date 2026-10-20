@@ -121,6 +121,19 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 			return false;
 		}
 	}
+	// 升级体钉死本房: 外矿 harvest/haul 是长腿差事, 升级体越界会被几百 tick
+	// 困在邻房取能, 本房 cc 断供 (工位任务同房, 不依赖跨房货源)
+	if (profile.unitCode === UNIT_CODES.upgrader) {
+		const targetRoom = task.targetPos?.roomName;
+		const destRoom = task.destPos?.roomName;
+		if (
+			(task.roomName !== profile.roomName) ||
+			(targetRoom !== undefined && targetRoom !== profile.roomName) ||
+			(destRoom !== undefined && destRoom !== profile.roomName)
+		) {
+			return false;
+		}
+	}
 	// 侦查是纯移动差事: 生产件 (work/carry) 不得抢占, 留给专职 scout
 	if (task.kind === "scout" && profile.work + profile.carry > 0) {
 		return false;
