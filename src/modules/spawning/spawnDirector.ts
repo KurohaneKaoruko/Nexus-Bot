@@ -229,10 +229,12 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					// 冲级期把缺编 upgrader 提到 L5 (等级小者优先, 不越搬运 L4)。
 					// worker 缺位建造提级 (race 换班制语义): 工地存在而 worker 全灭
 					// 时提到 L2——cc/ext 不成则升级体长腿/容量锁死, 建造是唯一出口。
+				// 缺编建立期维持 standing 序 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
+					// 收窄为「只作用于换代替补」——建立期 upgrader 越过 carrier 会让能量通道
+					// 晚建 (boot 绿门 L3 9066→10550 漂移 +16%), P1-19 的顾虑在建立期成立;
+					// rush 提级语义保留在 replacement 通道 (spawnDirector 替补源)。
 					let priority = basePriority;
-					if (unitName === "upgrader" && anyRush) {
-						priority = Math.min(priority, SPAWN_CONFIG.rushUpgradeSpawnPriority);
-					} else if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
+					if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
 						priority = Math.min(priority, 2);
 					}
 					addRequest(unitName as never, priority, `staffing:${unitName}`);
@@ -302,7 +304,17 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 						// 死亡速率 > 孵化速率, 人口崩塌 (sim t12k 22→7 实锤)
 						const roleLevel =
 							SPAWN_CONFIG.standingPriorityByRole[unit] ?? SPAWN_CONFIG.standingPriority;
-						addRequest(unit, roleLevel, `replacement:${unit}`);
+						// 冲级档升级替补越位 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
+						// 只作用于替补请求——缺编建立期维持 standing 序 (carrier 先于 upgrader,
+						// 能量通道先建, boot 绿门不漂移); 换代期升级体抢在 carrier churn 前
+						// 上槽, 消灭「单只死→补 1500t」空窗 (40k 实证 +8.9% / L4 提前 4925t)
+						addRequest(
+							unit,
+							anyRush && unit === "upgrader"
+								? Math.min(roleLevel, SPAWN_CONFIG.rushUpgradeSpawnPriority)
+								: roleLevel,
+							`replacement:${unit}`,
+						);
 					}
 				}
 			}

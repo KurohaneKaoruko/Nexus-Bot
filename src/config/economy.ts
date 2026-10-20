@@ -185,9 +185,12 @@ export const SPAWN_CONFIG = {
 	standingPriorityByRole: { carrier: 3, upgrader: 4, worker: 6, harvester: 9, scout: 11 } as Readonly<Record<string, number>>,
 	/** 冲级档缺编 upgrader 的孵化等级下限 (bugs/P1-19): rush 期缺编 upgrader
 	 *  与搬运同进 urgent 段, 攒能与立即通道交错建立火力。
-	 *  4 (不越 carrier L3, race 语义 LOGISTICS 恒先于采集/升级——carrier 是
-	 *  spawn 的能量入口, upgrader 抢到队头会因攒能等待恒空转孵化槽) */
-	rushUpgradeSpawnPriority: 4,
+	 *  2 (race-speedrun 6.1 第四轮, 越过 carrier L3): 换代空窗取证——upgrader(4)
+	 *  排 carrier(3) 后, carrier 群体大 churn 高 (请求恒在池), 升级替补恒排队,
+	 *  单只死→补空窗实测 1500t (t38k dump: 前代死 ~t35073, 补位 born t36573),
+	 *  末段 5k tick 升级只 7165e。P1-19 当年的「攒能空转槽」顾虑已有双保险:
+	 *  replacement 短等待窗 (120t) 超时即按存量降档, 不会恒空转孵化槽 */
+	rushUpgradeSpawnPriority: 2,
 	/** 孵化链路遥测 (任务 6.4): 聚合窗口与 EMA 平滑 */
 	spawnTelemetry: {
 		/** 聚合窗口 (tick): 遥测写 Memory 按窗口节流 */
