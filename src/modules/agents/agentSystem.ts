@@ -507,14 +507,14 @@ function runCreep(
 			if (worksite && unit && unit.firstArrivedAt === undefined) {
 				unit.firstArrivedAt = ctx.tick;
 				recordTravelSample(ctx, unit.unitCode, creep.roomName, ctx.tick - unit.bornAt);
-				const intel = ctx.memory.rooms[creep.roomName];
-				if (intel && task.targetId) {
+				const roomIntel = ctx.memory.rooms[creep.roomName];
+				if (roomIntel && task.targetId) {
 					const clamp = WORKFORCE_CONFIG.sourceTiming;
 					const pathTime = Math.max(
 						clamp.clampMin,
 						Math.min(clamp.clampMax, ctx.tick - unit.bornAt),
 					);
-					intel.sourceTiming = { ...intel.sourceTiming, [task.targetId]: pathTime };
+					roomIntel.sourceTiming = { ...roomIntel.sourceTiming, [task.targetId]: pathTime };
 				}
 			}
 			// 驻点稳定生产 (specs/harvest-worksite): 满载先卸货, 矿工绝不离开驻点——

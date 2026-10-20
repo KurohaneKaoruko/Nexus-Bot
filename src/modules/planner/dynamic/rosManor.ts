@@ -138,15 +138,15 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 			Math.max(Math.abs(e.x! - sx), Math.abs(e.y! - sy)) <= radius;
 		anchorPool = [];
 		anchorAllPool = [];
-		for (const __r of Object.keys(sizeMap)) {
-			const __n = Number(__r);
-			if (sizeMap[__n]! < 40) continue;
-			ManagerPlanner.getBlockPutAbleCnt(roomWalkable, visited, queMinBuf, unionFind, __n, putAbleCacheMap, allCacheMap, rootMembers);
-			for (const __e of putAbleCacheMap[__n] || []) {
-				if (within(__e, manorRadius)) anchorPool.push(__e);
+		for (const rootKey of Object.keys(sizeMap)) {
+			const rootSize = Number(rootKey);
+			if (sizeMap[rootSize]! < 40) continue;
+			ManagerPlanner.getBlockPutAbleCnt(roomWalkable, visited, queMinBuf, unionFind, rootSize, putAbleCacheMap, allCacheMap, rootMembers);
+			for (const entry of putAbleCacheMap[rootSize] || []) {
+				if (within(entry, manorRadius)) anchorPool.push(entry);
 			}
-			for (const __e of allCacheMap[__n] || []) {
-				if (within(__e, manorRadius + 3)) anchorAllPool.push(__e);
+			for (const entry of allCacheMap[rootSize] || []) {
+				if (within(entry, manorRadius + 3)) anchorAllPool.push(entry);
 			}
 		}
 	}
