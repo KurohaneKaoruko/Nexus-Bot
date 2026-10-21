@@ -76,6 +76,10 @@ interface BotMemory {
     /** 闪电战调度状态（stronghold 分支: 盾队满员时刻等, global 重置后不丢） */
     BlitzState?: {
         guardReadyTick?: number | undefined;
+        /** 波次阶段锁定: 盾队首次满员开过蓝球后, 减员不再关波次 */
+        blitzPhase?: 'gather' | 'waves';
+        /** 总攻锁: 塔抽干且蓝球够数后置 true, 盾队顶到环边、蓝球推安全点, 不再回撤 */
+        waveOpen?: boolean;
     };
     NukerData: NukerDataMemory;
     // ── 自建散键收口（原 Memory 根散落字段，迁移见 memory/roots.ts）──

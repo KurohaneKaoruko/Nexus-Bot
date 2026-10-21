@@ -22,14 +22,16 @@ const bodies: Record<string, TeamMemberConfig> = {
  * 闪电战体型: 盾队 (SRG) 肉盾开路 + 蓝球 (SRD) 散爬输出。
  *
  * @remarks
- * - SRG 首员 T40M10 纯肉盾 (只扛伤不输出, unit 缺省 team-ranged),
- *   其余 M5H40M5 全奶 (显式 unit = team-heal);
- * - SRD 单爬 R40M10, 40 远程齐射拆 rampart/建筑。
+ * - SRG 首员 T35M15 纯肉盾 (只扛伤不输出, unit 缺省 team-ranged),
+ *   其余 H35M15 全奶 (显式 unit = team-heal);
+ * - SRD 单爬 R35M15, 35 远程齐射拆塔/建筑。
+ * - 15 个 MOVE 部件即可让 50 部件机体 1 tick/格 (疲劳 20, 每 tick 回 30):
+ *   要塞的塔按"最近目标"点杀, 走得慢 = 在塔火里多站几十 tick, 速度就是命。
  */
 const blitzBodies: Record<string, TeamMemberConfig> = {
-    SRG: member("T40M10N"),
-    SRG_HEAL: { ...member("M5H40M5N"), unit: "team-heal" },
-    SRD: member("R40M10N"),
+    SRG: member("T35M15N"),
+    SRG_HEAL: { ...member("H35M15N"), unit: "team-heal" },
+    SRD: member("R35M15N"),
 };
 
 const configs: Record<string, TeamMemberConfig[]> = {};

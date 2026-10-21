@@ -43,7 +43,7 @@ export type PendingSpawnMember = {
 export type SpecProvider = (flagName: string, flag: Flag) => TeamSpawnSpec | undefined;
 
 /** 把 `[[part, count], ...]` 压缩体展开为逐部件数组（保留声明顺序） */
-const expandBodyParts = (bodypart: unknown): BodyPartConstant[] => {
+export const expandBodyParts = (bodypart: unknown): BodyPartConstant[] => {
     if (!Array.isArray(bodypart)) return [];
     const body: BodyPartConstant[] = [];
     for (const entry of bodypart as [BodyPartConstant, number][]) {
@@ -275,6 +275,8 @@ const TeamSpawner = {
                 const inferredTeamID = this.inferActiveTeamID(roomName, entry.ignoreTeams);
                 if (inferredTeamID) {
                     entry.active = { teamID: inferredTeamID, flagName: '', startTime: getTeamData(inferredTeamID)?.time || Game.time };
+                    // 接管即计宽限起点: 宽限后仍 ready 无 pending → isActiveDone 释放
+                    (entry.active as any).inferredAt = Game.time;
                 }
             }
 
@@ -287,7 +289,6 @@ const TeamSpawner = {
                     delete entry.active;
                 }
             }
-
             this.cleanupQueue(roomName, entry, specs);
 
             if (entry.active) continue;
@@ -307,7 +308,9 @@ const TeamSpawner = {
 
             const dispatched = this.dispatchOne(flagName, flag, roomName, spec);
             if (dispatched) {
-                entry.active = { teamID: dispatched.teamID, flagName, startTime: Game.time };
+                // 派单成功即释放节奏锁: 孵化由 TeamPendingSpawns 跨 tick 自理,
+                // active 挂到满员会把后续建队卡 600+t (串行饿死蓝球波次)
+                entry.active = undefined;
             }
         }
 
@@ -446,6 +449,15 @@ const TeamSpawner = {
         if (!teamData) return true;
         if (teamData.status && teamData.status !== 'ready') return true;
         if (teamData.creeps && teamData.num && teamData.creeps.length >= teamData.num) return true;
+        // 孵化已交 TeamPendingSpawns 跨 tick 自理: 锁不再等服务出生,
+        // 否则建队到满员期间 (~600t) 后续建队全部排队饿死
+        if ((getTeamPendingSpawns() as any)?.[teamID]?.members?.length) return true;
+        // infer 接管的 ready 队: 宽限期后仍未满且无 pending (能量不足等),
+        // 不再无限锁住队列, 释放给下一队 (队本身由 pending/reinforce 继续)
+        const inferredAt = (active as any)?.inferredAt;
+        if (typeof inferredAt === 'number' && Game.time - inferredAt > TeamSpawner.INFER_GRACE_TICKS) {
+            return true;
+        }
 
         const startTime = typeof active.startTime === 'number' ? active.startTime : teamData.time;
         if (startTime && Game.time - startTime > TeamSpawner.activeTtl) {
@@ -456,6 +468,12 @@ const TeamSpawner = {
         }
         return false;
     },
+
+    /**
+     * inferActive 接管冷却: 接管后短暂宽限 (能量不足重试期), 宽限内锁不被
+     * infer 复活, 宽限期后仍 ready 未满且无 pending → 释放让位给下一队。
+     */
+    INFER_GRACE_TICKS: 30,
 
     /**
      * 超时后短期忽略某个 teamID，避免同 tick 反复推断 active。

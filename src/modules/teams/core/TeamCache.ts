@@ -182,6 +182,7 @@ const TeamCache = {
             return this.cacheTowerRoomArray[roomName].value
         }
 
+        if (!Memory.rooms) Memory.rooms = {}
         if (!Memory.rooms[roomName]) Memory.rooms[roomName] = {} as RoomMemory
         Memory.rooms[roomName]['lastUpdate'] = Game.time
 
@@ -217,6 +218,7 @@ const TeamCache = {
                 }
             })
 
+            if (!Memory.rooms) Memory.rooms = {}
             if (!Memory.rooms[roomName]) Memory.rooms[roomName] = {} as RoomMemory
             const oldTowerInfos = Memory.rooms[roomName]['towerInfos']
             Memory.rooms[roomName]['towerInfos'] = towerInfos

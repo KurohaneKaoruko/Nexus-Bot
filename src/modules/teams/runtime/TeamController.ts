@@ -75,7 +75,11 @@ const TeamController = {
             if (!creep.memory['rejoin']) {
                 const teamID = creep.memory['teamID'];
                 const team = getTeamData(teamID);
-                if (!team) continue;
+                if (!team) {
+                    // 队伍已删 (减员解散/重建): 未归队成员成孤儿无人指挥, 自杀回收
+                    combatSuicide(creep);
+                    continue;
+                }
                 team.creeps.push(creep.id);
                 creep.memory['rejoin'] = true;
             }
@@ -140,16 +144,37 @@ const TeamController = {
                         } catch { /* 引擎拒绝时下 tick 重试 */ }
                     }
                     if (teamFlag) {
-                        teamData.creeps.forEach((creepID: any) => {
-                            const creep = Game.getObjectById(creepID) as Creep;
-                            if (!creep) return;
-                            if (creep.room.name == teamData.homeRoom &&
-                                !creep.pos.isNearEdge(4) &&
-                                !creep.pos.inRangeTo(teamFlag, 3)
-                            ) {
-                                combatMoveTo(creep, teamFlag, { range: 3 });
-                            }
-                        });
+                        // 家房侧门口集结: 满员前绝不过房 (散队过房 = 被守军逐个吃掉)。
+                        // 指挥旗在目标房深处, 朝旗直走会把单个成员牵出房缘送死
+                        const doorPos = teamData.homeRoom && teamData.targetRoom
+                            ? TeamUtils.doorGatherPos(teamData.homeRoom, teamData.targetRoom)
+                            : undefined;
+                        if (doorPos) {
+                            teamData.creeps.forEach((creepID: any) => {
+                                const creep = Game.getObjectById(creepID) as Creep;
+                                if (!creep) return;
+                                if (creep.room.name === teamData.homeRoom) {
+                                    if (!creep.pos.inRangeTo(doorPos, 2)) {
+                                        combatMoveTo(creep, doorPos, { range: 2 });
+                                    }
+                                } else if (creep.room.name === teamData.targetRoom) {
+                                    // 已过房成员 (掉队/补孵迟到): 贴门内侧待命, 不深入
+                                    const back = TeamUtils.routeExitDir(creep.room.name, teamData.homeRoom!);
+                                    if (back) combatMove(creep, ((back + 3) % 8 + 1) as DirectionConstant);
+                                }
+                            });
+                        } else {
+                            teamData.creeps.forEach((creepID: any) => {
+                                const creep = Game.getObjectById(creepID) as Creep;
+                                if (!creep) return;
+                                if (creep.room.name == teamData.homeRoom &&
+                                    !creep.pos.isNearEdge(4) &&
+                                    !creep.pos.inRangeTo(teamFlag, 3)
+                                ) {
+                                    combatMoveTo(creep, teamFlag, { range: 3 });
+                                }
+                            });
+                        }
                     } else {
                         // 无指挥旗：目标房无视野时按兵不动（在孵化房待命）。
                         // 指挥旗落点通常在无视野的目标房, 建旗失败/延迟期间若按目标房推进,

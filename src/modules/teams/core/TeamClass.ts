@@ -3,6 +3,7 @@ import TeamUtils from '@/modules/teams/core/TeamUtils';
 import TeamAction from '@/modules/teams/core/TeamAction';
 import TeamBattle from '@/modules/teams/core/TeamBattle';
 import TeamVisual from '@/modules/teams/core/TeamVisual';
+import { combatMove } from '@/modules/combat';
 import { type TeamFormationName, type TowardName } from '@/modules/teams/core/FormationTables';
 
 /**
@@ -26,6 +27,9 @@ class Team {
     flag: Flag;          // 小队指挥旗
     actionMode: 'normal' | 'rush' | 'press';
     targetMode: 'default' | 'structure' | 'creep' | 'flag';
+    structurePriority?: StructureConstant | undefined;  // 结构优先集火类型 (取自 TeamData)
+    holdFire?: boolean | undefined;   // 集结期禁火 (不索敌, 推进点回落到指挥旗)
+    anchorLock?: boolean | undefined; // 推进点锚定指挥旗 (只走到旗位, 攻击仍就地开火)
     moved: boolean;       // 本tick是否移动过
     _targets?: (Creep | Structure | RoomPosition)[];          // 当前攻击目标集
     _attackTargets?: (Creep | Structure)[];    // 本 tick 已提交攻击的目标
@@ -53,6 +57,9 @@ class Team {
         this.targetMode = 'default'
         this.updateModesFromFlag()
         this.moved = false;
+        this.structurePriority = teamData.structurePriority;
+        this.holdFire = teamData.holdFire;
+        this.anchorLock = teamData.anchorLock;
 
         const creepIds = teamData.creeps || [];
         const liveCreeps = creepIds.map((id: any) => Game.getObjectById(id)).filter(Boolean) as Creep[];
@@ -257,7 +264,28 @@ class Team {
             : this.targetRoom ? new RoomPosition(25, 25, this.targetRoom)
             : undefined;
         if (!anchor) return;
-        if (this.creeps.some(c => c.fatigue > 0)) return;
+        // 阵型同步冻结: 有成员疲劳时全队停走 (奶盾一体, 散开=脱奶死)。
+        // 唯一豁免: 站出口格的无疲劳成员必须收到指令, 否则 tick 末被引擎
+        // 自动传送弹回原房 (跨房穿边死锁根源)。只放行朝房内的一步:
+        // 已在锚点房 → 朝锚点走; 在路径房 → 朝下一出口走 (方向指向房外
+        // 的等传送不发)。掉队者疲劳恢复后 Gather 重新收紧阵型。
+        // 单爬队伍没有队形要同步: 满负荷机体 (50 部件 / 15 MOVE) 每走一步都会留疲劳,
+        // 套用这条规则会让它永远半速, 在塔火区多站一倍时间
+        if (this.creeps.length > 1 && this.creeps.some(c => c.fatigue > 0)) {
+            for (const c of this.creeps) {
+                if (c.fatigue > 0 || !c.pos.isRoomEdge()) continue;
+                let dir: DirectionConstant | undefined;
+                if (c.pos.roomName === anchor.roomName) {
+                    const d = c.pos.getDirectionTo(anchor) as DirectionConstant;
+                    if (c.pos.getDirectPos(d).roomName === c.pos.roomName) dir = d;
+                } else {
+                    const d = TeamUtils.routeExitDir(c.pos.roomName, anchor.roomName);
+                    if (d && c.pos.getDirectPos(d).roomName === c.pos.roomName) dir = d;
+                }
+                if (dir) combatMove(c, dir);
+            }
+            return;
+        }
 
         // 扩展队形（cross/square3）：模板集结与八向推进
         if (this.formation === 'cross' || this.formation === 'square3') {

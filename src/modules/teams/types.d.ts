@@ -35,6 +35,12 @@ interface TeamMemory {
     num: number,         // 成员数量
     roomName: string,   // 小队当前所在房间
     spawnFlag?: string  // 该队伍由哪个孵化旗创建
+    /** 结构优先集火: 房间内存在该类型可攻击建筑时只打这类 (如要塞塔) */
+    structurePriority?: StructureConstant | undefined
+    /** 集结期禁火: 不索敌, 推进点回落到指挥旗 (等数量够了再开火推进) */
+    holdFire?: boolean | undefined
+    /** 推进点锚定指挥旗: 只走到旗位, 攻击仍就地开火 (扇区站位靠旗控制) */
+    anchorLock?: boolean | undefined
     cache?: TeamCacheMemory
 }
 
@@ -53,6 +59,10 @@ interface Team {
     actionMode: 'normal' | 'rush' | 'press';
     /** 索敌模式（来源：指挥旗 color，经 Team 解析为属性） */
     targetMode: 'default' | 'structure' | 'creep' | 'flag';
+    /** 结构优先集火类型 (房间内有该类型可攻击建筑时优先打它) */
+    structurePriority?: StructureConstant | undefined;
+    holdFire?: boolean | undefined;
+    anchorLock?: boolean | undefined;
     /** 战斗决策缓存: 当前攻击目标集 */
     _targets?: (Creep | Structure | RoomPosition)[];
     /** 战斗决策缓存: 本 tick 已提交攻击的目标 */

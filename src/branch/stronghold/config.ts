@@ -56,12 +56,12 @@ export const STRONGHOLD_ANCHOR = {
 } as const;
 
 /**
- * 闪电战打法参数 (盾队抗伤 + 蓝球散爬输出)。
+ * 闪电战打法参数 (盾队站桩 + 蓝球散爬输出)。
  *
  * @remarks
- * 盾队 = 2x2 方阵纯抗伤 (肉盾队长 + 全奶), 顶住塔伤开路;
- * 蓝球 = 散装远程爬, 各占一个安全输出位 (建筑群外沿 BFS 第一圈),
- * 齐射 rampart 露头目标, 够得着核心时直击核心。
+ * beatstronghold 口径: 盾队顶到敌建筑群外沿站桩, 把塔火与守军仇恨吸在身上,
+ * 当奶站+肉盾; 输出靠蓝球在建筑外沿安全点齐射。
+ * 盾队旗 secondaryColor=PURPLE (rush) 恒 attack 不 flee, 死战不退。
  */
 export const STRONGHOLD_BLITZ = {
     /** 盾队配置键 (quad 2x2: 首员纯肉盾, 其余全奶) */
@@ -71,9 +71,22 @@ export const STRONGHOLD_BLITZ = {
     /** 盾队数量上限 */
     guardTeamCap: 2,
     /** 蓝球数量上限 */
-    rangedCap: 24,
+    rangedCap: 28,
     /** 盾队满员后开始出蓝球的延迟 (tick) */
     rangedDelayTicks: 500,
     /** 调度/落位扫描间隔 (tick) */
     spotScanInterval: 10,
+    /** 蓝球集结期落点: 目标房靠孵化房一侧边缘内偏移格数 (塔射程外 22+ 格的远围) */
+    guardPostOffset: 2,
+    /** 盾队耗能位: 距最近敌塔的切比雪夫距离 (塔在 20 格内就能开火, 20 格外降到最低档 150/发) */
+    guardDrainRange: 17,
+    /** 盾队站桩点: 敌建筑群包围盒外沿再让出的格数 (0 = 紧贴 rampart 环) */
+    guardTankGap: 1,
+    /** 蓝球总攻阈值: 存活数达到此数即开总攻。
+     * 核心会给塔补能 (实测 1750→4810 一次回满), 抽干不现实, 只能靠数量抢时间 */
+    rangedPushCount: 21,
+    /** 总攻收束阈值: 蓝球掉到此数以下关总攻锁, 回集结位 (避免单只裸冲送死) */
+    rangedRetreatCount: 4,
+    /** 蓝球总攻站位: 敌建筑群外沿的包围环层数 (1 = 紧贴 rampart 环) */
+    rangedRingLayers: 1,
 } as const;

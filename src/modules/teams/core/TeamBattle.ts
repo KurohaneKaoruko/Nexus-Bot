@@ -269,6 +269,22 @@ const TeamBattle = {
     chooseTargets(team: Team) {
         const scanRoomName = team.flag ? team.flag.pos.roomName : team.targetRoom;
         if (!scanRoomName) return;
+
+        // 集结期禁火: 不给目标 → 推进点回落到指挥旗, 队伍才会钉在集结点,
+        // 不会被最近的塔/守军勾着往火力圈里钻
+        if (team.holdFire) {
+            (team as any)['_targets'] = [];
+            return;
+        }
+
+        // 纯肉奶阵 (无任何输出部件): 不索敌不追击——追进火力圈是送死,
+        // 目标恒为指挥旗 (站桩当奶站+诱饵, 敌爬进 3 格由 autoAttack 就地反击)
+        const hasWeapon = team.creeps.some((c) =>
+            c.getActiveBodyparts(ATTACK) > 0 || c.getActiveBodyparts(RANGED_ATTACK) > 0);
+        if (!hasWeapon && team.flag) {
+            (team as any)['_targets'] = [team.flag];
+            return;
+        }
         const room = Game.rooms[scanRoomName];
         // 强制优先打建筑
         const isFocusStructure = team.targetMode === 'structure' || TeamUtils.isDisarmed(team);
@@ -302,9 +318,15 @@ const TeamBattle = {
             let canAttackCreeps: Creep[] = []
 
             const getCanAttackStructures = () => {
-                const structures: AnyOwnedStructure[] = room.findEnemyStructures()
+                let structures: AnyOwnedStructure[] = room.findEnemyStructures()
                     .filter((s) => s.hits && !this.neutralStructures.has(s.structureType))
-                    team._attackable_structures = structures
+                // 结构优先集火: 要塞塔不先清掉, 塔火会一直压在头上 (核心给它续能, 抽不干)
+                const priority = team.structurePriority
+                if (priority) {
+                    const preferred = structures.filter((s) => s.structureType === priority)
+                    if (preferred.length) structures = preferred
+                }
+                team._attackable_structures = structures
                 canAttackStructures = TeamCache.getStructuresInFloodFill(creep, structures, team.creeps.length >= 3)
             }
 
@@ -389,7 +411,11 @@ const TeamBattle = {
                     }
                 })
 
-                if (targetCreeps.length && !team.cache.forceStructure) {
+                // forceStructure 下优先结构; 但射程内没有结构时必须回落打爬,
+                // 否则对空数组 reduce 会抛异常 (整队当 tick 不攻击)
+                const preferStructure = targetStructures.length > 0
+                    && (team.cache.forceStructure || targetCreeps.length === 0)
+                if (!preferStructure && targetCreeps.length) {
                     target = targetCreeps.reduce((best, cur) => {
                         const getScore = (c: Creep) => {
                             let score = 0;
@@ -413,6 +439,8 @@ const TeamBattle = {
                 } else if (
                     // 齐射增强: 2 格内堆叠多个 rampart 时 mass 收益高于单体
                     // (3x3 溅射同时削 2+ 目标)
+                    // 结构优先集火时禁用: mass 对塔只有 1/10 伤害, 拆塔必须单体齐射
+                    !team.structurePriority &&
                     creep.room
                         .find(FIND_HOSTILE_STRUCTURES, {
                             filter: (s: Structure) =>

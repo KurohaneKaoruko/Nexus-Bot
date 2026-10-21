@@ -49,6 +49,23 @@ const TeamUtils = {
         return route[0]!.exit;
     },
 
+    /**
+     * 家房侧集结点: 距目标房方向出口 3 格内侧 (绝不踩房缘, 防跨房传送弹回)。
+     * ready 期队伍满员前在家房门口聚齐, 不散队过房送死。
+     */
+    doorGatherPos(homeRoom: string, targetRoom: string): RoomPosition | undefined {
+        if (homeRoom === targetRoom) return new RoomPosition(25, 25, homeRoom);
+        const dir = this.routeExitDir(homeRoom, targetRoom);
+        if (!dir) return undefined;
+        switch (dir) {
+            case TOP: return new RoomPosition(25, 3, homeRoom);
+            case RIGHT: return new RoomPosition(46, 25, homeRoom);
+            case BOTTOM: return new RoomPosition(25, 46, homeRoom);
+            case LEFT: return new RoomPosition(3, 25, homeRoom);
+            default: return undefined;
+        }
+    },
+
     // 获取队伍坐标范围
     /**
      * 获取队伍在当前房间坐标系下的包围盒范围。

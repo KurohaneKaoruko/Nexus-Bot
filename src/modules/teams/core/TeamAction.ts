@@ -1689,6 +1689,17 @@ const TeamAction = {
         if (!team.creeps?.length) return
         if (!team.flag) return
 
+        // 推进点锚定指挥旗: 只走到旗位, 目标只用于就地开火。
+        // 否则队伍会追着最近的塔/守军往火圈里钻, 扇区包围站位就散了
+        if (team.anchorLock) {
+            const locked = TeamUtils.getCachePos(team, 'targetPos')
+            if (!locked || !locked.isEqualTo(team.flag.pos)) {
+                TeamUtils.setCachePos(team, 'targetPos', team.flag.pos)
+                delete team.cache.targetPosIndex
+            }
+            return
+        }
+
         const originPos = TeamUtils.getTeamPos(team)
         const focusTarget = TeamUtils.focusTarget(team, originPos)
         const focusPos = focusTarget?.pos || team.flag.pos

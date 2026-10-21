@@ -1,522 +1,518 @@
 {
- "$schema": "./arch-allowlist.schema.json",
- "version": 1,
- "entries": {
-  "src/console/base.ts::remove": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 3
-  },
-  "src/console/base.ts::createFlag": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 1
-  },
-  "src/console/function/layout.ts::remove": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 4
-  },
-  "src/console/function/layout.ts::build": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 2
-  },
-  "src/console/function/market.ts::deal": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 7
-  },
-  "src/console/function/market.ts::createOrder": {
-   "track": "人操豁免",
-   "calls": 2
-  },
-  "src/console/function/room.ts::build": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 2
-  },
-  "src/console/function/room.ts::remove": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 1
-  },
-  "src/console/help.ts::build": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 4
-  },
-  "src/console/help.ts::remove": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 10
-  },
-  "src/console/help.ts::send": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 2
-  },
-  "src/console/help.ts::deal": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 2
-  },
-  "src/console/index.ts::build": {
-   "track": "人操豁免 (console 永久豁免, 登记不收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::moveTo": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 2
-  },
-  "src/modules/agents/actionBroker.ts::harvest": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::pickup": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::withdraw": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::transfer": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::build": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::upgradeController": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::drop": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::attack": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 3
-  },
-  "src/modules/agents/actionBroker.ts::rangedAttack": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 2
-  },
-  "src/modules/agents/actionBroker.ts::heal": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 3
-  },
-  "src/modules/agents/actionBroker.ts::repair": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 2
-  },
-  "src/modules/agents/actionBroker.ts::suicide": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::activateSafeMode": {
-   "track": "P2 command-boundary (agentSystem 直连收编)",
-   "calls": 1
-  },
-  "src/modules/economy/units/manager.ts::drop": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 2
-  },
-  "src/modules/economy/units/manager.ts::withdraw": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/manager.ts::moveTo": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 3
-  },
-  "src/modules/economy/units/manager.ts::transfer": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/miner.ts::moveTo": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 4
-  },
-  "src/modules/economy/units/miner.ts::suicide": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/miner.ts::harvest": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/miner.ts::transfer": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/transporter.ts::moveTo": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/transporter.ts::drop": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 2
-  },
-  "src/modules/economy/units/transporter.ts::withdraw": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/economy/units/transporter.ts::transfer": {
-   "track": "P7 industry-adapter (economy/units adapter 化)",
-   "calls": 1
-  },
-  "src/modules/industry/console/lab.ts::remove": {
-   "track": "P7 industry-adapter",
-   "calls": 4
-  },
-  "src/modules/industry/console/nuker.ts::remove": {
-   "track": "P7 industry-adapter",
-   "calls": 3
-  },
-  "src/modules/industry/console/nuker.ts::createFlag": {
-   "track": "P7 industry-adapter",
-   "calls": 1
-  },
-  "src/modules/industry/console/terminal.ts::send": {
-   "track": "P7 industry-adapter",
-   "calls": 2
-  },
-  "src/modules/movement/index.ts::pull": {
-   "track": "P4 movement-adapter (移动执行层, 永久豁免主体)",
-   "calls": 1
-  },
-  "src/modules/planner/layout/compute.ts::remove": {
-   "track": "P3 construction-intents (planner → intent)",
-   "calls": 2
-  },
-  "src/modules/planner/layoutPlanner.ts::remove": {
-   "track": "P3 construction-intents (planner → intent)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/baseFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 4
-  },
-  "src/proto/Creep/function/baseFunction.ts::pickup": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/baseFunction.ts::withdraw": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/baseFunction.ts::harvest": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/boostFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 3
-  },
-  "src/proto/Creep/function/combatFunction.ts::attack": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/combatFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 4
-  },
-  "src/proto/Creep/function/combatFunction.ts::rangedAttack": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/combatFunction.ts::move": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/controllerFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 7
-  },
-  "src/proto/Creep/function/controllerFunction.ts::signController": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/controllerFunction.ts::pickup": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/controllerFunction.ts::withdraw": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/controllerFunction.ts::upgradeController": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/doubleAction.ts::move": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 5
-  },
-  "src/proto/Creep/function/doubleAction.ts::pull": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/doubleAction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 7
-  },
-  "src/proto/Creep/function/doubleAction.ts::attack": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/moveFuntion.ts::move": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/moveFuntion.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 4
-  },
-  "src/proto/Creep/function/sourceFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/sourceFunction.ts::repair": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/sourceFunction.ts::createConstructionSite": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/sourceFunction.ts::build": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/sourceFunction.ts::transfer": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/workFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 9
-  },
-  "src/proto/Creep/function/workFunction.ts::pickup": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/workFunction.ts::withdraw": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/workFunction.ts::harvest": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/Creep/function/workFunction.ts::transfer": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/workFunction.ts::build": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/workFunction.ts::repair": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Creep/function/workFunction.ts::upgradeController": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Flag/function/baseFunction.ts::remove": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/Flag/function/warSpawn.ts::remove": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 6
-  },
-  "src/proto/Flag/utils.ts::remove": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/execute.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/PowerCreep/execute.ts::suicide": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/function/baseFunction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 9
-  },
-  "src/proto/PowerCreep/function/baseFunction.ts::transfer": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 4
-  },
-  "src/proto/PowerCreep/function/baseFunction.ts::withdraw": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/PowerCreep/function/baseFunction.ts::renew": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/function/doubleAction.ts::move": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 6
-  },
-  "src/proto/PowerCreep/function/doubleAction.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 7
-  },
-  "src/proto/PowerCreep/function/usePower.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 5
-  },
-  "src/proto/PowerCreep/mode/assist.ts::remove": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/mode/assist.ts::enableRoom": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/mode/assist.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 8
-  },
-  "src/proto/PowerCreep/mode/assist.ts::renew": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/mode/assist.ts::withdraw": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/mode/assistHeal.ts::suicide": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 3
-  },
-  "src/proto/PowerCreep/mode/assistHeal.ts::heal": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 3
-  },
-  "src/proto/PowerCreep/mode/assistHeal.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 2
-  },
-  "src/proto/PowerCreep/mode/assistHeal.ts::rangedHeal": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/proto/PowerCreep/mode/operate.ts::moveTo": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 3
-  },
-  "src/proto/Room/function/baseFunction.ts::createConstructionSite": {
-   "track": "P6 legacy-removal (prototype 角色库收编)",
-   "calls": 1
-  },
-  "src/modules/spawning/spawnDirector.ts::spawnCreep": {
-   "track": "P8 spawn-arbiter",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::createConstructionSite": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::remove": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 2
-  },
-  "src/modules/agents/actionBroker.ts::destroy": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::spawnCreep": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::runReaction": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::produce": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::processPower": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::createOrder": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::changeOrderPrice": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::extendOrder": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::deal": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::send": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::cancelOrder": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::claimController": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::reserveController": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::usePower": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::enableRoom": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::move": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::rangedHeal": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/agents/actionBroker.ts::createFlag": {
-   "track": "P8 broker 执行层 (命令管线执行器)",
-   "calls": 1
-  },
-  "src/modules/teams/core/TeamClass.ts::createFlag": {
-   "track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
-   "calls": 1
-  },
-  "src/modules/teams/runtime/TeamController.ts::createFlag": {
-   "track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
-   "calls": 1
-  },
-  "src/modules/teams/runtime/TeamSpawner.ts::createFlag": {
-   "track": "编队域豁免 (建队指挥旗, RoomPosition 原型重写)",
-   "calls": 1
-  },
-  "src/branch/stronghold/team/blitz.ts::suicide": {
-   "track": "编队域豁免 (盾队残阵解散重建)",
-   "calls": 1
-  },
-  "src/branch/stronghold/team/blitz.ts::remove": {
-   "track": "编队域豁免 (波次旗生命周期管理)",
-   "calls": 2
-  },
-  "src/branch/stronghold/team/blitz.ts::createFlag": {
-   "track": "编队域豁免 (波次旗生命周期管理, RoomPosition 原型重写)",
-   "calls": 1
+  "$schema": "./arch-allowlist.schema.json",
+  "version": 1,
+  "entries": {
+    "src/console/base.ts::remove": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 3
+    },
+    "src/console/base.ts::createFlag": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 1
+    },
+    "src/console/function/layout.ts::remove": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 4
+    },
+    "src/console/function/layout.ts::build": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 2
+    },
+    "src/console/function/market.ts::deal": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 7
+    },
+    "src/console/function/market.ts::createOrder": {
+      "track": "人操豁免",
+      "calls": 2
+    },
+    "src/console/function/room.ts::build": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 2
+    },
+    "src/console/function/room.ts::remove": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 1
+    },
+    "src/console/help.ts::build": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 4
+    },
+    "src/console/help.ts::remove": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 10
+    },
+    "src/console/help.ts::send": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 2
+    },
+    "src/console/help.ts::deal": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 2
+    },
+    "src/console/index.ts::build": {
+      "track": "人操豁免 (console 永久豁免, 登记不收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::moveTo": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 2
+    },
+    "src/modules/agents/actionBroker.ts::harvest": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::pickup": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::withdraw": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::transfer": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::build": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::upgradeController": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::drop": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::attack": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 3
+    },
+    "src/modules/agents/actionBroker.ts::rangedAttack": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 2
+    },
+    "src/modules/agents/actionBroker.ts::heal": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 3
+    },
+    "src/modules/agents/actionBroker.ts::repair": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 2
+    },
+    "src/modules/agents/actionBroker.ts::suicide": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::activateSafeMode": {
+      "track": "P2 command-boundary (agentSystem 直连收编)",
+      "calls": 1
+    },
+    "src/modules/economy/units/manager.ts::drop": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 2
+    },
+    "src/modules/economy/units/manager.ts::withdraw": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/manager.ts::moveTo": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 3
+    },
+    "src/modules/economy/units/manager.ts::transfer": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/miner.ts::moveTo": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 4
+    },
+    "src/modules/economy/units/miner.ts::suicide": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/miner.ts::harvest": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/miner.ts::transfer": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/transporter.ts::moveTo": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/transporter.ts::drop": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 2
+    },
+    "src/modules/economy/units/transporter.ts::withdraw": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/economy/units/transporter.ts::transfer": {
+      "track": "P7 industry-adapter (economy/units adapter 化)",
+      "calls": 1
+    },
+    "src/modules/industry/console/lab.ts::remove": {
+      "track": "P7 industry-adapter",
+      "calls": 4
+    },
+    "src/modules/industry/console/nuker.ts::remove": {
+      "track": "P7 industry-adapter",
+      "calls": 3
+    },
+    "src/modules/industry/console/nuker.ts::createFlag": {
+      "track": "P7 industry-adapter",
+      "calls": 1
+    },
+    "src/modules/industry/console/terminal.ts::send": {
+      "track": "P7 industry-adapter",
+      "calls": 2
+    },
+    "src/modules/movement/index.ts::pull": {
+      "track": "P4 movement-adapter (移动执行层, 永久豁免主体)",
+      "calls": 1
+    },
+    "src/modules/planner/layout/compute.ts::remove": {
+      "track": "P3 construction-intents (planner → intent)",
+      "calls": 2
+    },
+    "src/modules/planner/layoutPlanner.ts::remove": {
+      "track": "P3 construction-intents (planner → intent)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/baseFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 4
+    },
+    "src/proto/Creep/function/baseFunction.ts::pickup": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/baseFunction.ts::withdraw": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/baseFunction.ts::harvest": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/boostFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 3
+    },
+    "src/proto/Creep/function/combatFunction.ts::attack": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/combatFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 4
+    },
+    "src/proto/Creep/function/combatFunction.ts::rangedAttack": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/combatFunction.ts::move": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/controllerFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 7
+    },
+    "src/proto/Creep/function/controllerFunction.ts::signController": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/controllerFunction.ts::pickup": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/controllerFunction.ts::withdraw": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/controllerFunction.ts::upgradeController": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/doubleAction.ts::move": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 5
+    },
+    "src/proto/Creep/function/doubleAction.ts::pull": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/doubleAction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 7
+    },
+    "src/proto/Creep/function/doubleAction.ts::attack": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/moveFuntion.ts::move": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/moveFuntion.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 4
+    },
+    "src/proto/Creep/function/sourceFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/sourceFunction.ts::repair": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/sourceFunction.ts::createConstructionSite": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/sourceFunction.ts::build": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/sourceFunction.ts::transfer": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/workFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 9
+    },
+    "src/proto/Creep/function/workFunction.ts::pickup": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/workFunction.ts::withdraw": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/workFunction.ts::harvest": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/Creep/function/workFunction.ts::transfer": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/workFunction.ts::build": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/workFunction.ts::repair": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Creep/function/workFunction.ts::upgradeController": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Flag/function/baseFunction.ts::remove": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/Flag/function/warSpawn.ts::remove": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 6
+    },
+    "src/proto/Flag/utils.ts::remove": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/execute.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/PowerCreep/execute.ts::suicide": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/function/baseFunction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 9
+    },
+    "src/proto/PowerCreep/function/baseFunction.ts::transfer": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 4
+    },
+    "src/proto/PowerCreep/function/baseFunction.ts::withdraw": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/PowerCreep/function/baseFunction.ts::renew": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/function/doubleAction.ts::move": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 6
+    },
+    "src/proto/PowerCreep/function/doubleAction.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 7
+    },
+    "src/proto/PowerCreep/function/usePower.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 5
+    },
+    "src/proto/PowerCreep/mode/assist.ts::remove": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/mode/assist.ts::enableRoom": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/mode/assist.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 8
+    },
+    "src/proto/PowerCreep/mode/assist.ts::renew": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/mode/assist.ts::withdraw": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/mode/assistHeal.ts::suicide": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 3
+    },
+    "src/proto/PowerCreep/mode/assistHeal.ts::heal": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 3
+    },
+    "src/proto/PowerCreep/mode/assistHeal.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 2
+    },
+    "src/proto/PowerCreep/mode/assistHeal.ts::rangedHeal": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/proto/PowerCreep/mode/operate.ts::moveTo": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 3
+    },
+    "src/proto/Room/function/baseFunction.ts::createConstructionSite": {
+      "track": "P6 legacy-removal (prototype 角色库收编)",
+      "calls": 1
+    },
+    "src/modules/spawning/spawnDirector.ts::spawnCreep": {
+      "track": "P8 spawn-arbiter",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::createConstructionSite": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::remove": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 2
+    },
+    "src/modules/agents/actionBroker.ts::destroy": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::spawnCreep": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::runReaction": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::produce": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::processPower": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::createOrder": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::changeOrderPrice": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::extendOrder": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::deal": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::send": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::cancelOrder": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::claimController": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::reserveController": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::usePower": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::enableRoom": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::move": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::rangedHeal": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/agents/actionBroker.ts::createFlag": {
+      "track": "P8 broker 执行层 (命令管线执行器)",
+      "calls": 1
+    },
+    "src/modules/teams/core/TeamClass.ts::createFlag": {
+      "track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
+      "calls": 1
+    },
+    "src/modules/teams/runtime/TeamController.ts::createFlag": {
+      "track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
+      "calls": 1
+    },
+    "src/modules/teams/runtime/TeamSpawner.ts::createFlag": {
+      "track": "编队域豁免 (建队指挥旗, RoomPosition 原型重写)",
+      "calls": 1
+    },
+    "src/branch/stronghold/team/blitz.ts::remove": {
+      "track": "编队域豁免 (波次旗生命周期管理)",
+      "calls": 2
+    },
+    "src/branch/stronghold/team/blitz.ts::createFlag": {
+      "track": "编队域豁免 (波次旗生命周期管理, RoomPosition 原型重写)",
+      "calls": 1
+    }
   }
- }
 }
