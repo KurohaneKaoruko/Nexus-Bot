@@ -63,7 +63,7 @@ function runBlitz(): void {
             const full = teamAliveCount(teamID) >= (team.num ?? 0);
             // 减员补孵不看状态: ready 期丢员同样补, 否则队伍永远集不齐
             if (!full) {
-                reinforceTeam(teamID, team, teamData);
+                reinforceTeam(teamID, team);
             }
             guardTeams += 1;
             if (full) guardFullTeams += 1;
@@ -117,7 +117,7 @@ function runBlitz(): void {
 /** 盾队减员补孵: 按建队配置补齐缺的名额 (活爬继续战斗, 不解散不自杀)。
  * 缺员写入 TeamPendingSpawns, 与建队孵化同一管线逐名补齐;
  * 新成员孵化后经 rejoin 归队 (TeamController 标准流程)。 */
-function reinforceTeam(teamID: string, team: any, teamData: Record<string, any>): void {
+function reinforceTeam(teamID: string, team: any): void {
     const pending = getTeamPendingSpawns();
     if (pending[teamID]?.members?.length) return; // 已有补孵在途
     const room = Game.rooms[team.homeRoom];

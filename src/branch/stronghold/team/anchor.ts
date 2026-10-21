@@ -393,19 +393,6 @@ function coreCorners(
     return out;
 }
 
-/** 盾队总攻站位: 建筑群四个空角 (离塔 2 格, 比任何球都近, 塔火全吸在身上) */
-function pinGuardCorner(
-    flag: Flag,
-    room: Room,
-    box: { minX: number; maxX: number; minY: number; maxY: number },
-    index: number,
-): void {
-    const corners = coreCorners(room, box);
-    if (!corners.length) return;
-    const target = corners[index % corners.length]!;
-    if (!flag.pos.isEqualTo(target)) flag.setPosition(target);
-}
-
 /** 塔清完后的盾队站位: 退到包围环外一格, 继续把守军火力吸在身上 */
 function pinGuardPost(
     flag: Flag,
@@ -500,13 +487,6 @@ function hostileTowers(room: Room): StructureTower[] {
         towers.push(structure as StructureTower);
     }
     return towers;
-}
-
-/** 敌塔总能量 (无视野 = 0) */
-function hostileTowerEnergy(roomName: string): number {
-    const room = Game.rooms[roomName];
-    if (!room) return 0;
-    return hostileTowers(room).reduce((sum, tower) => sum + tower.energy, 0);
 }
 
 /** 耗能位: 从朝家侧最外的塔沿"塔群→家"方向退 guardDrainRange 格 */
