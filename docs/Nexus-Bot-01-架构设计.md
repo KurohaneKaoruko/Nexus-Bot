@@ -7,6 +7,19 @@
 
 ---
 
+## 目录
+
+| 范围 | 内容 |
+|---|---|
+| §1–§4 | 设计目标 · Screeps 作为架构约束 · 最终架构总图 · 六层职责 |
+| §5–§9 | Actor Ownership · TickContext · World Model · Intelligence · Cluster |
+| §10–§16 | Task System · Task Lease · Agent · Intent · Command · ActionBroker · ActionResult |
+| §17–§23 | Movement · Economy · Spawn · Construction · Defense / Combat · Teams · Industry |
+| §24–§28 | Memory · Runtime Index · CPU 架构 · Error Isolation · Event System |
+| §29–§34 | 最终目录 · 依赖规则 · 模块标准结构 · 机凯种理念落地 · 最终 Tick · 重构成功标准 |
+
+---
+
 # 1. 设计目标
 
 Nexus-Bot 的目标不是做一个传统的“Creep Role Bot”，而是建立一个具有**集体感知、集体规划、任务分配、局部自治、统一行动仲裁、长期记忆**能力的 Screeps 自动化文明。
@@ -1390,6 +1403,8 @@ global reset 后重新构建。
 
 # 26. CPU 架构
 
+> 现行实现为 **P0–P3 四档**（`src/core/cpuBudget.ts` 的 `PriorityBand`），**P4 Cosmetic 尚未落地**。四档语义与降级策略见 `docs/nexus-design/02-architecture-charter.md` §22.3。本节为目标态分层。
+
 CPU 分层：
 
 ```text
@@ -1526,9 +1541,9 @@ EndPhase
 
 # 29. 最终目录
 
-## 29.1 现行态裁定（与 04 索引/21 篇联动）
+## 29.1 现行态裁定（与索引页/架构公约 §21 联动）
 
-本节目录树是**长期目标态**。现行 src 顶层结构以 `docs/nexus-design/21-architecture.md` §21.1 为当前权威——目录重组只在模块收编自然发生时顺带进行，不做整树搬移（nexus-architecture-refactor 裁定）。新增代码落新位，存量模块原位收编。
+本节目录树是**长期目标态**。现行 src 顶层结构以 `docs/nexus-design/02-architecture-charter.md` §21.1 为当前权威——目录重组只在模块收编自然发生时顺带进行，不做整树搬移（nexus-architecture-refactor 裁定）。新增代码落新位，存量模块原位收编。
 
 文件迁移矩阵（目标态方向）：
 

@@ -9,7 +9,10 @@
 > "直接照搬那我为什么不直接用 Rosmarin"。每项用 Nexus 自己的模块
 > 架构 (任务板/定编/孵化链) 表达, 语义与上游一致。
 
-## 与上游的关键差异总表
+> 数据时点: 2026-10-21 (批次 W 基线 L4@28,316 / 升级 230,255 / 采集 714,986)。
+> 后续成绩变化以 sim 回归线为准, 本文不追更。
+
+## 24.1 与上游的关键差异总表
 
 | 轴 | Rosmarin race | Nexus 现状 | 差距判定 |
 |---|---|---|---|
@@ -21,7 +24,7 @@
 | 升级体体型 | carryRatio=4 自适应 W/C/M, WORK 垫尾 | carryEnergyPerWork | 公式不同 |
 | 孵化用量 | spawnUsage 逐源扣减 (porter/升级体 CARRY) | 按任务优先级排队 | 口径不同 |
 
-## P0 · 收入引擎 (income 实测口径)
+## 24.2 P0 · 收入引擎 (income 实测口径)
 
 **上游**: `remoteUtils.ts:114` `room.memory.defaultIncome` 逐源累计净收入;
 `roomUtils.getRoomStats(room).income` 直接读该值; `getMaxWork()` 用
@@ -44,7 +47,7 @@ income×multiplier 定升级定编。
 **验收**: speedrun 40k, sim 里 Nexus defaultIncome 与 Rosmarin 同场景数值
 同数量级 (>10/t); 升级定编随实测收入浮动。
 
-## P1 · 升级定编 (maxWork = f(income))
+## 24.3 P1 · 升级定编 (maxWork = f(income))
 
 **上游**: `roomUtils.getMaxWork`:
 ```
@@ -71,7 +74,7 @@ upgraderCountTargetOf 改为 income 驱动三段式; `demandSources` 的半缺�
 **验收**: speedrun L4 时点 maxWork 数值与本矿+外矿 income 匹配;
 sprint/arena 不回退。
 
-## P2 · 外矿背包选择 (spawn 容量约束下的 value/weight DP)
+## 24.4 P2 · 外矿背包选择 (spawn 容量约束下的 value/weight DP)
 
 **上游**: `remoteUtils.ts:190-310`: 逐远程源算 {value=净收入, weight=spawn
 用量}, 01 背包取 max value, `resultStats` 按 value/weight 降序即发展顺序;
@@ -84,7 +87,7 @@ sprint/arena 不回退。
 **验收**: speedrun t5k 时点外矿房数与上游同场景一致 (±1); L3 前完成首批
 外矿孵化。
 
-## P3 · porter CARRY 部件定编
+## 24.5 P3 · porter CARRY 部件定编
 
 **上游**: `manageLogistics.ts:152-185`: `numCarry = Σ 活跃 CARRY (剔除将死)`,
 `maxCarry = 6×spawnUsage (LCL<7) + controllerNumCarry (无 controller link 期)
@@ -98,7 +101,7 @@ unitTargets; 拉伸型: 缺口时优先低代价转岗 (已有 universal 兜底)
 **验收**: speedrun 40k 存活 porter 总 CARRY 与上游同数量级; fill_spawn 饥饿
 tick 占比 < 1%。
 
-## P4 · 升级体体型公式 (carryRatio=4)
+## 24.6 P4 · 升级体体型公式 (carryRatio=4)
 
 **上游**: `spawnUtils.getUpgraderBody(energyCapacity, maxWork, carryRatio=4)`:
 贪心组装 W/C/M, 约束 `(CARRY_CAPACITY×carry)/work ≥ carryRatio` 且
@@ -110,7 +113,7 @@ tick 占比 < 1%。
 
 **验收**: speedrun RCL3 期孵化出的 upgrader 体型与上游 sim 对齐 (W/C/M 比)。
 
-## P5 · 闲职转岗 (pullIdler 语义)
+## 24.7 P5 · 闲职转岗 (pullIdler 语义)
 
 **纯机制**: 任何角色孵化后按 body 能力被"最近的缺口"认领: 有 W+C →
 upgrader/porter 候补; 纯 C+M → porter 候补。上游 `roomUtils.pullIdler`。
@@ -121,7 +124,7 @@ upgrader/porter 候补; 纯 C+M → porter 候补。上游 `roomUtils.pullIdler`
 
 **验收**: sim 探针: 换代潮窗口 (t≈8-10k) 无"空闲且能量>0"的成体 >20t。
 
-## 实施顺序与验证
+## 24.8 实施顺序与验证
 
 1. P0 income 引擎 (无依赖) → 40k speedrun 跑分
 2. P1 升级定编 (依赖 P0) → 40k
@@ -132,7 +135,7 @@ upgrader/porter 候补; 纯 C+M → porter 候补。上游 `roomUtils.pullIdler`
 每步 40k speedrun A/B, 负收益即回退留档 (docs/bugs/race-strategy-port.md)。
 全部落地后跑六场景矩阵, 全绿后更新 sim-matrix-reference.json。
 
-## 已复刻项核对 (防重复劳动)
+## 24.9 已复刻项核对 (防重复劳动)
 
 - link 吞吐 800/(range+1): 已在 (4.1)
 - 止升让位 (building&&!upgradeNeeded → 0): 已在 (4.2)

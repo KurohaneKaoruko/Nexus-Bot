@@ -3,6 +3,18 @@
 
 ---
 
+## 目录
+
+| 范围 | 内容 |
+|---|---|
+| §0–§2 | 全文约定（Phase 三要素块）· 重构原则 · 阶段总览 |
+| §3–§10 | Phase 0–4：冻结基线 · Actor Ownership · Command Boundary · ActionResult · TaskBoard · Reconciliation · Agent · Legacy Role 迁移 |
+| §11–§20 | Phase 5–8：Movement · 禁止项 · Construction · ConstructionPlan · Spawn · SpawnDemand · BodyFactory · Economy · Ledger · Transfer 统计 |
+| §21–§30 | Phase 9–15：Defense · Cluster/Squad · Squad 迁移 · Teams · Industry · Expansion · InterShard · 删除 Legacy · 性能 · Global Reset |
+| §31–§38 | 提交规则 · Coding Agent 规则 · 每阶段验收 · 三批改动建议 · 迁移完成标志 · 路线核心原则 |
+
+---
+
 # 0. 全文约定：Phase 三要素块
 
 本文档每个 Phase 章节自 §3 起统一附带**三要素块**。三要素块是 Phase 的可执行规格，Phase 正文（迁移内容）与三要素块冲突时以三要素块为准。
@@ -65,23 +77,25 @@ Nexus Contract
 # 2. 重构阶段总览
 
 ```text
-Phase 0  建立基线
-Phase 1  Ownership
+Phase 0  冻结基线
+Phase 1  Actor Ownership
 Phase 2  Command Boundary
-Phase 3  Task/Agent
-Phase 4  Movement
-Phase 5  Construction
-Phase 6  Spawn
-Phase 7  Economy
-Phase 8  Defense
-Phase 9  Cluster/Squad
-Phase 10 Teams
-Phase 11 Industry
-Phase 12 Expansion/InterShard
-Phase 13 Legacy Removal
-Phase 14 Performance
-Phase 15 Production Hardening
+Phase 3  TaskBoard
+Phase 4  Agent
+Phase 5  Movement
+Phase 6  Construction
+Phase 7  Spawn
+Phase 8  Economy
+Phase 9  Defense
+Phase 10 Cluster / Squad
+Phase 11 Teams
+Phase 12 Industry
+Phase 13 Expansion
+Phase 14 删除 Legacy
+Phase 15 性能
 ```
+
+> 阶段与章节的对应：Phase 0–15 的正文分别为 §3、§4、§5、§7、§9、§11、§13、§15、§18、§21、§22、§24、§25、§26、§28、§29；夹在中间的其他章节是对应 Phase 的配套专题（如 §6 ActionResult、§8 Reconciliation、§10 Legacy Role 迁移）。
 
 ---
 
@@ -1201,7 +1215,7 @@ Legacy movement wrapper
 
 ## 28.1 四条件判定程序
 
-四条件**按序判定，缺一即拒**。判据与证据格式（台账：`docs/nexus-design/legacy-removal-ledger.md`）：
+四条件**按序判定，缺一即拒**。判据与证据格式（台账：`docs/nexus-design/10-legacy-removal-ledger.md`）：
 
 | 条件 | 判定程序 | 证据格式 |
 |---|---|---|
@@ -1228,7 +1242,7 @@ Legacy movement wrapper
 **进入条件**
 
 - Phase 1–13 对应域的 Adapter 已在生产路径生效（本 Phase 按删除顺序逐域进行，每域独立判定）。
-- 台账机制已建立（`legacy-removal-ledger.md` 存在且格式如 28.2）。
+- 台账机制已建立（`10-legacy-removal-ledger.md` 存在且格式如 28.2）。
 
 **验收门禁**
 
@@ -1389,7 +1403,7 @@ simulation
 | P11 Teams | `G-P11-1`–`G-P11-3` | 零直连 + 三阶段可停 |
 | P12 Industry | `G-P12-1`–`G-P12-3` | 逐系统收编 |
 | P13 Expansion | `G-P13-1`–`G-P13-3` | 零直连 + 链路可观测 |
-| P14 Legacy Removal | `G-P14-1`–`G-P14-4` | 台账证据链 + allowlist 单调降 |
+| P14 删除 Legacy | `G-P14-1`–`G-P14-4` | 台账证据链 + allowlist 单调降 |
 | P15 Performance | `G-P15-1`–`G-P15-4` | 预算带全覆盖 + 热点清零 |
 
 生产验证（实服落地后的观察项，非门禁判据——门禁以 sim 可测为准，生产观察为旁证）：
@@ -1521,7 +1535,7 @@ tasks/
 agents/
 ```
 
-> 裁定注（与 01 §29.1 联动）：`commands/`、`execution/`、`adapters/` 是**职责标签**而非必须的物理目录——现行结构里它们对应 broker 执行层（`modules/agents/actionBroker.ts` 的 commit 分支）与各 Adapter 模块。完成标志的判据是"调用权只在执行层"，物理目录以 nexus-design/21 §21.1 现行态为准。
+> 裁定注（与 01 §29.1 联动）：`commands/`、`execution/`、`adapters/` 是**职责标签**而非必须的物理目录——现行结构里它们对应 broker 执行层（`modules/agents/actionBroker.ts` 的 commit 分支）与各 Adapter 模块。完成标志的判据是"调用权只在执行层"，物理目录以 nexus-design/02-architecture-charter.md §21.1 现行态为准。
 
 ---
 

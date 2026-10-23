@@ -4,13 +4,15 @@
 > ## 项目导读 (Nexus-Bot 收录裁决, 2026-10-12)
 >
 > **定位**: 本篇是 Nexus-Bot 的**总参照蓝图**——设计参照系与验收语言, 不是逐字实施规范。
-> 01-18 是实施规范, 19-22 是架构扩展与公约, 本篇统摄其上: 冲突时以实施文档为准, 模糊时以本篇为准。
+> 文档层级: 目标架构与重构程序的唯一事实源是 `docs/Nexus-Bot-01/02/03` 三篇; `nexus-design/01-18` 是历史演进与专题存档, `19-22` 是现行架构公约, `24` 是 race 机制清单。
+> 裁定顺序: 冲突时以 01/02/03 三篇为准; 三篇未覆盖的模糊处才以本篇为准。
+> （本篇下文 `docs/NN` 为 `docs/nexus-design/NN` 的简写。）
 >
 > ### 与现行实现的映射 (蓝图概念 → 本项目落点)
 >
 > | 蓝图概念 | 本项目落点 | 状态 |
 > |---|---|---|
-> | L0 Runtime Adapter | 引擎全局 + actionBroker 唯一原生调用点 | ✅ 简化实现 (无独立适配层, docs/22 §22.4 裁决) |
+> | L0 Runtime Adapter | 引擎全局 + actionBroker 唯一原生调用点 | ✅ 简化实现 (无独立适配层, 02-architecture-charter.md §22.4 裁决) |
 > | L1 Kernel | `core/` (nexus/phases/cpuBudget/errorBoundary/scheduler) | ✅ |
 > | L2 Shared Cognition | `core/world` 快照 + `Memory.nexus.rooms` Intel | ✅ 三级 (快照/持久/临时), Knowledge 类型对齐中 |
 > | L3 Nexus 帝国层 | `modules/strategy` (posture + directiveFor) | ✅ 最小版 |
@@ -19,25 +21,26 @@
 > | L6 Unit Executor | `modules/agents/agentSystem` (产行动提案) | ✅ |
 > | L7 Intent Gateway + Traffic | `modules/agents/actionBroker` + `modules/movement` | ✅ 管线仲裁 + BetterMove |
 > | Adaptive Archive | economy 诊断/账本速率/travel P95 | ✅ 萌芽 (§8.6 为演进方向) |
-> | §11 建议目录 | **部分采纳** — 已结合进 docs/21 §21.1: 平铺目录域化收进 `modules/` (上表即映射), 未来域 external/industry/teams/intershard/adaptation 已立名, 不预建空目录 | 🟡 |
+> | §11 建议目录 | **部分采纳** — 已结合进 02-architecture-charter.md §21.1: 平铺目录域化收进 `modules/` (上表即映射), 未来域 external/industry/teams/intershard/adaptation 已立名, 不预建空目录 | 🟡 |
 >
 > ### 采纳决定 (关键条目)
 >
 > - **词典序优化顺序** (§1.3) → 采纳为规划总纲: 避免灭亡 > 资源闭环 > 保证履约 > 降低浪费 > 增长竞争。
-> - **四状态行动模型** (§3.1: Proposed/Accepted/Submitted/Observed) → 采纳为 docs/05 行动契约语言;
+> - **四状态行动模型** (§3.1: Proposed/Accepted/Submitted/Observed) → 采纳为 09-legacy-archive.md §5 行动契约语言;
 >   "OK ≠ 完成、下一 tick 观察确认" 已是 actionBroker 现行语义。
-> - **孵化负载 ρ 与接班最晚启动公式** (§3.4) → 吸收进 docs/07。
-> - **运输流量下界 q×T** (§3.5) → 吸收进 docs/06。
-> - **四类承诺** (§9.1: 单位/资源/产能/空间) → 吸收进 docs/05。
-> - **系统状态四档** (§6.3: Normal/Constrained/Critical/Recovery) → 吸收进 docs/12, 与 P0-P3 带互补。
-> - **十条核心不变量** (§12.4) 与**场景测试表** (§12.2) → 吸收进 docs/13。
-> - **阶段 A-F** (§13) → 与 docs/14 Phase 0-7 建立映射。
-> - **不采用清单** (§14) → 全部与本项目裁决一致 (docs/22 同源结论)。
+> - **孵化负载 ρ 与接班最晚启动公式** (§3.4) → 吸收进 09-legacy-archive.md §7。
+> - **运输流量下界 q×T** (§3.5) → 吸收进 09-legacy-archive.md §6。
+> - **四类承诺** (§9.1: 单位/资源/产能/空间) → 吸收进 09-legacy-archive.md §5。
+> - **系统状态四档** (§6.3: Normal/Constrained/Critical/Recovery) → 吸收进 09-legacy-archive.md §12, 与 P0-P3 带互补。
+> - **十条核心不变量** (§12.4) 与**场景测试表** (§12.2) → 吸收进 06-testing-deployment.md。
+> - **阶段 A-F** (§13) → 与 09-legacy-archive.md §14.1（Phase 0–7）建立映射。
+> - **不采用清单** (§14) → 全部与本项目裁决一致 (02-architecture-charter.md §22 同源结论)。
 >
 > ---
 
 > 版本：0.1 / 2026-10-12  
 > 定位：面向 Screeps: World 的工程设计蓝图，不是可直接部署的完整 Bot。  
+> 编号：本篇独立成书，采用书籍式连续章节号（§0–§15），与文件名编号无关；引用写作 `本篇 §N`。  
 > 技术基线：TypeScript、单 shard 内集中式 tick 执行、分层自治、多 colony 扩张。  
 > 灵感来源：《游戏人生》机凯种的智械连结、共享认知、解析与适应。本文将其转译为工程机制，不将文学设定当作游戏规则。
 
@@ -62,6 +65,25 @@ Screeps 不是“写几个角色让单位干活”的游戏，而是一个**有�
 架构形态是：**共享黑板 + 分层控制 + 任务契约 + 预算调度 + 显式行动仲裁**。
 
 不是在每个 creep 里跑一个完整智能体；不是用分布式共识模拟连结；不是把大模型调用放进游戏循环。
+
+### 0.1 章节 → 现行权威对照
+
+本篇是设计参照系，多数章节已被实施文档覆盖。查具体规范时按此表跳转，不要把本篇当逐字实施依据：
+
+| 本篇章节 | 主题 | 现行权威 |
+|---|---|---|
+| §2–§3 | 游戏设计与规则后果 | 01 篇 §2；规则细节见 `04-foundations.md` §1 |
+| §4 | 机凯种灵感 → 工程机制 | 01 篇 §32 |
+| §5 | 分层架构 L0–L7 | 01 篇 §3–§4、§14 |
+| §6 | Tick 流水线 | 01 篇 §33；阶段序以 `src/core/phases.ts` 的 `TICK_PHASES` 为准 |
+| §7 | 核心数据契约 | 01 篇 §10–§16 |
+| §8 | 六个关键子系统 | 01 篇 §17–§23 |
+| §9 | 资源仲裁与冲突规则 | 01 篇 §15 |
+| §10 | 典型闭环推演 | 本篇独有（推演示例） |
+| §11 | 建议代码目录 | **已被 `02-architecture-charter.md` §21.1 取代**（现行 src 顶层结构） |
+| §12 | 测试、观测与不变量 | `06-testing-deployment.md`；不变量见 `Nexus-Bot-03-BUG清单.md` §40 |
+| §13 | 实施路线与阶段验收 | 02 篇 Phase 0–15（含 G-编号门禁） |
+| §14–§15 | 取舍、不采用方案、结论 | 本篇独有（裁决依据） |
 
 ---
 
@@ -691,6 +713,8 @@ WorldView 发现剩余寿命不足以覆盖接班生产与行军时间 → Harve
 ---
 
 ## 11. 建议代码目录
+
+> ⚠ **本节已被取代**：这是早期建议结构（`runtime/kernel/cognition/nexus/clusters/missions` 分层），未采用。现行 src 顶层结构以 `02-architecture-charter.md` §21.1 为权威（平铺分类 + `modules/` 域化收口）。保留本节仅作设计意图参照，**不要按此建目录**。
 
 ```text
 src/

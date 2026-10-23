@@ -3,7 +3,31 @@
 
 > 说明：本清单区分“可以从当前代码直接确认的问题”和“需要运行时进一步验证的高风险问题”。没有经过运行时复现的项目，不把推测写成确定性 Bug。
 
-> **快照性质声明**：本清单是架构级审计的**时点快照**，基准 commit `1ba8916`（2026-10-18，main）。各条目的处置状态（§各 BUG 的状态行）只反映基准时点；后续状态演进**只在 docs/bugs/ 追踪**，本清单不更新（对账映射表见 §43）。行为级缺陷（sim/线上观察）不进本清单，一律走 docs/bugs 登记流程（§41）。
+> **快照性质声明**：本清单是架构级审计的**时点快照**，基准 commit `1ba8916`（2026-10-18，main）。各条目的处置状态只反映基准时点；后续状态演进**只在 docs/bugs/ 追踪**（对账映射表见 §38）。**已修复项按维护约定从本清单移除，BUG 编号不复用**；行为级缺陷（sim/线上观察）不进本清单，一律走 docs/bugs 登记流程（§36）。
+
+---
+
+## 目录
+
+| 范围 | 内容 |
+|---|---|
+| §1 | 严重度定义（P0–P3 / A） |
+| §2–§31 | 30 项架构 BUG（编号不连续，已修复项已移除） |
+| §32–§34 | 修复顺序（按 docs/bugs 单一口径） |
+| §35 | 重构前后不变量 |
+| §36–§37 | Bug 管理方法 · 最终判断 |
+| §38 | 处置状态映射表（与 docs/bugs 对账） |
+
+### 当前未闭合概览（@1ba8916 快照）
+
+| 状态 | 数量 | BUG 编号 |
+|---|---|---|
+| 部分修复 | 8 | 001 / 002 / 006 / 010 / 022 / 023 / 031 / 035 |
+| 仍在代码 | 15 | 003 / 004 / 011 / 013 / 014 / 015 / 017 / 019 / 020 / 021 / 026 / 027 / 029 / 030 / 033 |
+| 未验证 | 7 | 009 / 016 / 018 / 025 / 028 / 032 / 034 |
+
+> 已修复的 5 项（005 / 007 / 008 / 012 / 024）已从本清单移除，**BUG 编号不复用**（编号一经使用即作废，见 §32）。
+> 本表是快照时点统计，与 §38 对账表一致；后续状态演进只在 `docs/bugs/` 追踪。
 
 ---
 
@@ -266,53 +290,8 @@ strict types
 
 ---
 
-# 6. BUG-005
-## P1
-### ActionBroker 内部错误与 Screeps native error 混淆
-> **状态@1ba8916**：**已修复** — ActionResult 五分类 + nativeReturnCode 仅触达时存在 + triage 分诊已落地（actionBroker.ts，01 篇 §16 规格化）。nexus-architecture-refactor 任务 6.x 闭环
 
-
-例如内部判断：
-
-```text
-store-empty
-```
-
-不应伪装成：
-
-```text
-ERR_NOT_ENOUGH_ENERGY
-```
-
-### 风险
-
-Telemetry 无法区分：
-
-```text
-API 拒绝
-```
-
-与：
-
-```text
-Nexus 主动阻止
-```
-
-导致错误率统计失真。
-
-### 修复
-
-分离：
-
-```text
-nativeReturnCode
-internalReason
-category
-```
-
----
-
-# 7. BUG-006
+# 6. BUG-006
 ## P1
 ### EventBus / EventBusEnd / EndPhase 职责重复
 > **状态@1ba8916**：**部分修复（已澄清）** — EventBus/EventBusEnd 职责已定（commit 主段 P2 / 终末 P0，start·tick·end 三通道，01 篇 §28.1）；endPhase 模块群与 EventBusEnd 的最终合并待 Phase 14/15
@@ -348,76 +327,8 @@ end
 
 ---
 
-# 8. BUG-007
-## P1
-### TaskBoard 高频 O(N) 查询
-> **状态@1ba8916**：**已修复** — TaskIndex（room/kind/status/assignee 桶 + counts() 直读）已落地 tasks/board.ts。任务 5.3 闭环
 
-
-当前大量任务查询依赖：
-
-```text
-Object.values(tasks)
-```
-
-### 风险
-
-随着：
-
-```text
-rooms
-remote mining
-construction
-industry
-combat
-```
-
-增长，CPU 线性增加。
-
-### 修复
-
-Runtime Index：
-
-```text
-byStatus
-byRoom
-byKind
-byAgent
-byPriority
-```
-
----
-
-# 9. BUG-008
-## P1
-### Task dedupeKey 的命名空间风险
-> **状态@1ba8916**：**已修复** — 任务 id 生日碰撞修复轮（docs/bugs/task-id-birthday-collision.md）同轮加固 dedupeKey/id 生成；单测覆盖批量创建唯一性
-
-
-如果不同业务使用相同形式的 dedupe key：
-
-```text
-room:target
-```
-
-可能发生跨域碰撞。
-
-### 修复
-
-```text
-<domain>:<kind>:<room>:<target>
-```
-
-例如：
-
-```text
-economy:harvest:E1S1:source123
-construction:build:E1S1:site123
-```
-
----
-
-# 10. BUG-009
+# 7. BUG-009
 ## P1 / Architecture
 ### RoomObservation 持续膨胀
 > **状态@1ba8916**：**未验证** — RoomObservation 膨胀路径需运行时取证（观察衰减逻辑审查 + soak Memory 曲线）；未复现不计已修。取证任务已收编 docs/bugs/room-observation-growth-audit.md
@@ -456,7 +367,7 @@ ThreatObservation
 
 ---
 
-# 11. BUG-010
+# 8. BUG-010
 ## P1
 ### Economy 与 Spawn 存在过强直接耦合
 > **状态@1ba8916**：**部分修复（进行中）** — defender 孵化已走账本预留（spawnDirector）；economy planners 与孵化线的耦合面在 Phase 7 拆分（G-P8-3）中收口
@@ -498,7 +409,7 @@ Industry
 
 ---
 
-# 12. BUG-011
+# 9. BUG-011
 ## P1
 ### SpawnDirector 职责过度集中
 > **状态@1ba8916**：**仍在代码** — spawnDirector 仲裁+执行+命名+登记一体；Phase 7 六件套拆分（02 篇 §15.1）的目标对象
@@ -535,39 +446,8 @@ Executor
 
 ---
 
-# 13. BUG-012
-## P1
-### Planner 直接执行 Construction Mutation
-> **状态@1ba8916**：**已修复** — planner 全部经 submitIntent(kind:createSite, pipeline:construction)（index/controllerBuffer/sourceExtensions 三处）；controllerBuffer 注释确认经命令边界。任务 8.x 闭环
 
-
-当前 Planner 有：
-
-```ts
-createConstructionSite()
-```
-
-### 架构问题
-
-Planning 阶段不应该改变世界。
-
-### 修复
-
-```text
-Plan
- ↓
-Task
- ↓
-Agent
- ↓
-Intent
- ↓
-Command
-```
-
----
-
-# 14. BUG-013
+# 10. BUG-013
 ## P1
 ### Industry 绕过 Nexus Control Plane
 > **状态@1ba8916**：**仍在代码** — industry/console（32 处 Game.rooms 直读）与 autoMarket 未收编；Phase 12 逐系统 Adapter 化（02 篇 §25.1）的目标对象
@@ -593,7 +473,7 @@ Legacy Industry Adapter。
 
 ---
 
-# 15. BUG-014
+# 11. BUG-014
 ## P1
 ### Nexus Squad 与 Legacy TeamData 双事实源
 > **状态@1ba8916**：**仍在代码** — SquadRecord（memorySchema）与 teams/TeamData 并存；Phase 10 单事实源收口（G-P10-1）的目标对象
@@ -628,7 +508,7 @@ TeamData 只是 runtime adapter state。
 
 ---
 
-# 16. BUG-015
+# 12. BUG-015
 ## P2
 ### 多模块仍直接访问 Game.rooms
 > **状态@1ba8916**：**仍在代码** — 约 128 处 Game.rooms 直读分布 12+ 文件（industry/console 32、movement 8、teams 9、external 20+、economy 20+、agents 9）；随各域 Phase 收编，allowlist 单调降（G-P2-3/G-P14-4）
@@ -653,7 +533,7 @@ Perception 统一采集。
 
 ---
 
-# 17. BUG-016
+# 13. BUG-016
 ## P2
 ### Transfer 统计可能使用行动前状态
 > **状态@1ba8916**：**未验证** — transfer 统计口径需对照实现取证（statistics/actionBroker 统计路径）；修复方向已定为观察差分口径（02 篇 §20）
@@ -687,7 +567,7 @@ next Tick Observation Delta
 
 ---
 
-# 18. BUG-017
+# 14. BUG-017
 ## P2
 ### World / Economy 仍偏 Energy-only
 > **状态@1ba8916**：**仍在代码** — LedgerResource = "energy" 硬编码单资源（ledger.ts）；多资源账本是 Phase 8 后扩展，接口位已保留
@@ -727,7 +607,7 @@ StoreSnapshot {
 
 ---
 
-# 19. BUG-018
+# 15. BUG-018
 ## P2
 ### Hostile disappearance ≠ kill
 > **状态@1ba8916**：**未验证** — hostilesKilled 归因口径需运行时取证（失视场景计数不变性断言缺失）；G-P9-1 的验收对象
@@ -762,7 +642,7 @@ hostilesVanished
 
 ---
 
-# 20. BUG-019
+# 16. BUG-019
 ## P2
 ### Expansion 仍是独立 mutation system
 > **状态@1ba8916**：**仍在代码** — external/expand 直读 Game.rooms 自持执行；Phase 13（02 篇 §26.1，G-P13-1）的目标对象
@@ -796,7 +676,7 @@ Claim Agent
 
 ---
 
-# 21. BUG-020
+# 17. BUG-020
 ## P2
 ### InterShard 是独立运行域
 > **状态@1ba8916**：**仍在代码** — intershard 模块未收编；Phase 13 末段（02 篇 §27），当前单 shard 运行期优先级最低
@@ -816,7 +696,7 @@ InterShard 只是 transport adapter。
 
 ---
 
-# 22. BUG-021
+# 18. BUG-021
 ## P2
 ### Legacy Prototype Registry 与 Agent Registry 双重注册
 > **状态@1ba8916**：**仍在代码** — prototype 角色库与 units 注册表双体系并存；Phase 4 类别收编完成后随 Phase 14 删除收敛
@@ -848,7 +728,7 @@ Legacy registry 变成 adapter-local registry。
 
 ---
 
-# 23. BUG-022
+# 19. BUG-022
 ## P2
 ### Creep 名称解析是隐式协议
 > **状态@1ba8916**：**部分修复** — 命名协议已固化（角色 id 入参 + unitCodeFromName 解析形态，spawnDirector 注释成文）；仍是隐式约定，规格化入 01 篇接口契约属后续
@@ -879,7 +759,7 @@ unitCode
 
 ---
 
-# 24. BUG-023
+# 20. BUG-023
 ## P2
 ### Spawn 角色系统存在多套来源
 > **状态@1ba8916**：**部分修复** — unitCode() 归一口径已在 scout-run-residue 修复中统一（注册表存角色名/查询用代号）；多套定义源的最终收口在 Phase 7 UnitDefinition 单源
@@ -919,41 +799,8 @@ population class
 
 ---
 
-# 25. BUG-024
-## P2
-### directSpawn 是绕过 Spawn Arbiter 的逃生通道
-> **状态@1ba8916**：**已修复** — directSpawn 经 sharedBrokerForDirectCommands().executeNow() 命令边界同步执行（spawnDirector.ts，注释明确收编语义）。任务 5.6 桥接闭环
 
-
-当前 directSpawn 的设计明确允许：
-
-```text
-绕过任务板/池
-```
-
-### 短期合理
-
-编队、扩张、PC 陪护等确实需要即时生产。
-
-### 长期风险
-
-它会成为：
-
-> 所有模块绕过 Nexus 的万能入口。
-
-### 修复
-
-保留 API，但改成：
-
-```text
-SpawnRequest(priority=emergency, mode=direct)
-```
-
-最终仍由 SpawnExecutor 执行。
-
----
-
-# 26. BUG-025
+# 21. BUG-025
 ## P2
 ### BodyFactory 与 SpawnDirector 的 policy 分界还不够清晰
 > **状态@1ba8916**：**未验证** — BodyFactory 纯函数化程度需审查取证（是否读 Game）；G-P7-1 的验收对象
@@ -981,7 +828,7 @@ BodyFactory 永远 pure。
 
 ---
 
-# 27. BUG-026
+# 22. BUG-026
 ## P3
 ### Prototype 文件命名不一致
 > **状态@1ba8916**：**仍在代码** — prototype 文件命名不一致（P3 维护性）；随 Phase 14 删除自然消解，不单独修
@@ -1007,7 +854,7 @@ movementFunction.ts
 
 ---
 
-# 28. BUG-027
+# 23. BUG-027
 ## P3
 ### Legacy 代码注释携带大量旧设计上下文
 > **状态@1ba8916**：**仍在代码** — legacy 注释携带旧设计上下文（P3）；随删除消解
@@ -1039,7 +886,7 @@ inline comments
 
 ---
 
-# 29. BUG-028
+# 24. BUG-028
 ## A
 ### `main.ts` 模块装配职责过重
 > **状态@1ba8916**：**未验证** — main.ts 装配职责需结构审查取证；模块注册表化属 Phase 15 前后
@@ -1071,7 +918,7 @@ runtime/buildModules.ts
 
 ---
 
-# 30. BUG-029
+# 25. BUG-029
 ## A
 ### Branch Variant 与 Core Runtime 边界需要进一步稳定
 > **状态@1ba8916**：**仍在代码** — src/branch 与 core 边界待稳定（A 级债务）；随分支变体需求演进
@@ -1104,7 +951,7 @@ Core 不 import branch implementation。
 
 ---
 
-# 31. BUG-030
+# 26. BUG-030
 ## A
 ### Config / Constant / Policy 边界混杂
 > **状态@1ba8916**：**仍在代码** — src/config 与 src/constant 目录并存边界混杂（A 级债务）；收口属配置治理专项
@@ -1133,7 +980,7 @@ threshold = policy parameter
 
 ---
 
-# 32. BUG-031
+# 27. BUG-031
 ## A
 ### Runtime Cache 与 Memory Schema 需要严格分层
 > **状态@1ba8916**：**部分修复** — actorOwnership 已按数据分级落地（活跃租约 global 层 / 持久索引 Memory 带版本，模块头注释成文）；全局层面的分界规格已入 01 篇 §24.3
@@ -1156,7 +1003,7 @@ PathFinder object
 
 ---
 
-# 33. BUG-032
+# 28. BUG-032
 ## A
 ### World Snapshot 与 Game API 生命周期没有完全制度化
 > **状态@1ba8916**：**未验证** — World Snapshot 生命周期制度化程度需审查取证；01 篇 §14.1/§24.3 已给规格
@@ -1182,7 +1029,7 @@ Strategy / Task / Agent 应优先使用 snapshot。
 
 ---
 
-# 34. BUG-033
+# 29. BUG-033
 ## A
 ### Task / Mission / Team / Unit 多种概念重叠
 > **状态@1ba8916**：**仍在代码** — Task/Mission/Team/Unit 概念重叠（spawning/mission 与 tasks 并存）；概念归并在 Phase 7 拆分时裁定
@@ -1214,7 +1061,7 @@ Unit = Spawn archetype
 
 ---
 
-# 35. BUG-034
+# 30. BUG-034
 ## A
 ### Error Boundary 需要防止“静默成功”
 > **状态@1ba8916**：**未验证** — errorBoundary 防静默成功口径需审查取证（错误吞没路径审计）
@@ -1248,7 +1095,7 @@ diagnostic
 
 ---
 
-# 36. BUG-035
+# 31. BUG-035
 ## A
 ### CPU skip 必须可解释
 > **状态@1ba8916**：**部分修复** — cpuBudget canRun + recordSkip(name, reason) 已落地（skip 可解释）；全模块覆盖在 G-P15-1/3 收口
@@ -1280,49 +1127,49 @@ skip count
 
 ---
 
-# 37–39. 修复顺序（汇总视图，口径归 docs/bugs）
+# 32–34. 修复顺序（汇总视图，口径归 docs/bugs）
 
 > 本三章原各自维护 P0/P1/P2 修复顺序，与 docs/bugs 各文件头部的优先级标注形成双口径。现改为**单一口径**：docs/bugs 是缺陷优先级与批次的事实源，本章只做汇总导航，不再自定顺序。
 
-## 37. 架构级（本清单 35 项）的推进顺序
+## 32. 架构级（本清单 30 项）的推进顺序
+
+> **BUG 编号规则**：编号一经分配即不复用。已修复项从本清单移除后，其编号作废，不分配给新条目（当前作废编号：005 / 007 / 008 / 012 / 024）。
 
 架构级问题的修复程序就是 02 篇的 Phase 序列，优先级映射：
 
 ```text
 P0 三项（BUG-001/002/003）
  ↓  Phase 1–2 + 5（Ownership → Command Boundary → Movement 收编）
-P1 结构项（BUG-005/007/008/010/011/012/013/014 等）
+P1 结构项（BUG-010/011/013/014 等）
  ↓  Phase 3–12 逐域（TaskBoard → Agent → Spawn → Economy → … ）
 P2/P3/A 项
  ↓  随宿主 Phase 顺带收口或专项治理（BUG-029/030）
 ```
 
-已闭环项（BUG-005/007/008/012/024）由 nexus-architecture-refactor 变更推进，不再排队。
+已闭环的 5 项（BUG-005/007/008/012/024）已从本清单移除，编号不复用。
 
-## 38. 行为级（docs/bugs）的当前批次口径
+## 33. 行为级（docs/bugs）的当前批次口径
 
-以 docs/bugs 各文件头部优先级与 sim-audit-2026-10-16.md「修复顺序建议」为准（2026-10-18 时点）：
+以 docs/bugs 各文件头部优先级为准（已修复条目按维护约定删除，历史见 git）：
 
 ```text
-P0-16（含 a/b/c）孵化期竞态          ✅ 已修复
- ↓
-P1-17 / P1-18  expansion 坐标 / 外矿 scout 饥饿   ✅ 已修复
- ↓
-P1-19 / P2-20  升级断档 / RCL3 建造风暴           ✅ 已修复
- ↓
-（当前进行中）rcl1-harvest-understaffing ✅ / scout-run-residue ✅ /
-role-registry-executor-gap（剩余批次）/ race-strategy-port（分波）
- ↓
-（待修）nuker-launch-missing-impl（随 Phase 14 删除轨决策）
+（未修复）room-observation-growth-audit     P1 取证待做
+（未修复）sim-audit-2026-10-12 P1-14         P1 沼泽地形 RCL4 未过
+（进行中）role-registry-executor-gap         P1 剩余低频批次
+（待决策）nuker-launch-missing-impl          P2 随 Phase 14 删除轨
+（方法论）sim-audit-2026-10-19               P1 挂钟 CPU 预算不可复现, 已给规避做法
+（留档）  upgrade-supply-gap-cache-merge     P2 结构缓存合并后不再现
 ```
 
-## 39. 新缺陷进队规则
+> 2026-10-18 批次的 P0-16 / P1-17 / P1-18 / P1-19 / P2-20，以及 rcl1 欠采、scout 残留、spawn 池孤儿生产者、任务 id 碰撞、调度物流三项等，均已修复并归档。
 
-新发现缺陷（sim 审计/线上观察）**不进本清单**（本清单是架构审计快照），按 §41 流程登记 docs/bugs 并标注优先级与验证标准；跨轴根因（行为缺陷暴露架构问题）时，在 docs/bugs 文件里引用本清单 BUG 编号作关联（如 §43 表的关联列）。
+## 34. 新缺陷进队规则
+
+新发现缺陷（sim 审计/线上观察）**不进本清单**（本清单是架构审计快照），按 §36 流程登记 docs/bugs 并标注优先级与验证标准；跨轴根因（行为缺陷暴露架构问题）时，在 docs/bugs 文件里引用本清单 BUG 编号作关联（如 §38 表的关联列）。
 
 ---
 
-# 40. 重构前后不变量
+# 35. 重构前后不变量
 
 最终必须始终成立：
 
@@ -1388,7 +1235,7 @@ Creep 死亡后 Task 能恢复
 
 ---
 
-# 41. 最终 Bug 管理方法
+# 36. 最终 Bug 管理方法
 
 所有 sim 审计与线上观察发现的问题进入：
 
@@ -1420,7 +1267,7 @@ docs/bugs/ 新建文件（当日，不积压）：
 现行实际口径（与最初建议的 `P0-001-*.md` 编号制不同，按仓库现状执行）：
 
 ```text
-主题描述式：rcl1-harvest-understaffing.md / scout-run-residue-overrun.md
+主题描述式：room-observation-growth-audit.md / nuker-launch-missing-impl.md
 审计批次式：sim-audit-<日期>.md（一批缺陷一份文档，逐项标 ✅/⏳）
 ```
 
@@ -1431,12 +1278,12 @@ docs/bugs/ 新建文件（当日，不积压）：
 ```text
 行为级缺陷（表现为错误行为/指标劣化） → docs/bugs/（活文档，持续追踪）
 架构级问题（结构/边界/耦合）          → 本清单（快照，随 Phase 推进）
-跨轴根因                              → docs/bugs 文件内引用本清单 BUG 编号（§43 表）
+跨轴根因                              → docs/bugs 文件内引用本清单 BUG 编号（§38 表）
 ```
 
 ---
 
-# 42. 最终判断
+# 37. 最终判断
 
 当前 Nexus-Bot 最危险的不是某一个函数。
 
@@ -1469,9 +1316,9 @@ World Authority
 
 ---
 
-# 43. 处置状态映射表（@1ba8916 快照对账）
+# 38. 处置状态映射表（@1ba8916 快照对账）
 
-架构级（本清单 35 项）与行为级（docs/bugs/）是两个正交轴：本表把架构项的处置状态与 docs/bugs 的修复批次对上账。**两轴的编号体系互不换算**——本清单 BUG-xxx 是结构问题编号，docs/bugs 的 P0-16/P1-17 等是行为缺陷编号，同一根因可能横跨两轴。
+架构级（本清单 30 项）与行为级（docs/bugs/）是两个正交轴：本表把架构项的处置状态与 docs/bugs 的修复批次对上账。**两轴的编号体系互不换算**——本清单 BUG-xxx 是结构问题编号，docs/bugs 的 P0-16/P1-17 等是行为缺陷编号，同一根因可能横跨两轴。
 
 | BUG | 优先级 | 状态@1ba8916 | 承接方 | docs/bugs 关联 |
 |---|---|---|---|---|
@@ -1479,14 +1326,10 @@ World Authority
 | BUG-002 | P0 | 部分修复（进行中） | refactor 任务 5.5/6.3（三级开关 + 类别收编） | role-registry-executor-gap.md（执行断链侧） |
 | BUG-003 | P0 | 仍在代码 | Phase 5（02 §11.1） | — |
 | BUG-004 | P1 | 仍在代码 | Phase 5（G-P5-4） | — |
-| BUG-005 | P1 | 已修复 | refactor 任务 6.x | — |
 | BUG-006 | P1 | 部分修复（已澄清） | 01 §28.1 已规格化；合并待 Phase 14/15 | — |
-| BUG-007 | P1 | 已修复 | refactor 任务 5.3 | task-id-birthday-collision.md（同轮） |
-| BUG-008 | P1 | 已修复 | refactor 任务 5.3 | task-id-birthday-collision.md |
 | BUG-009 | P1 | 未验证 | 取证待做 | room-observation-growth-audit.md（2026-10-18 收编登记） |
 | BUG-010 | P1 | 部分修复（进行中） | Phase 7/8（G-P8-3） | — |
 | BUG-011 | P1 | 仍在代码 | Phase 7（02 §15.1） | — |
-| BUG-012 | P1 | 已修复 | refactor 任务 8.x | — |
 | BUG-013 | P1 | 仍在代码 | Phase 12（02 §25.1） | nuker-launch-missing-impl.md（industry 域内） |
 | BUG-014 | P1 | 仍在代码 | Phase 10（G-P10-1） | — |
 | BUG-015 | P2 | 仍在代码 | 随各域 Phase 收编（allowlist 单调降） | — |
@@ -1496,9 +1339,8 @@ World Authority
 | BUG-019 | P2 | 仍在代码 | Phase 13（02 §26.1） | — |
 | BUG-020 | P2 | 仍在代码 | Phase 13 末段（02 §27） | — |
 | BUG-021 | P2 | 仍在代码 | Phase 4→14 收敛 | role-registry-executor-gap.md（注册侧） |
-| BUG-022 | P2 | 部分修复 | 命名协议已固化；规格化待做 | scout-run-residue-overrun.md（unitCode 归一侧） |
-| BUG-023 | P2 | 部分修复 | Phase 7 UnitDefinition 单源 | scout-run-residue-overrun.md（归一口径侧） |
-| BUG-024 | P2 | 已修复 | refactor 任务 5.6 | spawn-pool-orphaned-producers.md（桥接同轮） |
+| BUG-022 | P2 | 部分修复 | 命名协议已固化；规格化待做 | 已归档（git 历史） |
+| BUG-023 | P2 | 部分修复 | Phase 7 UnitDefinition 单源 | 已归档（git 历史） |
 | BUG-025 | P2 | 未验证 | G-P7-1 验收对象 | — |
 | BUG-026 | P3 | 仍在代码 | 随 Phase 14 消解 | — |
 | BUG-027 | P3 | 仍在代码 | 随 Phase 14 消解 | — |
@@ -1513,18 +1355,15 @@ World Authority
 
 **状态口径**：`已修复` = 快照时点闭环（有代码证据）；`部分修复` = 机制已立、收口未完；`仍在代码` = 待对应 Phase 处理；`未验证` = 需运行时/审查取证，不预判。
 
-**docs/bugs 行为级缺陷索引**（与本表正交，状态以各文件头部为准）：
+**docs/bugs 行为级缺陷索引**（与本表正交，状态以各文件头部为准；已修复条目按维护约定删除，历史见 git）：
 
 | docs/bugs 文件 | 优先级 | 状态 |
 |---|---|---|
-| sim-audit-2026-10-11.md（P0-1/2/3、P1-4/5/6/10/11、P2-7/8/9） | P0–P2 | 全部已修复留档 |
-| sim-audit-2026-10-12.md（P1-12、P2-13、P2-15、P1-14） | P1–P2 | 已修复；P1-14 记录中 |
-| sim-audit-2026-10-16.md（P0-16、P1-17/18/19、P2-20） | P0–P2 | 全部已修复（refactor 任务 4.1–4.5） |
-| rcl1-harvest-understaffing.md | P1 | 已修复 2026-10-18 |
-| scout-run-residue-overrun.md | P0 | 已修复 2026-10-18 |
-| spawn-pool-orphaned-producers.md | P1 | 已修复 2026-10-17 |
-| task-id-birthday-collision.md | P2 | 已修复 |
+| sim-audit-2026-10-11.md（P0-1/2/3、P1-4/5/6/10/11、P2-7/8/9） | P0–P2 | 全部已修复留档（P2-7 待 sim 回归确认回落） |
+| sim-audit-2026-10-12.md（P1-12、P2-13、P2-15、P1-14） | P1–P2 | 已修复；**P1-14 未修复（RCL4 未过）** |
+| sim-audit-2026-10-19.md | P1 | 方法论级，已给规避做法 |
+| room-observation-growth-audit.md | P1 | 未修复（取证待做） |
 | role-registry-executor-gap.md | P1 | 主线收口；剩余批次进行中 |
-| race-strategy-port.md | P1 | 分波计划进行中 |
+| race-strategy-port.md | P1 | 实验日志（非缺陷），机制提炼见 nexus-design/24 |
 | nuker-launch-missing-impl.md | P2 | 未修复（随 Phase 14 删除轨决策） |
 | upgrade-supply-gap-cache-merge.md | P2 | 暂缓留档（不再现） |

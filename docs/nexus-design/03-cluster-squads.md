@@ -1,7 +1,7 @@
 # 20. 智能连结集群：架构、接口与进度
 
-> 本文是「智能连结集群」的架构契约。与 docs/nexus-design/03（总体架构）、docs/nexus-design/19（智械连结分层落地）配套：
-> docs/nexus-design/19 定义**分层智能**（战略 → 指令 → 局部规划 → 遥测），本文定义**集群层**（多 Creep 协作编队）。
+> 本文是「智能连结集群」的架构契约。与 docs/nexus-design/09-legacy-archive.md §3（总体架构）、docs/nexus-design/02-architecture-charter.md §19（智械连结分层落地）配套：
+> docs/nexus-design/02-architecture-charter.md §19 定义**分层智能**（战略 → 指令 → 局部规划 → 遥测），本文定义**集群层**（多 Creep 协作编队）。
 > 文档与代码同步维护：任一节的实现状态以 §20.7 进度表为准，代码改动必须同 Tick 更新本表。
 
 ## 20.1 定位：三个正交概念
@@ -14,7 +14,7 @@
 | **连结**（Link） | 层与层之间的**单向指令与反馈通道** | `Memory.global` → `TickContext.directive()`；遥测快照上行 | `src/modules/strategy/{core,directive}.ts` |
 | **集群**（Cluster） | 多 Creep 协作编队：共享目标 + 成员槽位 + 生命周期 | 编队记录 + 槽位任务（成员各自租约） | `src/modules/cluster/`、`Memory.nexus.squads` |
 
-关键区分（沿用 docs/nexus-design/19 §19.1 的结论并扩展）：
+关键区分（沿用 docs/nexus-design/02-architecture-charter.md §19.1 的结论并扩展）：
 
 - **经济是系统，不是集群**：它按房间规划任务，没有"编队"这一协作形态。
 - **一支防御编队是集群，不是系统**：它不定义事务全流程，只组织并维持一组单位。
@@ -57,7 +57,7 @@
 | **执行形态** | 集群模块（planning 阶段） | 建队、续期、解散、维持槽位任务、回填成员 |
 | **执行者** | Allocator → AgentSystem → ActionBroker | 分配成员、提案、统一仲裁提交 |
 
-> 编队**不持有**任何单位，也不越过 ActionBroker 提交意图（docs/nexus-design/19 §19.4 指挥层级）。
+> 编队**不持有**任何单位，也不越过 ActionBroker 提交意图（docs/nexus-design/02-architecture-charter.md §19.4 指挥层级）。
 
 ## 20.3 数据流向
 
@@ -113,7 +113,7 @@ flowchart TB
 要点：
 
 1. **下行指令**：`Memory.global` → `directive()` → 被职能系统与 SpawnDirector 读取；**Agent 层不读**（执行自治）。
-2. **集群请求**：emergency 阶段写入 `runtime.cluster.requests`（global 运行时层，单 Tick 汇总，**不是事件总线**，符合 docs/nexus-design/03 §3.6）。
+2. **集群请求**：emergency 阶段写入 `runtime.cluster.requests`（global 运行时层，单 Tick 汇总，**不是事件总线**，符合 docs/nexus-design/09-legacy-archive.md §3.6）。
 3. **编队记录**：`Memory.squads`（跨重载持久化，有界 + TTL）。
 4. **槽位任务**：`Memory.tasks` 中 `dedupeKey = squad:<kind>:<room>:slot:<n>`，与普通任务走完全相同的分配/提案/仲裁链路。
 5. **成员回填**：槽位任务的 `assignedTo` → `squad.members`（**只读回填**，编队不指派单位）。
@@ -124,7 +124,7 @@ flowchart TB
 ### 20.4.1 需求方 → 集群（唯一写入口）
 
 ```ts
-// src/store/runtime.ts
+// src/core/store/runtime.ts
 export interface SquadRequest {
   kind: SquadKind;              // 目前仅 "defense"
   roomName: string;
@@ -144,7 +144,7 @@ export function takeSquadRequests(): SquadRequest[];         // 消费并清空
 ### 20.4.2 编队记录（持久化形态）
 
 ```ts
-// src/store/memorySchema.ts
+// src/core/store/memorySchema.ts
 export interface SquadRecord {
   id: string;                   // squad:<kind>:<room>
   kind: SquadKind;
@@ -161,7 +161,7 @@ export interface SquadRecord {
 }
 ```
 
-**持久化约束**（docs/nexus-design/04 §4.4）：纯 JSON，仅 id/坐标/计数，**不保存任何游戏 API 对象引用**。
+**持久化约束**（docs/nexus-design/09-legacy-archive.md §4.4）：纯 JSON，仅 id/坐标/计数，**不保存任何游戏 API 对象引用**。
 
 ### 20.4.3 槽位任务命名约定
 
@@ -196,15 +196,15 @@ requestSquad({
 | 编号 | 决策 | 理由 | 备选与否决原因 |
 |---|---|---|---|
 | C1 | 编队**不直接持有单位**，只持有槽位；成员由任务 `assignedTo` 反填 | 复用 TaskBoard 的租约/对账/抢占不变量，避免第二套分配器 | 扩展 `assignedTo` 为编队 ID：需改动全部任务不变量与 Agent 读取路径，风险高收益低 |
-| C2 | 请求经 **global 运行时层单 Tick 队列**传递，不用事件总线 | 符合 docs/nexus-design/03 §3.6；丢失去只影响一个 Tick 的续期，TTL 兜底 | 独立事件总线：引入隐藏时序依赖，违背"简单清晰" |
-| C3 | 编队记录进 **Memory**（跨重载），请求队列进 **runtime**（重载即失） | 决策状态不可丢、重建廉价数据可丢（docs/nexus-design/19 §19.5 D9 规则） | 编队进 runtime：重载后成员/槽位关系丢失，需重算且原因不可归因 |
+| C2 | 请求经 **global 运行时层单 Tick 队列**传递，不用事件总线 | 符合 docs/nexus-design/09-legacy-archive.md §3.6；丢失去只影响一个 Tick 的续期，TTL 兜底 | 独立事件总线：引入隐藏时序依赖，违背"简单清晰" |
+| C3 | 编队记录进 **Memory**（跨重载），请求队列进 **runtime**（重载即失） | 决策状态不可丢、重建廉价数据可丢（docs/nexus-design/02-architecture-charter.md §19.5 D9 规则） | 编队进 runtime：重载后成员/槽位关系丢失，需重算且原因不可归因 |
 | C4 | 高强度威胁（tier=high）**改提编队需求**，低强度仍由规划器直接建单任务 | 单任务不足以应对高强度威胁；低强度用编队是过度工程 | 全部走编队：低强度场景多一层间接，且现有低强度链路已实测可用 |
 | C5 | 槽位任务优先级有**下限抬升**（`priorityFloor`） | 编队任务是防御承诺，不应被经济任务抢占 | 直接用需求方优先级：经济繁荣期会被 harvest/haul 挤掉 |
 | C6 | 编队解散时**取消**槽位任务而非释放回池 | 需求消失后这些任务无意义，回池会污染分配环 | 释放回池：产生"幽灵防御任务"，被经济单位误领 |
 | C7 | 槽位任务**不带 targetId**（防御类） | 威胁目标每 Tick 变化，静态快照必然过期 | 带 targetId：目标死亡即任务失效，产生大量 replan 抖动 |
 | C8 | 需求方与执行形态**同模块边界**（防御不建队，集群不判断威胁） | 单一职责；威胁判断只有一处，编队生命周期只有一处 | 防御模块内联建队：职责混杂，新增编队类型要改防御模块 |
 
-## 20.6 各层读取边界（扩展 docs/nexus-design/19 §19.6）
+## 20.6 各层读取边界（扩展 docs/nexus-design/02-architecture-charter.md §19.6）
 
 | 层 | 可读 | 禁读 |
 |---|---|---|
@@ -222,14 +222,14 @@ requestSquad({
 
 | 项 | 状态 | 证据 |
 |---|---|---|
-| Memory schema v6 + v5→v6 迁移 | ✅ 完成 | `src/store/memorySchema.ts`、`migrations.ts`；`tests/store/migrations.test.ts` |
+| Memory schema v6 + v5→v6 迁移 | ✅ 完成 | `src/core/store/memorySchema.ts`、`migrations.ts`；`tests/store/migrations.test.ts` |
 | 编队模型纯函数（id/槽位键/收敛/续期/过期） | ✅ 完成 | `src/modules/cluster/model.ts`；`tests/cluster/model.test.ts`（10 例） |
 | 编队生命周期编排（建队/续期/解散/维持/收缩） | ✅ 完成 | `src/modules/cluster/index.ts`；`tests/cluster/planner.test.ts`（10 例） |
-| 运行时需求队列（合并/有界/自愈） | ✅ 完成 | `src/store/runtime.ts`；`tests/cluster/model.test.ts` |
+| 运行时需求队列（合并/有界/自愈） | ✅ 完成 | `src/core/store/runtime.ts`；`tests/cluster/model.test.ts` |
 | 防御系统装配（emergency：观测/任务/塔/统计） | ✅ 完成 | `src/modules/defense/index.ts`；`tests/defense/module.test.ts`（3 例） |
 | 防御 → 编队需求接线（tier=high 建队） | ✅ 完成 | `src/modules/defense/planners.ts`；`tests/defense/planners.test.ts` |
 | 命名空间隔离（互不取消对方任务） | ✅ 完成 | `tests/cluster/planner.test.ts`「不越权」例 |
-| 观测入口（`Nexus.cluster()` / `Nexus.defense()` + HUD 行） | ✅ 完成 | `src/core/boot.ts`；`tests/core/bootSmoke.test.ts` |
+| 观测入口（`Nexus.cluster()` / `Nexus.defense()` + HUD 行） | ✅ 完成 | `src/core/nexus.ts`；`tests/core/bootSmoke.test.ts` |
 | OpenSpec 变更文档（proposal/design/tasks/specs） | ✅ 完成 | `openspec/changes/nexus-cluster-squads/`（含 `specs/cluster-squad`、`specs/defense-assembly`） |
 | **编队全链路集成测试（C1 的确定性替身）** | ✅ 完成 | `tests/cluster/e2e.test.ts`（4 例：建队→认领→衰减解散→低强度不建队→重载自愈） |
 | **sim 回归（编队全链路实战验证）** | ⏳ 待办（环境阻塞） | 见 §20.7.3：sim 构建在当前环境不可行，已用集成测试覆盖编排正确性 |
@@ -244,7 +244,7 @@ requestSquad({
 | **C3** | 异构槽位（不同槽位不同能力/任务种类） | `SquadRecord.slots` → 槽位定义数组 | C1 | 矿工+搬运+护卫混合编队可按槽位分化 |
 | **C4** | 编队内领队逻辑（集火/拉扯） | 编队级共享目标 | C3 | 不越过 ActionBroker；有指标证明收益 |
 | **C5** | 外矿协作组（`SquadKind = "remote"`） | schema v7 + 需求方接入 | C3、docs/nexus-design/10 落地 | 远程采集净收益为正 |
-| **C6** | 编队收益指标（协同前后战损/击杀对比） | 指标入 telemetry | C1 | 无证据的"智能"不上线（docs/nexus-design/02 原则 F） |
+| **C6** | 编队收益指标（协同前后战损/击杀对比） | 指标入 telemetry | C1 | 无证据的"智能"不上线（docs/nexus-design/04-foundations.md §2 原则 F） |
 
 > **C1 进展**：编排正确性已由 `tests/cluster/e2e.test.ts` 覆盖（建队 → 槽位被认领 → 威胁衰减 → 解散 + cancelled，含低强度不建队与重载自愈对照）。**尚未覆盖**的是 sim 的真实时序/吞吐（V8 结算语义下的成员就位耗时、CPU 占用）。
 
@@ -257,7 +257,7 @@ requestSquad({
 - **Windows 开发环境**：`node_modules` 的原生二进制为 linux-x64，Windows 侧需补装 `@rolldown/binding-win32-x64-msvc` 与 `@typescript/typescript-win32-x64` 才能跑 typecheck/test/build（工具经 `node node_modules/.../xxx` 直调，npm scripts 失效）。
 - **未验证声明**：本层所有"✅ 完成"仅由单元/集成测试支撑；**尚未经过 sim 与私服实战验证**，因此不得据此声称"性能提升"。
 
-## 20.8 验收对齐（docs/nexus-design/02 §2.7 七问）
+## 20.8 验收对齐（docs/nexus-design/04-foundations.md §2.7 七问）
 
 | 问题 | 回答 |
 |---|---|

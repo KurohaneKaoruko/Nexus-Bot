@@ -29,16 +29,23 @@ docs/
 ├── Nexus-Bot-02-重构指导.md          ← 迁移程序与验收门禁（How/When）（权威源 B）
 ├── Nexus-Bot-03-BUG清单.md           ← 架构审计快照 + 治理对账（权威源 C）
 ├── Nexus-Bot-架构设计与重构指导.md    ← 本文：索引与导读（不承载独立内容）
-├── nexus-design/                     ← 历史演进与专题设计（23+ 篇；与前三篇冲突时以前三篇为准）
-│   └── legacy-removal-ledger.md      ← legacy 删除门禁台账（活文档，02 §28 引用）
-├── bugs/                             ← 行为级缺陷唯一事实源（03 §41 流程）
-└── api/                              ← API 契约参考
+├── nexus-design/                     ← 专题设计（完整索引见 nexus-design/README.md）
+│   ├── 01-blueprint.md               ← 总参照蓝图（设计参照系，非逐字实施规范）
+│   ├── 02-architecture-charter.md    ← 现行架构公约（分层落地 19 / 定案 21 / 三循环 22）
+│   ├── 03-cluster-squads.md          ← 集群层 Squad 架构与进度
+│   ├── 04-foundations.md             ← 基础（游戏机制 01 / 设计原则 02 / 术语来源 16）
+│   ├── 05–08                         ← 专题（扩张 / 测试 / 运维 / race）
+│   ├── 09-legacy-archive.md          ← 历史设计存档（原 03–17 共 12 篇）
+│   └── 10-legacy-removal-ledger.md   ← legacy 删除门禁台账（活文档，02 §28 引用）
+├── bugs/                             ← 行为级缺陷唯一事实源（03 §36 流程）
+└── api/                              ← API 契约参考（索引入口 api/API-REFERENCE.md）
 ```
 
 裁定规则：
 
 - **目标架构的唯一事实源**是 01/02/03 三篇（+ 主 specs `openspec/specs/`）。
-- nexus-design 是历史演进与专题设计存档；对同一主题与前三篇冲突时，**以前三篇为准**，nexus-design 侧带废弃/改向标注。
+- nexus-design 已按主题合并为 10 篇（分组与阅读路径见其 `README.md`）：**`09-legacy-archive.md` 为历史设计存档**，与前三篇冲突时以前三篇为准（各节篇首带改向标注）；**`02-architecture-charter.md` 与 `03-cluster-squads.md` 为现行架构公约**，其中 `02-architecture-charter.md` §21.1 是 src 顶层结构现行权威（目标态仍看 01 §29）。
+- `07-operations-recovery.md`（运维控制/Flags/灾难恢复）为独立专题，01/02 篇无对应章节，不适用改向裁定。
 - 行为级缺陷一律 docs/bugs；本层级图内无第二处缺陷记录。
 
 # 3. 主题 → 章节 索引表
@@ -96,19 +103,38 @@ docs/
 | 主题 | 章节 |
 |---|---|
 | 严重度定义（P0–P3/A） | 03 §1 |
-| 35 项架构 BUG（逐项含状态标注） | 03 §2–§36 |
-| 修复顺序（docs/bugs 单一口径汇总） | 03 §37–39 |
-| 重构前后不变量 | 03 §40 |
-| Bug 管理方法（与 AGENTS.md 等价流程） | 03 §41 |
-| 处置状态映射表（两轴对账） | 03 §43 |
-| 最终判断 | 03 §42 |
+| 30 项架构 BUG（编号不连续；未闭合概览见篇首） | 03 §2–§31 |
+| 修复顺序（docs/bugs 单一口径汇总） | 03 §32–§34 |
+| 重构前后不变量 | 03 §35 |
+| Bug 管理方法（与 AGENTS.md 等价流程） | 03 §36 |
+| 最终判断 | 03 §37 |
+| 处置状态映射表（两轴对账） | 03 §38 |
 
-## 3.4 治理入口（docs/ 外部）
+## 3.4 专题设计索引（nexus-design/）
+
+合并后共 10 篇，完整分组与阅读路径见 `nexus-design/README.md`。
+
+| 主题 | 文件 | 章节 |
+|---|---|---|
+| EX MACHINA 总参照蓝图（冲突以实施文档为准，模糊处参考） | `01-blueprint.md` | §0–§15 |
+| 智械连结分层落地与扩展契约（系统/集群/连结体、读取边界、持久化三级分层） | `02-architecture-charter.md` | §19 |
+| 架构定案（TickModule 统一挂载；src 顶层结构现行权威） | `02-architecture-charter.md` | §21 |
+| 三循环模型、数据所有权表、CPU 分级语义 | `02-architecture-charter.md` | §22 |
+| 智能连结集群（Squad 架构、交互接口契约、进度表） | `03-cluster-squads.md` | §20 |
+| 游戏机制 / 设计原则 / 术语与规则来源 | `04-foundations.md` | §1 / §2 / §16 |
+| 侦察、房间评估与扩张策略 | `05-expansion-intelligence.md` | §10 |
+| 测试、模拟、部署与可观测性 | `06-testing-deployment.md` | §13 |
+| 运维控制、配置、Flags 与灾难恢复 | `07-operations-recovery.md` | §18 |
+| race 冲级机制复刻清单（P0–P5，原生路线参考） | `08-race-speedrun.md` | §24 |
+| 历史设计存档（原 03–17 共 12 篇，不得作为实现依据） | `09-legacy-archive.md` | §3–§17 |
+| legacy 删除四条件台账 | `10-legacy-removal-ledger.md` | — |
+
+## 3.5 治理入口
 
 | 入口 | 用途 |
 |---|---|
-| `docs/bugs/` | 行为级缺陷登记/勾销（03 §41 流程；先修 bug 再开发） |
-| `docs/nexus-design/legacy-removal-ledger.md` | legacy 删除四条件台账（02 §28 判定程序） |
+| `docs/bugs/` | 行为级缺陷登记/勾销（03 §36 流程；先修 bug 再开发） |
+| `docs/nexus-design/10-legacy-removal-ledger.md` | legacy 删除四条件台账（02 §28 判定程序） |
 | `AGENTS.md` | 开发准则（bug 优先/模块化/无硬编码/nightx 属主） |
 | `openspec/specs/` + `openspec/changes/` | 规格事实源与变更追踪（重构主变更：nexus-architecture-refactor） |
 

@@ -2,15 +2,28 @@
 
 ## 13.1 构建与部署
 
-推荐 TypeScript 工程搭配 Screeps API 类型定义和 Bundler。社区维护的 [screepers/screeps-typescript-starter](https://github.com/screepers/screeps-typescript-starter) 可用于基础编译和上传流程；本文的 Nexus 模块是需要自行实现的业务层。
+工程入口统一走 `package.json` scripts（Node ≥20）：
 
-建议把部署目标显式区分：
+| 命令 | 作用 |
+|---|---|
+| `npm run typecheck` | `tsc --noEmit` 全量类型检查 |
+| `npm run build` | typecheck → clean → rolldown 打包（官服口径 `dist/main.js`） |
+| `npm run build:race` / `build:season` / `build:stronghold` | 变体构建（`VARIANT` 注入，入口见 `src/branch/`） |
+| `npm run lint` / `lint:fix` | oxlint |
+| `npm run fmt` / `fmt:check` | oxfmt |
+| `npm test` | `scripts/run-tests.mjs`（单元/集成测试，不含 sim） |
+| `npm run sim` | 构建后跑 `screeps-sim test`，场景见 `sim/` |
+| `npm run submit` | `scripts/submit.js` 上传目标服务器 |
+| `npm run console` | 交互式控制台（`scripts/console.js`） |
+| `npm run arch:guard` / `arch:report` / `arch:update` | 架构守卫扫描（依赖方向 / 白名单） |
+
+部署目标显式区分：
 
 - `sim`：本地/浏览器模拟，适合快速重现基础行为；
-- `test`：独立测试分支或私服，用于集成与长时间稳定性；
+- `test`：私服 `47.100.24.220`，用于集成与长时间稳定性（**每 4wt 自动重开，需重新落地**，落地脚本 `scripts/land.js`）；
 - `main`：实际长期运行的目标分支。
 
-凭据、私服地址和上传 Token 应保存在开发者本地环境，不要提交至 Git。
+凭据、私服地址和上传 Token 走 `scripts/secret.js` 与开发者本地环境，不要提交至 Git。
 
 ## 13.2 测试金字塔
 
@@ -23,6 +36,8 @@
 用模拟对象验证：TaskBoard 租约过期、Allocator 能力筛选、SpawnDirector 队列选择、经济账本的预留与结算、ActionBroker 对无效目标的处理。
 
 ### 场景测试
+
+本项目 sim 场景位于 `sim/`：`boot`（从零开局）、`sprint`（50k 冲级）、`speedrun`（40k 冲级门）、`arena`、`remote-mine`（外矿）、`race-body-audit`（体型审计）、`run-residue`（跨 run 残留）、`stronghold-door`（要塞房门死锁）。
 
 在模拟/测试房间测试：
 
@@ -42,6 +57,8 @@
 持续运行数千 Tick，关注 Memory 增长、任务抖动、CPU 趋势、孤儿任务、生产失衡、缺货和日志重复。很多 Screeps Bug 不在单个 Tick 暴露，而是长期状态累积造成。
 
 ## 13.3 回归基准
+
+回归线由 `node scripts/sim-matrix.mjs` 统一执行：串行跑 `sim/` 全场景，与 `openspec/changes/nexus-architecture-refactor/baseline/sim-matrix-reference.json` 对照，输出逐门红绿——行为红线（参考为 ✓ 的场景转 ✗，或 RCL 时间线漂移；确定性引擎下绿门必须逐位一致）与性能红线（cpu p95 劣化 > 2ms）。`--build` 先重建 bundle，`--only=<场景>` 只跑指定场景，`--update` 把本次读数写回参考快照。
 
 每次大改之后，在相同地图/相同初始条件下记录：
 
