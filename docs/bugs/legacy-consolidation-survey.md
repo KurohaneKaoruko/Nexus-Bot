@@ -87,3 +87,24 @@ spawnDirector 需求源 standing 定编（`SpawnUnit` = universal/harvester/upgr
 
 boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim 的任务产出 = ∅**。
 映射表对照程序的「旧语义缺失」判定在 sim 域自动满足；真正的等价性风险集中在 sim 不可达域（manager/miner/mine 人操链），由 B/C 节的静态语义清单 + 域切片单测承担。
+
+## H. 域 7 warSpawn 定性补充取证（2026-10-25）
+
+- warSpawn 旗链（AIO/CLEAN/ACLAIM/DIS/LOOT 前缀）孵化 6 角色：aio/cleaner/attack-claimer/dismantle/logistic/one-ranged（`getFlagSpawnLoad` + `directSpawn`）。
+- **执行缺口实证**：attack-claimer/cleaner/dismantle/logistic 的 `executor` 声明在 roleRegistry **无 handler**（摸底 A 节 0 调用互证）；`attackController`/`dismantleMode` 全仓无消费点——这四个角色孵出后即空转（人操链语义已坏，仅 aio 有 teams handler）。此缺口由域 6 词表裁撤处置（人操豁免定性的是 warSpawn **孵化链**，坏角色的词表条目仍按三方一致断言清理）。
+- 豁免清单 `warSpawn.ts::remove` track 已改「人操豁免 (warSpawn 旗标战争孵化, 域7定性保留)」，arch:guard 绿、128 条不变。
+
+## I. 域 4 直驱化前置调研（2026-10-25，只读取证）
+
+**defense 族（defend-attack/defend-ranged/defend-2attack/defend-2heal）**：
+- 孵化源 = **零**。主线只孵 `defender`（任务驱动，`demandSources` 定编 + `unitForTaskKind("defend")→"defender"`）；defend-* 四角色全仓无 directSpawn/需求源调用（仅 boostFunction boost 表与 combatHeal 工厂引用）。
+- handler 本体是**算法资产**：defendSingle/defendDuo（坡位选择/锁定/近远切换）+ combatHeal 工厂——动作已 8.1 经 combatAdapter 提交。
+- 直驱化处置：无孵化源 ⇒ 无「已孵化待执行」单位 ⇒ **不需要直驱运行时**；真正的处置 = 词表条目归域 6 裁撤判定（零源死角色），handler 算法资产（defendSingle/defendDuo）保留待 defense 域后续复用或随孤儿清理。域 4.1 的实际工作收缩为：registry 摘除 defense 族三行绑定（defend2Attack/defendAttack/defendRanged）+ defend-2heal 工厂绑定，随域 5 删除 registry 一并完成——**无需新增 Defense 直驱代码**。
+
+**teams 族（aio/double-attack/double-dismantle/one-ranged）**：
+- 孵化源 = TeamSpawner（编队运行时）+ warSpawn AIO 旗（aio）。编队单位由 Teams 域自身消费（TeamController 驱动编队），exec() 路径对这些角色是**备用通路**（编队失管时兜底）——摸底 A 节 sim 0 调用。
+- 直驱化处置：Teams 域已在驱动（TeamController/TeamAction 经 Adapter），registry 的 teams 绑定随域 5 删除即可，无新增工作。
+
+**pcHeal**：PowerCreep 域自身驱动（PowerCreeps TickModule 的 pc.exec() 调用链），registry 的 pc-heal 绑定是 creep 侧孵化 pc-heal 后的执行入口（mineMission 人操链孵化）。随域 2 迁移后由 economy 驱动路径接管，registry 绑定随域 5 删。
+
+**域 4 结论修正**：原任务书「defense 族改 Defense 模块直驱、teams 族改 Teams 运行时直驱」的前提（存在 exec() 活跃调用面）不成立——sim 与静态双证据显示 registry 15 绑定中 13 个零调用（唯 manager/transporter/miner 走 exec，但 sim 亦零孵化）。**域 4 的正确实现 = 摘除绑定（随域 5 删 registry）+ 词表孤儿移交域 6**，不新增直驱运行时。此结论将回写 tasks 4.1。

@@ -32,10 +32,10 @@
 
 ## 4. A 波域 4–8：exec() 双轨与 roleRegistry 退场
 
-- [ ] 4.1 域 4 registry 战斗族直驱化：defense 族（defend-*）改 Defense 模块直驱、teams 族（aio/double-*/one-ranged）改 Teams 编队运行时直驱、`pcHeal` 归 PowerCreep 驱动模块（动作已 Adapter 化，本步只移分发）；全场景门逐位 + `run-residue`/`stronghold-door` 绿
+- [ ] 4.1 域 4 registry 绑定退场（调研修正版，取证见摸底档 I 节）：defense 族四角色孵化源为零（主线只孵任务驱动的 defender，defend-* 无任何 directSpawn/需求源）、teams 族由 Teams 编队运行时驱动（registry 只是失管兜底，sim 0 调用）、pcHeal 归 PowerCreep 驱动链——**三族均无活跃 exec() 调用面，不需要新增直驱运行时**；本步处置 = registry 摘除 15 绑定中已无调用面的条目（与域 5 删 registry 合并执行）、defend-*/词表孤儿移交域 6 裁撤判定、defendSingle/defendDuo/combatHeal 算法资产保留；全场景门逐位 + `run-residue`/`stronghold-door` 绿
 - [ ] 4.2 域 5 删除 `exec()` 双轨：`Creep.prototype.exec` 挂载、`roleRegistry`、`legacyExecMode` 开关、`NEXUS_TASK_DRIVEN_CODES` 分水岭全部退场（四符号全仓扫描零命中，允许文档/台账引用）；`runAgents` 对无任务单位输出限频「无任务待派」诊断；sim 插桩确认每存活单位归因完备（任务租约或系统级管线）
 - [ ] 4.3 域 6 词表死角色裁撤：按 0.3 摸底确认零孵化源的角色删词表条目 + executor 字段 + UnitLevelData + 中文名 + qos 冻结权重 + boost 表行；structure-guard 词表三方一致断言启用并绿；全场景门绿
-- [ ] 4.4 域 7 warSpawn 定性：显式保留并登记人操豁免（豁免清单 track「人操豁免」+ 台账留档 + 调用方扫描确认无人操触发外调用点）
+- [x] 4.4 域 7 warSpawn 定性：显式保留并登记人操豁免（豁免清单 track「人操豁免 (warSpawn 旗标战争孵化, 域7定性保留)」+ 台账留档 + 调用方扫描确认无人操触发外调用点）（取证补充：attack-claimer/cleaner/dismantle/logistic 四角色 executor 在 registry 无 handler 且行为字段无消费点——人操链语义已坏，词表条目留给域 6 三方一致断言处置，见摸底档 H 节）
 - [ ] 4.5 域 8 proto 角色行为库收缩为纯库：`src/proto/Creep/function/*` 残留突变方法逐个处置（有用语义迁 economy/agents handler，无用删除），`proto/` 公共面仅剩 `ensureMemoryCache`/`clearMemoryCache`/`getBoostCache`/`evaluateSourceWorkTiles` 纯库面；豁免清单 P6 条目清零（56 条 150 处）+ modules→proto 白名单收缩为实际存活纯库面；arch:guard 条目 ≤60
 
 ## 5. A 波收口：Memory v13 稳定与豁免对账
