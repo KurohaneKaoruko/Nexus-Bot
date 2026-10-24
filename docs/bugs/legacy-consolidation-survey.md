@@ -128,3 +128,18 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 ## K. 3.3/3.4 耦合关系核定（2026-10-25）
 
 `Memory.MissionPools` 实驻 `Memory.Nexus.MissionPools`（`getBotMemory()` 即 `Memory.Nexus` 视图，accessor.ts:16-20 + `getMissionPools`）。池 API 全部走 `??=` 惰性重建——**迁移函数若先于 updaters 删除落地，活 updater 当拍即重建池键，迁移无效**。故 3.3（v13 迁移）与 3.4（删 mission/ 目录 + 调度入口）必须同一切片落地：先删代码（调度入口 + updaters + 池 API），后写迁移（v14→v15 清六池残留、保 spawn 键）。spec 的「v13」是 A 波目标版本号名义值，实际注册表已到 v14（carry 词表迁移占用了 v14），MissionPools 清理迁移将落 v15 并在 spec 内登记版本号勘误。
+
+## L. 域 6 词表裁撤候选盘点（2026-10-25，静态扫描 + 交叉验证）
+
+**口径**：孵化源 = demandSources/spawnDirector/warSpawn/externalScheduler/ExpandController/mineralWork/TeamSpawner(TeamConfig member 推导)/spawnMission 的发单面；任务驱动 = NEXUS_TASK_DRIVEN_CODES。
+
+**真·零孵化源候选（30 个）**：attack-claimer、cleaner、defend-2attack、defend-2heal、defend-attack、defend-ranged、deposit-attack、deposit-harvest、deposit-heal、deposit-ranged、deposit-transfer、double-attack、double-dismantle、double-heal、one-ranged、out-2attack、out-2heal、out-attack、out-build、out-defend、out-invader、out-mineral、out-ranged、out-repair、pc-heal、power-attack、power-carry、power-heal、power-ranged、dismantle（warSpawn DIS 旗孵化源在，**保留**——见修正）。
+
+**修正项**（初版扫描遗漏，人工核证后剔除/保留）：
+- team-attack/team-dismantle/team-ranged/team-heal：TeamConfig `member()` 按体型首部件推导（A→team-attack、W→team-dismantle、R/H→team-ranged/team-heal）——**有孵化源，保留**
+- dismantle：warSpawn `DIS/` 旗 directSpawn（`UNITS['dismantle']`? 核证：warSpawn.ts 引用的是 `UNITS['cleaner']` 与 `dismantleMode` 记忆字段；DIS 旗实际孵 cleaner+dismantleMode）。dismantle 角色待域 6 实施时按 warSpawn 逐旗核证
+- out-* 族：externalScheduler.ts:76-77 引用 out-build/out-mineral（休眠链挂载点），outMine 人操链的活发单面——**C 波休眠链处置时一并裁定，域 6 不动**
+- power-*/deposit-* 族：mineralWork（域 2 迁移后）经 directSpawn 桥接孵化——**有孵化源（人操链），保留**
+- rush-courier：courier.ts 专线孵化——**有孵化源，保留**
+
+**结论**：真裁撤候选 = defend-* 四件 + double-* 三件 + one-ranged + attack-claimer/cleaner/logistic 待 warSpawn 逐旗核证 + pc-heal（PowerCreep 链孵化源待核证）。域 6 实施时以 structure-guard 断言⑤采集器自动化此盘点。
