@@ -1630,6 +1630,11 @@ const NEXUS_TASK_DRIVEN_CODES: ReadonlySet<string> = new Set([
 	UNIT_CODES.claimer,
 	UNIT_CODES.reserver,
 	UNIT_CODES.miner,
+	// 域 1.2 切换 (specs/legacy-execution-retirement): manager/transporter 并入
+	// 任务驱动——供给面 linkQuota/manageQuota 已迁 planning 阶段, 矿池旧单
+	// (transport 池) 无孵化消费者; sim RCL≤3 结构性不孵化, 绿门构造性一致
+	UNIT_CODES.manager,
+	UNIT_CODES.transporter,
 ]);
 
 export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoard): void {

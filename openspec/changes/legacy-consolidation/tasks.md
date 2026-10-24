@@ -12,15 +12,19 @@
 
 ## 1. A 波域 1：manager/transporter 任务化（economy/units 退役）
 
-- [ ] 1.1 任务供给补齐：按 `specs/mission-pool-retirement` 映射表执行——manage 池语义 → `carry` 配额目的地 + `terminal_transfer` + `fill_spawn`，transport 池语义 → `carry` 目的地配额，供给方均为 economy planners，复用既有 TaskKind 不新增词表；验证用固定快照对照程序（0.3 快照 → 同场景同 seed 对照 → 差集判定 → 落档摸底档对应小节，旧语义缺失即失败）；单测覆盖任务生成决策
-- [ ] 1.2 切换与验证（四步流水·步骤 1–2）：`NEXUS_TASK_DRIVEN_CODES` 加入两族角色，接管进生产装配路径；全场景门逐位一致（manager/transporter 在 sim RCL≤3 结构性不出现，行为等价由快照对照 + 单测承担）+ `run-residue`/`stronghold-door` 绿 + cpu p95 劣化 >2ms 即回退
+- [x] 1.1 任务供给补齐：按 `specs/mission-pool-retirement` 映射表执行——manage 池语义 → `carry` 配额目的地 + `terminal_transfer` + `fill_spawn`，transport 池语义 → `carry` 目的地配额，供给方均为 economy planners，复用既有 TaskKind 不新增词表；验证用固定快照对照程序（0.3 快照 → 同场景同 seed 对照 → 差集判定 → 落档摸底档对应小节，旧语义缺失即失败）；单测覆盖任务生成决策
+  > 实现注记（2026-10-25）：`economy/linkQuota.ts`（planLinkTransfer 语义：分区/饥饿水位/方向翻转同键）+ `economy/manageQuota.ts`（terminal 平衡：发送簿记优先/目标水位/溢出线/clear 旗标/自有键前缀自取消）+ config `LINK_TRANSFER_CONFIG`/`TERMINAL_BALANCE_CONFIG` + executor 原生结构兜底（fetchEnergy/deliverEnergy/hasFetchTarget 三处 `Game.getObjectById`，link/terminal energy 路径可执行）+ allocator 矿物闸（`terminal_transfer` 非 energy 拒领，与矿物 harvest 同款）；14 单测逐条对照。行为等价依据：sim RCL≤4 无 link/terminal（构造性不可达域），语义由纯核单测 + 语义源逐条对照承担（摸底档 N 节）；manage 型差集（factory/powerSpawn/boostLabWork 的 transport 池发单）登记域 3/industry 收口
+- [x] 1.2 切换与验证（四步流水·步骤 1–2）：`NEXUS_TASK_DRIVEN_CODES` 加入两族角色，接管进生产装配路径；全场景门逐位一致（manager/transporter 在 sim RCL≤3 结构性不出现，行为等价由快照对照 + 单测承担）+ `run-residue`/`stronghold-door` 绿 + cpu p95 劣化 >2ms 即回退
+  > 实现注记（2026-10-25）：`NEXUS_TASK_DRIVEN_CODES` 加 manager/transporter；合并门（1.1+1.2）八门全绿——六场景 GREEN（三绿门 boot L3@8889/race-body-audit L2@458/remote-mine L3@0 逐位一致，三分段门 speedrun L4@28316/arena L3@11629/sprint L3@35645 时间线逐位一致）+ run-residue L2@1059/p95 4ms + stronghold-door L8@0/p95 5ms 逐位一致；speedrun p95 8ms（+1ms，容差内）。绿门构造性一致依据：三门 RCL≤3 无 storage，manager（RCL4+storage）/transporter（storage）定编门不触发；sim 无 link/terminal，新增供给零产出。缺陷修复随行：sendLedger `pruneByRoomStock` 移植偏差（原地删语义）+ 两处测试笔误（bugs/unit-test-awk-masking.md）
 - [ ] 1.3 删除（四步流水·步骤 3–4）：删 `src/modules/economy/units/{manager,transporter}.ts` + `utils/moveWork.ts` 侧信道（移动意图改 broker `MoveIntent`，工位钉位语义并入任务 targetPos）；豁免清单收缩（economy/units 相关条目）并推进 `arch-allowlist.min.json` 检查点；台账新增行（格式按 spec：`A→B（±n）`、实服列写「待补」）；对账：arch:guard 绿 + structure:guard 绿 + `openspec validate --strict` 通过
   > 并行编排注记（spec 修订允许）：域 1 与域 2 的任务供给创作可并行（文件域不相交：planners/quota ↔ mine 迁移模块）；1.2/1.3 的切换、删除与合并验证门由集成会话串行执行
 
 ## 2. A 波域 2：miner 任务化 + mineMission 迁移
 
-- [ ] 2.1 按映射表执行 mine 行：`UpdateMineMission` 活语义迁为 economy 计划阶段模块（元素矿/沉积矿定编逐条搬运 + directSpawn 桥接改 spawnDirector 需求源），产出 `harvest` 任务（`resourceType` 区分元素矿）；`UpdateBoostMission` 行：`boostFunction` 读池改任务板 `boost` kind；单测：定编口径与退役前逐条一致（0.3 摸底清单为对照源）
-- [ ] 2.2 切换与验证：`NEXUS_TASK_DRIVEN_CODES` 加入 miner；全场景门逐位 + 快照对照落档（mine/boost 两行）
+- [x] 2.1 按映射表执行 mine 行：`UpdateMineMission` 活语义迁为 economy 计划阶段模块（元素矿/沉积矿定编逐条搬运 + directSpawn 桥接改 spawnDirector 需求源），产出 `harvest` 任务（`resourceType` 区分元素矿）；`UpdateBoostMission` 行：`boostFunction` 读池改任务板 `boost` kind；单测：定编口径与退役前逐条一致（0.3 摸底清单为对照源）
+  > 实现注记（2026-10-25）：`economy/mineralWork.ts`（543 行 14 条语义逐条搬运：元素矿定编/沉积矿窗口/highway 轮询 UpdateHighwayScan 同拍收编/directSpawn 桥接）；boost 行经裁决独立为 boost 切片（下方注记）。单测 mineral-work.test.ts
+- [x] 2.2 切换与验证：`NEXUS_TASK_DRIVEN_CODES` 加入 miner；全场景门逐位 + 快照对照落档（mine/boost 两行）
+  > 实现注记（2026-10-25）：miner 已入 NEXUS_TASK_DRIVEN_CODES + allocator 矿物合约闸（带 resourceType 的 harvest 拒领——agentSystem 无矿物执行分支，通用件误领会当 Source 空转）。miner 零孵化源（UnitData 全 RCL num:0，本房元素矿活链是 out-mineral 外矿链），切换仅为存量兜底；合并验证门（含本切换）六场景 GREEN 逐位一致（见 1.2 注记）。boost 切片已落地：`economy/boostLedger.ts`（Memory.Nexus.economy.boosts 簿记）+ Assign/Submit/Remove 三面改写 + lab 管理迁 industry/boostLabWork + boostFunction 两处读池改读簿记（25/25 单测）
   > boost 分歧裁决（集成会话 2026-10-25）：映射表 boost 行已修订——boost 池是预订簿记而非工作任务流，承载 = 簿记迁 `Memory.Nexus`（labReservations 同层）+ `UpdateBoostMission` 的 lab 管理迁 industry planning；该处置独立为 boost 切片，在域 3 删池前完成。域 2.1 的 mineralWork 已用 `AssignBoostTask` 原型面下订（池写入侧不变），断链随 boost 切片统一收口
 - [ ] 2.3 删除与对账：删 `src/modules/economy/units/miner.ts` 与 `mission/updaters/mineMission.ts`；豁免收缩 + 检查点推进 + 台账行（实服待补）；arch:guard + structure:guard 绿
 

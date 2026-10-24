@@ -30,13 +30,16 @@ const sendMinBatch = (resourceType: ResourceConstant): number => {
 const roomSendAmount = (room: Room, resourceType: ResourceConstant): number =>
 	(room.storage?.store[resourceType] || 0) + (room.terminal?.store[resourceType] || 0);
 
-/** 簿记可用性巡检 (原 getSendMissionTotalAmount 内联清理): 房间资源不足即删条目 */
+/** 簿记可用性巡检 (原 getSendMissionTotalAmount 内联清理): 房间资源不足即删条目 (原地删, 语义与原池单删除一致) */
 const pruneByRoomStock = (room: Room, entries: SendLedgerEntry[]): SendLedgerEntry[] => {
 	const keep: SendLedgerEntry[] = [];
-	for (const entry of entries) {
+	for (let i = entries.length - 1; i >= 0; i -= 1) {
+		const entry = entries[i]!;
 		const required = Math.min(entry.amount, THRESHOLDS.ENERGY.SEND_REQUEST_MIN);
 		if (roomSendAmount(room, entry.resourceType) >= required) {
-			keep.push(entry);
+			keep.unshift(entry);
+		} else {
+			entries.splice(i, 1);
 		}
 	}
 	return keep;

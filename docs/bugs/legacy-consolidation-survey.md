@@ -165,3 +165,18 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 - **矿物搬运执行分支缺位**（P2，实服待补）：carry/terminal_transfer 执行均为能量口径，矿物方向靠 allocator 闸拒领——lab 矿物填充、terminal 矿物平衡、boost 矿物搬运在实服 RCL6+ 需矿物执行分支（generalize fetchEnergy/deliverEnergy 至 task.resourceType 或专职 handler）后方可真正运转。
 
 **transporter 点对点（transport 型）结论**：已有覆盖 + 差集登记——fill_spawn/carry 配额 + industry 控制（lab/boost/nuker/powerSpawn/tower）承担其供给面；transport 池任务在 transporter 退役后无执行体（同上域 3 收口）。
+
+## O. 域 1.2 切换验证落档（2026-10-25，合并门）
+
+**切换**：`NEXUS_TASK_DRIVEN_CODES` 加入 manager/transporter（agentSystem L1621 词表），exec() 双轨对两族角色关闭，进任务驱动装配路径。
+
+**合并验证门（1.1 供给 + 1.2 切换，bundle 05:22 重建含全部符号）八门全绿**：
+- 三绿门逐位一致：boot L3@8889 / race-body-audit L2@458 / remote-mine L3@0（p95 7/7/5ms）
+- 三分段门时间线逐位一致：speedrun L4@28316 / arena L3@11629 / sprint L3@35645（p95 8/7/7ms，speedrun +1ms 容差内）
+- run-residue L2@1059 p95 4ms、stronghold-door L8@0 p95 5ms 逐位一致
+
+**绿门构造性一致依据**：三门 RCL≤3 无 storage——manager 定编门（RCL4+storage）/transporter 定编门（storage+sites）不触发；sim 无 link/terminal（RCL5/6 建筑），1.1 新增供给零产出。切换的运行时行为差异（exec() 路径 vs 任务认领路径）在 sim 域不可达。
+
+**随行缺陷修复**：sendLedger `pruneByRoomStock` 移植偏差（原 getSendMissionTotalAmount L419 原地删池单，移植版只过滤——已改原地 splice）+ 两处测试断言笔误（bugs/unit-test-awk-masking.md：单计数 awk 汇总掩盖 3 处失败，3.2a 的「20/20 绿」记录勘误）。sim 惰性域（sends 簿记 sim 恒空），无门效度影响。
+
+**1.3 删除面预研（门后执行）**：units/{manager,transporter}.ts（468 行）+ economy/index.ts 两导出行 + registry 两绑定 + UnitData 两 executor 字段（transporter/manager——摘字段后 exec() 静默跳过，无 missing-handler 告警）+ arch-allowlist 8 条 P7 条目收缩。**范围修订**：`utils/moveWork.ts` 挪 2.3——其消费者是 miner.ts+manager.ts，1.3 删 manager 时 miner 仍活（跨域纪律）；`console/function/resource.ts` 的 `TransportMissionAdd`（人操 task 命令）留域 3 池 API 全删时按 spec「迁任务板语义不变」改写（池未删不构成悬挂写入）。孵化侧定编（demandSources manager/transporter 行）不动——切换后是活的任务驱动件，非退役面。
