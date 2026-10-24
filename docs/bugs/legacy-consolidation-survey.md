@@ -108,3 +108,19 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 **pcHeal**：PowerCreep 域自身驱动（PowerCreeps TickModule 的 pc.exec() 调用链），registry 的 pc-heal 绑定是 creep 侧孵化 pc-heal 后的执行入口（mineMission 人操链孵化）。随域 2 迁移后由 economy 驱动路径接管，registry 绑定随域 5 删。
 
 **域 4 结论修正**：原任务书「defense 族改 Defense 模块直驱、teams 族改 Teams 运行时直驱」的前提（存在 exec() 活跃调用面）不成立——sim 与静态双证据显示 registry 15 绑定中 13 个零调用（唯 manager/transporter/miner 走 exec，但 sim 亦零孵化）。**域 4 的正确实现 = 摘除绑定（随域 5 删 registry）+ 词表孤儿移交域 6**，不新增直驱运行时。此结论将回写 tasks 4.1。
+
+## J. 域 3.1 剩余行映射核对（2026-10-25，静态取证）
+
+**spawn 池（`spawnMission.ts`）**：与 MissionPools 共栖但**不在 8 域退役清单**——它是孵化队列实现（`SpawnMissionAdd` 发单 → spawnDirector 经 spawn 池消费），主线孵化仍在用（`utils/rush.ts:380` 读 spawn 池做 rush 仲裁、`statistics.ts:338` 读队列长度、`spawnLoad.ts:48` warSpawn 族共享载载计数）。**处置：随域 5 孵化链收编（spawnDirector 已是主线，spawn 池是它的一部分），不属 mission pool 退役域**。
+
+**transport 池 transport 型（`UpdateTransportMission`）**：消费方三处——① `transporter.ts`（域 1 退役）② `MissionSubmit`（通用锁单面）③ 发单方 = **`console/resource.ts:117` 人操资源调拨** + **`boostMission.ts:123` boost lab 清理/填充回运**。人操发单链随 boost 切片与 console 永久豁免处置；boost 发单随 boostMission lab 管理迁 industry planning 统一收口。**处置：发单方随 boost 切片迁移 + console 人操豁免保留，transport 池在域 3.4 删除**。
+
+**manage 池 'manage' 型（`UpdateManageMission`）**：发单逻辑 = storage↔terminal 资源平衡（域 1 子代理在迁）；'send' 型由 terminalControl 消费（Industry 活代码）——**send 语义已在 boost 分歧裁决中并轨：terminal 发送语义独立成 terminal 切片，先于域 3.4 删池**。
+
+**work/buildRepair/wallRepair 池**：消费方全仓零命中（`getWorkMission`/`getWallRepairMission` 无调用点）——updater 自产自销写占位单，board 的 build/repair kind 已覆盖（`planEconomyRoom`/`planDefenseRoom` 每拍产出）。**处置：纯死写，域 3.4 随 mission 目录整体删除，无语义损失**。
+
+**`TransportMissionCheck`/`BuildRepairMissionCheck`**：锁单有效性巡检（bindCreep 存活/target 容量仍在）——board 的 TTL/租约对账机制同构承担（tasks/index.ts maintainLedger + leaseTicks）。**处置：board 对账承担，随域 3.4 删除**。
+
+**`UpdateHighwayScan`**：活语义（highway 轮询 + power/deposit 侦测 + observeRoom 回调）已由域 2.1 `mineralWork.ts` 逐条搬运（对照表 14 条）。**处置：随域 2.3 删 `mineMission.ts` 一并消失，无遗留**。
+
+**`usePower.ts:72` 读 mine 池**（`checkMissionInPool(mine)`）：PC 放 power 判定「有矿有蛋」——**新发现**。mine 池删除后此判定回落 false → PC 不放 power 技能（人操 assist 链）。处置：随 boost/terminal 切片的簿记迁移一并改读 `OutMineData` 簿记（`powerMine` 键非空即有矿），域 3.4 删池前落地。
