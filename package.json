@@ -26,6 +26,9 @@
 		"arch:guard": "node ./scripts/arch-guard.mjs",
 		"arch:report": "node ./scripts/arch-guard.mjs --report",
 		"arch:update": "node ./scripts/arch-guard.mjs --update",
+		"structure:guard": "node ./scripts/structure-guard.mjs",
+		"structure:report": "node ./scripts/structure-guard.mjs --report",
+		"structure:update": "node ./scripts/structure-guard.mjs --update",
 		"sim": "SOURCE_MAP=0 NO_UPLOAD=1 rolldown -c && screeps-sim test --no-bundle-check"
 	},
 	"screeps-sim": {
