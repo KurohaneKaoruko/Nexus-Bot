@@ -42,7 +42,7 @@
 
 ## 5. A 波收口：Memory v13 稳定与豁免对账
 
-- [ ] 5.1 `rooms[].energyState` 处置：按 0.3 扫描结论二选一（保留为 RoomFeatures 基础状态 / 随域清理并入 v13 迁移），处置结论落台账；验证：全场景门绿 + run-residue 绿
+- [x] 5.1 `rooms[].energyState` 处置：按 0.3 扫描结论二选一（保留为 RoomFeatures 基础状态 / 随域清理并入 v13 迁移），处置结论落台账；验证：全场景门绿 + run-residue 绿（裁定：**保留**——活消费方在 statistics HUD/rush/external-mine 休眠链，台账已登记；门验证随 5.2 总对账一并跑）
 - [ ] 5.2 A 波总对账：豁免清单 ≤60 条且每条有接管计划或永久豁免登记、checkpoint 推进、台账行与提交一一对应；验证：arch:guard + structure:guard 双绿 + `openspec validate legacy-consolidation` 通过
 
 ## 6. B 波一：巨型文件拆分（行为零变化，拆分边界按 `specs/code-structure-standards` 表执行）
