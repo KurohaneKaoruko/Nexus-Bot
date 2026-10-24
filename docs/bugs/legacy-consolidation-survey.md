@@ -124,3 +124,7 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 **`UpdateHighwayScan`**：活语义（highway 轮询 + power/deposit 侦测 + observeRoom 回调）已由域 2.1 `mineralWork.ts` 逐条搬运（对照表 14 条）。**处置：随域 2.3 删 `mineMission.ts` 一并消失，无遗留**。
 
 **`usePower.ts:72` 读 mine 池**（`checkMissionInPool(mine)`）：PC 放 power 判定「有矿有蛋」——**新发现**。mine 池删除后此判定回落 false → PC 不放 power 技能（人操 assist 链）。处置：随 boost/terminal 切片的簿记迁移一并改读 `OutMineData` 簿记（`powerMine` 键非空即有矿），域 3.4 删池前落地。
+
+## K. 3.3/3.4 耦合关系核定（2026-10-25）
+
+`Memory.MissionPools` 实驻 `Memory.Nexus.MissionPools`（`getBotMemory()` 即 `Memory.Nexus` 视图，accessor.ts:16-20 + `getMissionPools`）。池 API 全部走 `??=` 惰性重建——**迁移函数若先于 updaters 删除落地，活 updater 当拍即重建池键，迁移无效**。故 3.3（v13 迁移）与 3.4（删 mission/ 目录 + 调度入口）必须同一切片落地：先删代码（调度入口 + updaters + 池 API），后写迁移（v14→v15 清六池残留、保 spawn 键）。spec 的「v13」是 A 波目标版本号名义值，实际注册表已到 v14（carry 词表迁移占用了 v14），MissionPools 清理迁移将落 v15 并在 spec 内登记版本号勘误。
