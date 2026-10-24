@@ -23,14 +23,12 @@ export const UnitData = {
         bodypart: [[CARRY, 4], [MOVE, 2]],
         level: 2,
         code: 'T',
-        executor: 'transporter',
-    }, // 资源搬运
+    }, // 资源搬运 (域 1.2 切换任务驱动, 原型 executor 退役)
     'manager': {
         bodypart: [[CARRY, 4], [MOVE, 2]],
         level: 1,
         code: 'M',
-        executor: 'manager',
-    }, // 中央搬运
+    }, // 中央搬运 (域 1.2 切换任务驱动, 原型 executor 退役)
     'upgrader': {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 7,

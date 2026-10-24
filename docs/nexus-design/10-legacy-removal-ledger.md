@@ -20,3 +20,4 @@
 > 注：external 域 6 处为「直连收编」而非 legacy 角色删除，实服条件按「路径不可达 + sim 互证」口径豁免；9.2 的角色库删除必须四条件齐全才可执行。
 
 | 2026-10-25 | `rooms[].energyState`（energyState/energyStateTick） | 保留为 RoomFeatures 基础状态 | 5.1 裁定：活消费方在——statistics HUD（`core/statistics.ts:335,428`）、rush 仲裁、external/mine 休眠链（`state.ts:135` 经 `getEnergyState` 读）；transportMission 消费随域 3.4 删除但不影响保留判定。不迁移 v13（`room.memory` 域与 Nexus 结构化域分治，非退役对象） | sim 四场景门 + run-residue（随 5.2 总对账） |
+| 2026-10-25 | `economy/units/manager.ts` + `transporter.ts` 原型执行体（468 行）+ registry 两绑定 + UnitData 两 executor 字段 | 128→120（−8，P7 industry-adapter 条目随文件归零） | ① 等价存在：linkQuota（planLinkTransfer 语义）+ manageQuota（terminal 平衡）+ executor 原生结构兜底已入 planning 生产路径；② 实服待补（RCL5/6 域 sim 不可达，语义等价由纯核单测 14 条 + 语义源逐条对照承担）；③ 合并门八门全绿（六场景 GREEN 逐位一致 + run-residue/stronghold-door，见摸底档 O 节）；④ p95 持平（speedrun +1ms 容差内） | ✅ 已删（域 1.3） |

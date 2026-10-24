@@ -8,7 +8,6 @@ type RoleHandler = {
 type MissingRoleHandlerReporter = (id: string) => void;
 
 import {
-    transporter as transporterRole, manager,
     miner as minerRole,
 } from '@/modules/economy';
 import {
@@ -20,9 +19,7 @@ import { EXECUTORS, UNITS } from '@/constant/CreepConstant';
 
 // 键统一引用 EXECUTORS 常量（派生自 UnitData[].executor），与孵化侧词表单一来源对齐
 export const roleRegistry: Record<string, RoleHandler> = {
-    [EXECUTORS.manager]: manager,
     [EXECUTORS.miner]: minerRole,
-    [EXECUTORS.transporter]: transporterRole,
 
     [EXECUTORS.aio]: aio,
     // 治疗型角色：策略在注册时按角色 id 预绑定，运行时零查表

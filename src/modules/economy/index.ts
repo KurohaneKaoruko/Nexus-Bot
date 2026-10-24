@@ -73,9 +73,7 @@ export { hasHungryUpgrader } from "@/modules/economy/courier";
 export { ccUpgradeReserveOf } from "@/modules/economy/workforce";
 
 // ── 公共面: 原型角色单位 (任务驱动角色 handler 已裁撤, 见 bugs/role-registry-executor-gap) ──
-export { default as manager } from "@/modules/economy/units/manager";
 export { default as miner } from "@/modules/economy/units/miner";
-export { default as transporter } from "@/modules/economy/units/transporter";
 
 // ── 公共面: 生产门控 / 劳动力 / 物流配额 / 调度基准 / 终末钩子 ──
 export {

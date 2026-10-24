@@ -110,22 +110,6 @@
 			"track": "P2 command-boundary (agentSystem 直连收编)",
 			"calls": 1
 		},
-		"src/modules/economy/units/manager.ts::drop": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 2
-		},
-		"src/modules/economy/units/manager.ts::withdraw": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
-		"src/modules/economy/units/manager.ts::moveTo": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 3
-		},
-		"src/modules/economy/units/manager.ts::transfer": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
 		"src/modules/economy/units/miner.ts::moveTo": {
 			"track": "P7 industry-adapter (economy/units adapter 化)",
 			"calls": 4
@@ -139,22 +123,6 @@
 			"calls": 1
 		},
 		"src/modules/economy/units/miner.ts::transfer": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
-		"src/modules/economy/units/transporter.ts::moveTo": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
-		"src/modules/economy/units/transporter.ts::drop": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 2
-		},
-		"src/modules/economy/units/transporter.ts::withdraw": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
-		"src/modules/economy/units/transporter.ts::transfer": {
 			"track": "P7 industry-adapter (economy/units adapter 化)",
 			"calls": 1
 		},
