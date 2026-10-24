@@ -1,7 +1,7 @@
 
-import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { ensureMemoryCache } from '@/proto/Creep/function/cacheFunction';
 import { UNITS } from '@/constant/CreepConstant';
+import { activeBoostEntries, reservedAmountOf } from '@/modules/economy/boostLedger';
 // ── 中央 boost 配置表（Tier 1 boost 管理统一）──────────────────
 // 角色 -> 部件 -> 候选 boost 资源（按优先级降级，前者不足自动用后者）。
 // 仅收「标准角色」；动态分档（power 的 boostLevel、defend-single 的 must 切换）
@@ -233,17 +233,12 @@ export default class BoostFunction extends Creep {
             const lastEnsure = boostCache.boostEnsureTime as number | undefined;
             const allowEnsure = !lastEnsure || Game.time - lastEnsure >= ensureInterval;
 
-            const boostPool = this.room.getAllMissionFromPool?.(MISSION_POOLS.boost) as any[] | undefined;
+            const boostEntries = activeBoostEntries();
             const ownersMap: Record<string, number> = {};
-            if (boostPool) {
-                for (const t of boostPool) {
-                    const data = t?.data;
-                    const mineral = data?.mineral as string | undefined;
-                    if (!mineral) continue;
-                    const amount = data?.owners?.[ownerId]?.amount;
-                    if (typeof amount === 'number' && amount > 0) {
-                        ownersMap[mineral] = (ownersMap[mineral] || 0) + amount;
-                    }
+            for (const entry of boostEntries) {
+                const amount = entry.owners?.[ownerId]?.amount;
+                if (typeof amount === 'number' && amount > 0) {
+                    ownersMap[entry.mineral] = (ownersMap[entry.mineral] || 0) + amount;
                 }
             }
 
@@ -447,16 +442,7 @@ export default class BoostFunction extends Creep {
             const allowEnsure = !lastEnsure || Game.time - lastEnsure >= ensureInterval;
 
             if (must && allowEnsure) {
-                const boostPool = this.room.getAllMissionFromPool?.(MISSION_POOLS.boost) as any[] | undefined;
-                let reserved = 0;
-                if (boostPool) {
-                    for (const t of boostPool) {
-                        const data = t?.data;
-                        if (!data || data.mineral !== mineral) continue;
-                        const amount = data?.owners?.[ownerId]?.amount;
-                        if (typeof amount === 'number' && amount > 0) reserved += amount;
-                    }
-                }
+                const reserved = reservedAmountOf(mineral, ownerId);
                 const needEnsure = Math.max(0, boostAmount - reserved);
                 if (needEnsure > 0) {
                     this.room.AssignBoostTask(mineral, needEnsure, ownerId);

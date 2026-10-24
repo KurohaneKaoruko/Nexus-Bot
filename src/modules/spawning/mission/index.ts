@@ -28,7 +28,6 @@ export default class Mission extends Room {
 
         const schedule: Array<{ interval: number; offset: number; run: (offset: number) => void }> = [
             { interval: transportInterval, offset: 1, run: (offset) => this.UpdateTransportMission(offset) },
-            { interval: 20, offset: 2, run: (offset) => this.UpdateBoostMission(offset) },
             { interval: 30, offset: 3, run: (offset) => this.UpdateManageMission(offset) },
             { interval: 50, offset: 4, run: (offset) => this.UpdateBuildRepairMission(offset) },
             { interval: 50, offset: 5, run: (offset) => this.UpdateWallRepairMission(offset) },

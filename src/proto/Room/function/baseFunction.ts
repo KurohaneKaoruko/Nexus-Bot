@@ -1,7 +1,6 @@
 // @ts-nocheck
 
-import { addMissionToPool, updateMissionPool, deleteMissionFromPool, submitMission } from '@/modules/spawning';
-import { MISSION_POOLS } from '@/constant/MissionConstant';
+import { assignBoost, submitBoost, removeBoostEntry } from '@/modules/economy/boostLedger';
 import { UNITS } from '@/constant/CreepConstant';
 import { UnitData, UnitLevelData } from '@/constant/CreepConstant';
 import { buildCarrierBodyConfig, RELAY_CARRIER_CARRY_SIZE, DIRECT_CARRIER_CARRY_SIZE } from '@/utils/remoteBody';
@@ -722,102 +721,17 @@ export default class BaseFunction extends Room {
         return true;
     }
 
-    /** 给lab分配boost任务 */
+    /** 给lab分配boost任务 (预订写 economy/boostLedger 簿记) */
     override AssignBoostTask(mineral: ResourceConstant, amount: number, ownerId?: string) {
-        const resolvedOwnerId = ownerId || '__public__';
-        // 检查房间内资源是否足够
-        const stores = [this.storage, this.terminal, ...(this.lab || [])];
-        const totalResource = stores.reduce((sum, s) => sum + (s?.store[mineral] || 0), 0);
-        if (totalResource < amount) return false;
-
-        // 检查是否已有相同资源的 Boost 任务
-        // 注意：BoostTask 的 data 结构 { mineral, totalAmount, owners }
-        // checkSameMissionInPool 需要匹配 data 的每个 key。但这里只需要匹配 mineral
-        // 所以我们手动查找
-        const boostPool = this.getAllMissionFromPool?.(MISSION_POOLS.boost) as Task[];
-        let task = boostPool?.find(t => (t.data as BoostTask).mineral === mineral);
-
-        if (task) {
-            // 更新现有任务
-            const data = task.data as BoostTask;
-            data.totalAmount += amount;
-            if (resolvedOwnerId) {
-                if (!data.owners[resolvedOwnerId]) {
-                    data.owners[resolvedOwnerId] = { amount: 0, time: Game.time };
-                }
-                data.owners[resolvedOwnerId].amount += amount;
-                data.owners[resolvedOwnerId].time = Game.time;
-            }
-            // 提交更新到内存 (虽然引用修改已经生效，但为了规范)
-            updateMissionPool(this.name, MISSION_POOLS.boost, task.id, { data });
-        } else {
-            // 创建新任务
-            const data: BoostTask = {
-                mineral,
-                totalAmount: amount,
-                owners: {},
-                active: true
-            };
-            if (resolvedOwnerId) {
-                data.owners[resolvedOwnerId] = { amount, time: Game.time };
-            }
-            addMissionToPool(this.name, MISSION_POOLS.boost, 'boost', 0, data);
-        }
-
-        return true;
+        return assignBoost(this, mineral, amount, ownerId);
     }
 
-    /** 提交lab boost已完成量 */
+    /** 提交lab boost已完成量 (簿记扣减) */
     override SubmitBoostTask(mineral: ResourceConstant, amount: number, ownerId?: string) {
-        if (!amount || amount <= 0) return ERR_INVALID_ARGS;
-        const boostPool = this.getAllMissionFromPool?.(MISSION_POOLS.boost) as Task[];
-        if (!boostPool) return ERR_NOT_FOUND;
-        
-        const task = boostPool.find(t => (t.data as BoostTask).mineral === mineral);
-        if (!task) return ERR_NOT_FOUND;
-
-        const data = task.data as BoostTask;
-
-        // 如果指定了 ownerId，则必须在 owners 中存在才扣减
-        // 否则不扣减任务配额，避免未注册的 Creep 消耗任务量
-        if (ownerId) {
-            if (data.owners && data.owners[ownerId]) {
-                data.owners[ownerId].amount -= amount;
-                if (data.owners[ownerId].amount <= 0) {
-                    delete data.owners[ownerId];
-                }
-                // 只有当确认是有效的 owner 时，才扣减总任务量
-                data.totalAmount -= amount;
-            } else if (data.owners && data.owners['__public__']) {
-                data.owners['__public__'].amount -= amount;
-                if (data.owners['__public__'].amount <= 0) {
-                    delete data.owners['__public__'];
-                }
-                data.totalAmount -= amount;
-            } else if (!data.owners || Object.keys(data.owners).length === 0) {
-                data.totalAmount -= amount;
-            } else {
-                // 如果 ownerId 不在 owners 列表中，则认为是“未注册”的消耗，不影响任务总数
-                // 这样 Team Creep 就不会因为被抢占而无法完成任务
-                return ERR_INVALID_TARGET;
-            }
-        } else {
-            // 如果没提供 ownerId，为了安全起见，也不扣减 totalAmount
-            // 或者，我们可以允许“匿名”提交扣减 totalAmount？
-            // 考虑到任务池主要是为注册者服务的，匿名消耗应该被视为“意外”
-            return ERR_INVALID_ARGS;
-        }
-
-        if (data.totalAmount < 0) data.totalAmount = 0;
-        // 任务完成判断逻辑交给 UpdateBoostMission 或 submitMission 的 deleteFunc
-        // 但这里我们手动调用 submitMission 来更新
-        const deleteFunc = (d: BoostTask) => d.totalAmount <= 0;
-        submitMission(this.name, MISSION_POOLS.boost, task.id, data, deleteFunc);
-
-        return OK;
+        return submitBoost(mineral, amount, ownerId);
     }
 
-    /** 
+    /**
      * 获取可用于 Boost 的 Lab
      * @description 优先返回存有该资源的 Lab，其次返回空闲 Lab
      */
@@ -857,14 +771,10 @@ export default class BaseFunction extends Room {
         return null;
     }
 
-    /** 删除lab boost任务 */
+    /** 删除lab boost任务 (簿记条目移除) */
     override RemoveBoostTask(mineral: string) {
-        const boostPool = this.getAllMissionFromPool?.(MISSION_POOLS.boost) as Task[];
-        if (!boostPool) return ERR_NOT_FOUND;
-        
-        const task = boostPool.find(t => (t.data as BoostTask).mineral === mineral);
-        if (task) {
-            deleteMissionFromPool(this.name, MISSION_POOLS.boost, task.id);
+        const removed = removeBoostEntry(mineral as ResourceConstant);
+        if (removed) {
             console.log(`删除boost任务: ${mineral}`);
             return OK;
         }

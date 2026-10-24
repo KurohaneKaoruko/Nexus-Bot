@@ -7,6 +7,7 @@
 import { qos } from '@/core/qos'
 import { linkWork } from '@/modules/industry/controls/linkControl'
 import { terminalWork } from '@/modules/industry/controls/terminalControl'
+import { planBoostLabWork as boostLabWork } from '@/modules/industry/boostLabWork'
 import { labWork } from '@/modules/industry/controls/labControl'
 import { factoryWork } from '@/modules/industry/controls/factoryControl'
 import { powerSpawnWork } from '@/modules/industry/controls/powerSpawnControl'
@@ -25,6 +26,7 @@ function runIndustry(room: Room): void {
 	runObserveCallbackTick()
 	linkWork(room)
 	terminalWork(room)
+	boostLabWork(room)
 	labWork(room)
 	factoryWork(room)
 	powerSpawnWork(room)

@@ -20,6 +20,16 @@ export interface SendLedgerEntry {
 	amount: number;
 }
 
+/**
+ * Boost 预订簿记条目 (原 boost 池任务的收编载体, 实现见
+ * modules/economy/boostLedger): 同 mineral 单条, owners 记录预订者。
+ */
+export interface BoostLedgerEntry {
+	mineral: ResourceConstant;
+	totalAmount: number;
+	owners: Record<string, { amount: number; time: number }>;
+}
+
 export const CURRENT_SCHEMA_VERSION = 14;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
@@ -271,6 +281,8 @@ export interface EconomyMemory {
 	remoteTargets?: string[];
 	/** 终端发送簿记 (原 terminal 池 send 型): 人操 console upsert, terminalControl 消费 */
 	sends?: SendLedgerEntry[];
+	/** Boost 预订簿记 (原 boost 池): AssignBoostTask 系写入, lab 管理与 boostFunction 消费 */
+	boosts?: BoostLedgerEntry[];
 }
 
 /** 全局战略政策 (docs/nexus-design/04 §4.2): 随姿态转移更新, 值域见 config/strategy */
