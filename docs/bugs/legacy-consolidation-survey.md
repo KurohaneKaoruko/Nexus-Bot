@@ -143,3 +143,7 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 - rush-courier：courier.ts 专线孵化——**有孵化源，保留**
 
 **结论**：真裁撤候选 = defend-* 四件 + double-* 三件 + one-ranged + attack-claimer/cleaner/logistic 待 warSpawn 逐旗核证 + pc-heal（PowerCreep 链孵化源待核证）。域 6 实施时以 structure-guard 断言⑤采集器自动化此盘点。
+
+## M. 域 8 proto 角色行为库残留面初盘（2026-10-25，只读）
+
+`src/proto/Creep/function/` 10 文件 3570 行、65 个 override 突变方法。modules/console 侧直接引用 ≈ 0（workFunction 1 处待核证）——**残留面全部经 Creep 原型继承链被动可达**（exec() 角色调用）或纯死代码。域 8 实施时的处置依据：exec() 退场（4.2）后这些方法失去调用方，逐文件判定「纯库函数导出（cacheFunction/boostFunction 的 getBoostCache 等）↔ 死代码删除」。**依赖顺序锁定：域 8 必须在 4.2 删 exec() 之后实施**（当前顺序 4.5 已正确）。
