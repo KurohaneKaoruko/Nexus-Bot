@@ -28,6 +28,8 @@ import { createLedger, reserve } from "@/modules/economy/ledger";
 import { harvestSlotsFor } from "@/modules/world";
 import { harvestStaffingPerSource, avgHarvesterWorkOf } from "@/modules/economy/productionGate";
 import { controllerCarryQuotaOf, upgradersStarvedOf } from "@/modules/economy/workforce";
+import { upsertLinkCarryTasks } from "@/modules/economy/linkQuota";
+import { upsertTerminalTransferTasks } from "@/modules/economy/manageQuota";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 
 const PLANNED_KINDS: TaskKind[] = ["harvest", "carry", "fill_spawn", "upgrade", "build"];
@@ -426,6 +428,11 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 			});
 		}
 	}
+
+	// 中心 link 调拨 + terminal 平衡 (specs/mission-pool-retirement manage 行):
+	// manager 语义的任务板供给, 提交阶段读原生房 (link/terminal 不在感知快照内)
+	upsertLinkCarryTasks(ctx, board, room, priorityFor("carry") + bias("carry"), expected);
+	upsertTerminalTransferTasks(ctx, board, room, priorityFor("carry") + bias("carry"));
 
 	// 消失的主体 → 取消其任务 (工地建成/移除、满仓、堆叠消失); 节流期保持存活者除外。
 	// 远程任务 (目标房 ≠ 本矿, planRemoteHarvest 产出) 不在本 planner 的 expected 口径内,

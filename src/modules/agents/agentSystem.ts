@@ -292,6 +292,9 @@ function hasFetchTarget(
 	if (fromId) {
 		if (room.piles.some((p) => p.id === fromId)) return true;
 		if (room.stores.some((s) => s.id === fromId && s.energy > 0)) return true;
+		// 原生结构兜底: link/terminal 取货点 (fetchEnergy 同口径), 部分装载不误判枯竭
+		const native = Game.getObjectById(fromId as Id<AnyStoreStructure>);
+		if (native && "store" in native && (native.store[RESOURCE_ENERGY] ?? 0) > 0) return true;
 		return false;
 	}
 	if (nearestStore(ctx, room, creep.x, creep.y)) return true;
@@ -320,6 +323,25 @@ function fetchEnergy(
 		if (store) {
 			submitMoveOrAction(ctx, broker, creep, task, "withdraw", "carry", store, RANGE_ADJACENT);
 			return;
+		}
+		// 原生结构兜底 (specs/mission-pool-retirement manage 行): link/terminal 不在
+		// 感知快照 stores 内, 但 link 调拨/terminal 平衡任务的取货点就是它们——
+		// 提交阶段按 id 直读原生房 (与 planner 消费 Game.rooms 同先例)
+		const native = Game.getObjectById(fromId as Id<AnyStoreStructure>);
+		if (native && "store" in native) {
+			const energy = native.store[RESOURCE_ENERGY] ?? 0;
+			if (energy > 0) {
+				submitMoveOrAction(
+					ctx,
+					broker,
+					creep,
+					task,
+					"withdraw",
+					"carry",
+					{ id: native.id, x: native.pos.x, y: native.pos.y },
+					RANGE_ADJACENT,
+				);
+			}
 		}
 		return;
 	}
@@ -387,6 +409,27 @@ function deliverEnergy(
 		if (dest && dest.energy < dest.energyCapacity) {
 			submitMoveOrAction(ctx, broker, creep, task, "transfer", "carry", dest, RANGE_ADJACENT);
 			return;
+		}
+		// 原生结构兜底 (specs/mission-pool-retirement manage 行): link (中心调拨
+		// 补货方向的目的地) 不在快照交付面内, 按 id 直读原生房
+		if (task.resourceType === RESOURCE_ENERGY || task.resourceType === undefined) {
+			const native = Game.getObjectById(task.destId as Id<AnyStoreStructure>);
+			if (native && "store" in native) {
+				const free = native.store.getFreeCapacity(RESOURCE_ENERGY) ?? 0;
+				if (free > 0) {
+					submitMoveOrAction(
+						ctx,
+						broker,
+						creep,
+						task,
+						"transfer",
+						"carry",
+						{ id: native.id, x: native.pos.x, y: native.pos.y },
+						RANGE_ADJACENT,
+					);
+					return;
+				}
+			}
 		}
 	}
 	// 兜底收窄 (specs/controller-supply-line): 就近缺能结构 → 只在当 Tick 配额目的地

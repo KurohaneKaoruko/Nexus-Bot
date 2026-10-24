@@ -147,3 +147,21 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 ## M. 域 8 proto 角色行为库残留面初盘（2026-10-25，只读）
 
 `src/proto/Creep/function/` 10 文件 3570 行、65 个 override 突变方法。modules/console 侧直接引用 ≈ 0（workFunction 1 处待核证）——**残留面全部经 Creep 原型继承链被动可达**（exec() 角色调用）或纯死代码。域 8 实施时的处置依据：exec() 退场（4.2）后这些方法失去调用方，逐文件判定「纯库函数导出（cacheFunction/boostFunction 的 getBoostCache 等）↔ 死代码删除」。**依赖顺序锁定：域 8 必须在 4.2 删 exec() 之后实施**（当前顺序 4.5 已正确）。
+
+## N. 域 1.1 供给落档（2026-10-25，实现交付）
+
+**linkQuota.ts**（link 调拨供给）：manager 的 planLinkTransfer 语义纯核搬运——分区（源 link 2 格内排除/控制器 link/中心+storage 邻域管理 link/普通）、水位（兄弟饥饿 <400 触发 fill 且管理 link free≥100 短路、无饥饿 drain >0）、dedupeKey `carry:link:{room}:{linkId}` 方向翻转同键幂等。7 单测逐条对照（含饥饿线边界/无 storage 短路/方向翻转）。
+
+**manageQuota.ts**（terminal 平衡供给）：checkTerminalResourceBalance 语义纯核搬运——发送簿记优先（energy 50k/矿物 10k 总量夹逼）、无请求按目标水位补（energy 25k/power 5k/lab·bar 3k/goods 1k/默认 3k 档，LabMap/BarList/Goods 分类）、溢出线转出（30k/5k/3k/3k/1.2k/4k）、`_terminal_clear` 旗标全清、storage↔terminal 邻域门。7 单测。`terminal_transfer` 不在 PLANNED_KINDS 清扫口径，模块自有键前缀自取消。
+
+**executor 可执行面补齐**（fetchEnergy/deliverEnergy/hasFetchTarget）：link/terminal 不在感知快照 stores/energyStructures 内——三处加 `Game.getObjectById` 原生结构兜底（energy 口径），link fill 方向与 terminal energy 方向真正可执行；planners 提交阶段读原生房（Game.rooms 先例）。
+
+**allocator 闸**：矿物方向 `terminal_transfer`（resourceType ≠ energy）挂 canExecute 拒绝——carry 执行分支是能量口径，通用件领矿物单只能空转；与矿物 harvest 同款处置，待矿物搬运执行分支落地放行。
+
+**manage 型差集登记（域 3/industry 收口点）**：
+- factory 平衡（`checkFactoryResourceBalance`）：industry 活代码 `factoryControl.ts:43` 经 `ManageMissionAdd` 写 transport 池——**industry 域对 transport 池的残留依赖**，域 3 删池前 factoryControl 需改任务板 carry；
+- powerSpawn 平衡（`checkPowerSpawnResourceBalance`）：同上结构，`powerSpawnControl` 消费面待域 3 核证；
+- boostLabWork（域 2 boost 切片新模块）的 lab 搬运发单仍走 transport 池（`addTransportMission`）——transporter 退役（1.3）后无人执行，域 3 统一收口为任务板 carry（**已知中间态窗口**：lab 为 RCL6+ sim 不可达域，实服待补）；
+- **矿物搬运执行分支缺位**（P2，实服待补）：carry/terminal_transfer 执行均为能量口径，矿物方向靠 allocator 闸拒领——lab 矿物填充、terminal 矿物平衡、boost 矿物搬运在实服 RCL6+ 需矿物执行分支（generalize fetchEnergy/deliverEnergy 至 task.resourceType 或专职 handler）后方可真正运转。
+
+**transporter 点对点（transport 型）结论**：已有覆盖 + 差集登记——fill_spawn/carry 配额 + industry 控制（lab/boost/nuker/powerSpawn/tower）承担其供给面；transport 池任务在 transporter 退役后无执行体（同上域 3 收口）。

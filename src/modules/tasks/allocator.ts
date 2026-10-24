@@ -143,6 +143,11 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 	if (task.kind === "harvest" && task.resourceType !== undefined) {
 		return false;
 	}
+	// 矿物 terminal_transfer (carry 执行分支为能量口径): 通用件领了只能空转,
+	// 能量方向的 terminal_transfer 不受限; 待矿物搬运执行分支落地后放行
+	if (task.kind === "terminal_transfer" && task.resourceType !== RESOURCE_ENERGY) {
+		return false;
+	}
 	// 反向: 侦查件只接侦查 (单 MOVE 身体不参与生产/搬运竞争)
 	if (
 		task.kind !== "scout" &&

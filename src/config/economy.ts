@@ -21,6 +21,47 @@ export const CARRY_CONFIG = {
 	storageFloorAmount: 2000,
 } as const;
 
+/**
+ * 中心 link 调拨 (specs/mission-pool-retirement manage 行): manager 语义迁任务板的
+ * 水位口径, 阈值同源原 planLinkTransfer (units/manager 退役前现值)。
+ */
+export const LINK_TRANSFER_CONFIG = {
+	/** 兄弟 link (控制器/普通) 饥饿线: 低于该值时中心 link 需保持库存供 link 网络路由 */
+	linkStarveAmount: 400,
+	/** 补货方向的最小剩余空间 (原 planLinkTransfer 短路口径, 更小不值得跑腿) */
+	fillMinFreeCapacity: 100,
+} as const;
+
+/**
+ * storage↔terminal 资源平衡 (specs/mission-pool-retirement manage 行):
+ * 阈值同源原 UpdateManageMission 的 MANAGE_BALANCE (terminal 缓冲水位)。
+ * 分类键 lab/bar/goods 对应 ResourceConstant 词表的 LabMap/BarList/Goods。
+ */
+export const TERMINAL_BALANCE_CONFIG = {
+	/** 发送请求在途时的 terminal 能量上限 */
+	energySendCap: 50_000,
+	/** 发送请求在途时的 terminal 矿物上限 */
+	resourceSendCap: 10_000,
+	/** terminal 各资源目标水位 (下限: 低于则从 storage 补) */
+	target: {
+		default: 3_000,
+		energy: 25_000,
+		power: 5_000,
+		lab: 3_000,
+		bar: 3_000,
+		goods: 1_000,
+	},
+	/** terminal 各资源溢出线 (上限: 高于则转回 storage) */
+	source: {
+		default: 4_000,
+		energy: 30_000,
+		power: 5_000,
+		lab: 3_000,
+		bar: 3_000,
+		goods: 1_200,
+	},
+} as const;
+
 /** 孵化供能链 (specs/workforce-staffing / race-speedrun D3) */
 export const SPAWN_SUPPLY_CONFIG = {
 	/** 孵化槽空闲前瞻窗口 (tick): spawn 出槽前该值内提前补能——
