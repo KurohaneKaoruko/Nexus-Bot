@@ -32,9 +32,11 @@
 ## 3. A 波域 3：mission pool 全链退役
 
 - [x] 3.1 按映射表核对剩余行：work/buildRepair/wallRepair（既有 board 覆盖核对）、`TransportMissionCheck`/`BuildRepairMissionCheck`（board TTL 对账承担）、`UpdateHighwayScan`（按 0.3 摸底结论：活语义迁 economy 或随休眠链退役）；快照对照差集逐项登记处置结论；验证：对照结论落档摸底档（J 节：spawn 池定性孵化域、work 族纯死写零消费、usePower.ts:72 读 mine 池新发现——改读 OutMineData 簿记随 boost/terminal 切片落地）
-- [ ] 3.2 切换与验证：`RoomFeatures` 摘除 `room.MissionUpdate()` 调度入口（`RoomFeatures` 职责收敛为结构状态/旗标链/能量状态——按 5.1 裁定）；全场景门逐位（任务供给全部来自 planning 阶段模块，upsert 归因插桩核对）
-  > 进展注记（集成会话）：terminal send 语义已收编——`economy/sendLedger.ts`（`Memory.Nexus.economy.sends` 簿记）+ console `send` 人操面改写 + `terminalControl` 读簿记 + `manageMission` 阈值读簿记（20/20 单测绿，含 min-Batch/Goods 分档/巡检清理/只增不减语义）；boost 簿记切片已落地——`economy/boostLedger.ts`（`Memory.Nexus.economy.boosts`）+ Assign/Submit/Remove 三面改写 + lab 管理迁 `industry/boostLabWork`（`UpdateBoostMission` 调度行已摘除）+ `boostFunction` 两处读池改读簿记（25/25 单测绿）；`usePower` 读 mine 池已改读 OutMineData 簿记。剩余：`RoomFeatures.MissionUpdate` 入口摘除待域 3 尾段与全场景门一并做
-- [ ] 3.3 Memory v13 迁移：删除 `Memory.MissionPools`，迁移纯函数 + 幂等 + 一次删净；schema 单测入 `tests/`；`run-residue` 验证旧存档升级无残留、二次迁移无变化、回退安全（旧代码 `??=` 惰性重建）
+- [x] 3.2 切换与验证：`RoomFeatures` 摘除 `room.MissionUpdate()` 调度入口（`RoomFeatures` 职责收敛为结构状态/旗标链/能量状态——按 5.1 裁定）；全场景门逐位（任务供给全部来自 planning 阶段模块，upsert 归因插桩核对）
+  > 实现注记（2026-10-25）：入口摘除 + console mine.ts power/deposit/cancel 三面改 OutMineData 簿记（2.3 登记的悬挂写入收口，mineralWork 消费面就绪）。合并 3.3（Memory v15 迁移：六池存量删净/spawn 驻留/幂等/回退安全，4 单测）一并提交。门读数：五 GREEN 逐位 + sprint WARN（L3@35645→36171，+526t）——二分归因三组对照锁定漂移源=MissionUpdate 摘除的 structureCache 惰性索引时序效应（50k tick 七池零写入实证，间接效应），分段门漂移=趋势观察项不回退，留档摸底档 P 节
+- [x] 3.3 Memory v13 迁移：删除 `Memory.MissionPools`，迁移纯函数 + 幂等 + 一次删净；schema 单测入 `tests/`；`run-residue` 验证旧存档升级无残留、二次迁移无变化、回退安全（旧代码 `??=` 惰性重建）
+  > 实现注记（2026-10-25）：版本号勘误——spec 名义 v13 实落 v15（v14 已被 carry 词表迁移占用）。`migrateV14ToV15`：六池键删净/空房间键删/根空删根/spawn 驻留；幂等与防御性清洗 4 单测绿（tests/mission-pools-migration.test.ts）；回退安全由旧池代码 `??=` 惰性重建保证。随 3.2 一同提交
+  > 进展注记（集成会话）：terminal send 语义已收编——`economy/sendLedger.ts`（`Memory.Nexus.economy.sends` 簿记）+ console `send` 人操面改写 + `terminalControl` 读簿记 + `manageMission` 阈值读簿记（20/20 单测绿，含 min-Batch/Goods 分档/巡检清理/只增不减语义）；boost 簿记切片已落地——`economy/boostLedger.ts`（`Memory.Nexus.economy.boosts`）+ Assign/Submit/Remove 三面改写 + lab 管理迁 `industry/boostLabWork`（`UpdateBoostMission` 调度行已摘除）+ `boostFunction` 两处读池改读簿记（25/25 单测绿）；`usePower` 读 mine 池已改读 OutMineData 簿记。`RoomFeatures.MissionUpdate` 入口摘除已完成（3.2）
 - [ ] 3.4 删除与对账：删 `src/modules/spawning/mission/`（pool + updaters，~2722 行）、`MissionConstant` 词表、`mission.interface.d.ts` 声明、池 API 全部符号（structure-guard 的 MissionPools 符号扫描断言启用）；console 引用改写（`mine.ts` 的 OutMineData 入口随 C 波处置，本切片只断 mission 依赖）；台账行；全仓引用扫描（源码+类型+console+docs）为零 + arch:guard 绿
 
 ## 4. A 波域 4–8：exec() 双轨与 roleRegistry 退场
