@@ -7,6 +7,7 @@ import type { TickContext, TickModule } from "@/core";
 import { createTaskBoard } from "@/modules/tasks";
 import { runEconomyPlanners } from "@/modules/economy/planners";
 import { planRemoteHarvest } from "@/modules/economy/remoteMining";
+import { planMineralWork } from "@/modules/economy/mineralWork";
 import { runEconomyModel } from "@/modules/economy/model";
 import { planCourierRequests } from "@/modules/economy/courier";
 
@@ -23,6 +24,12 @@ export const Economy: TickModule = {
 			for (const room of Object.values(w.rooms)) {
 				planRemoteHarvest(ctx, room, board);
 			}
+		}
+		// 过道矿定编 (specs/mission-pool-retirement mine 行): 人操链语义,
+		// 需要原型扩展面 (directSpawn/observeRoom/AssignBoostTask) → 遍历 Game.rooms
+		for (const room of Object.values(Game.rooms)) {
+			if (!room.controller?.my) continue;
+			planMineralWork(ctx, board, room);
 		}
 		planCourierRequests(ctx);
 		runEconomyModel(ctx);

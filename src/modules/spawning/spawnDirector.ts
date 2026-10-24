@@ -256,6 +256,12 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			if (!targets) {
 				return;
 			}
+			// 过道矿任务豁免 (specs/mission-pool-retirement mine 行): 带 resourceType
+			// 的 harvest 是元素矿/沉积矿合约 (economy/mineralWork 定编 directSpawn
+			// 桥接自孵 power-*/deposit-* 战斗件), 不归 harvester 定编——资源判据
+			// 与能量采集任务 (无 resourceType 字段) 严格二分。
+			const isMineralTask = (task: { resourceType?: ResourceConstant }) =>
+				task.resourceType !== undefined;
 			// 外矿定向替补 (批次 H 环 1): 远程 harvest 任务 available 且无同目标
 			// 在岗租约时, 绕过编制总量门直接请求——本地 6 槽位评分恒优, 靠总量门的
 			// 孵化体全被本地吸收, 远程任务在人口崩溃后断供 28.7k tick (12k dump 实证)。
@@ -264,10 +270,16 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			const remoteRoomsOnDuty = new Set(
 				board
 					.list({ kinds: ["harvest"], statuses: ["leased", "in_progress"] })
-					.filter((t) => t.targetPos?.roomName !== undefined && t.targetPos.roomName !== t.roomName)
+					.filter(
+						(t) =>
+							t.targetPos?.roomName !== undefined &&
+							t.targetPos.roomName !== t.roomName &&
+							!isMineralTask(t),
+					)
 					.map((t) => t.targetPos?.roomName),
 			);
 			for (const task of board.list({ kinds: ["harvest"], statuses: ["available"] })) {
+				if (isMineralTask(task)) continue;
 				const remoteRoom = task.targetPos?.roomName;
 				if (!remoteRoom || remoteRoom === task.roomName) continue;
 				if (remoteRoomsOnDuty.has(remoteRoom)) continue;
@@ -276,6 +288,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				addRequest("harvester", task.priority - 1, `remote:harvest:${task.id}`, task.id);
 			}
 			for (const task of board.list({ statuses: ["available"] })) {
+				if (task.kind === "harvest" && isMineralTask(task)) continue;
 				const unit = unitForTaskKind(task.kind);
 				if (unit && staffed(unit) < effectiveTarget(ctx, unit, targets)) {
 					addRequest(unit, task.priority, unit);

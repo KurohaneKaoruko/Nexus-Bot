@@ -21,12 +21,12 @@
 
 - [ ] 2.1 按映射表执行 mine 行：`UpdateMineMission` 活语义迁为 economy 计划阶段模块（元素矿/沉积矿定编逐条搬运 + directSpawn 桥接改 spawnDirector 需求源），产出 `harvest` 任务（`resourceType` 区分元素矿）；`UpdateBoostMission` 行：`boostFunction` 读池改任务板 `boost` kind；单测：定编口径与退役前逐条一致（0.3 摸底清单为对照源）
 - [ ] 2.2 切换与验证：`NEXUS_TASK_DRIVEN_CODES` 加入 miner；全场景门逐位 + 快照对照落档（mine/boost 两行）
+  > boost 分歧裁决（集成会话 2026-10-25）：映射表 boost 行已修订——boost 池是预订簿记而非工作任务流，承载 = 簿记迁 `Memory.Nexus`（labReservations 同层）+ `UpdateBoostMission` 的 lab 管理迁 industry planning；该处置独立为 boost 切片，在域 3 删池前完成。域 2.1 的 mineralWork 已用 `AssignBoostTask` 原型面下订（池写入侧不变），断链随 boost 切片统一收口
 - [ ] 2.3 删除与对账：删 `src/modules/economy/units/miner.ts` 与 `mission/updaters/mineMission.ts`；豁免收缩 + 检查点推进 + 台账行（实服待补）；arch:guard + structure:guard 绿
 
 ## 3. A 波域 3：mission pool 全链退役
 
-- [ ] 3.1 按映射表核对剩余行：work/buildRepair/wallRepair（既有 board 覆盖核对）、`TransportMissionCheck`/`BuildRepairMissionCheck`（board TTL 对账承担）、`UpdateHighwayScan`（按 0.3 摸底结论：活语义迁 economy 或随休眠链退役）；快照对照差集逐项登记处置结论；验证：对照结论落档摸底档
-- [ ] 3.2 切换与验证：`RoomFeatures` 摘除 `room.MissionUpdate()` 调度入口（`RoomFeatures` 职责收敛为结构状态/旗标链/能量状态——按 5.1 裁定）；全场景门逐位（任务供给全部来自 planning 阶段模块，upsert 归因插桩核对）
+- [ ] 3.1 按映射表核对剩余行：work/buildRepair/wallRepair（既有 board 覆盖核对）、`TransportMissionCheck`/`BuildRepairMissionCheck`（board TTL 对账承担）、`UpdateHighwayScan`（按 0.3 摸底结论：活语义迁 economy 或随休眠链退役）；快照对照差集逐项登记处置结论；验证：对照结论落档摸底档- [ ] 3.2 切换与验证：`RoomFeatures` 摘除 `room.MissionUpdate()` 调度入口（`RoomFeatures` 职责收敛为结构状态/旗标链/能量状态——按 5.1 裁定）；全场景门逐位（任务供给全部来自 planning 阶段模块，upsert 归因插桩核对）
 - [ ] 3.3 Memory v13 迁移：删除 `Memory.MissionPools`，迁移纯函数 + 幂等 + 一次删净；schema 单测入 `tests/`；`run-residue` 验证旧存档升级无残留、二次迁移无变化、回退安全（旧代码 `??=` 惰性重建）
 - [ ] 3.4 删除与对账：删 `src/modules/spawning/mission/`（pool + updaters，~2722 行）、`MissionConstant` 词表、`mission.interface.d.ts` 声明、池 API 全部符号（structure-guard 的 MissionPools 符号扫描断言启用）；console 引用改写（`mine.ts` 的 OutMineData 入口随 C 波处置，本切片只断 mission 依赖）；台账行；全仓引用扫描（源码+类型+console+docs）为零 + arch:guard 绿
 

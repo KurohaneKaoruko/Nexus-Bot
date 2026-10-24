@@ -31,7 +31,7 @@
 | `UpdateWorkMission`（build/repair 池） | `build` + `repair` | 既有（已在任务板，核对无缺口即可） | 快照对照：无未登记差集 |
 | `UpdateBuildRepairMission`/`UpdateWallRepairMission` | `build` + `repair` | 既有 planner/defense 维修任务源 | 同上 |
 | `UpdateMineMission`（元素矿/沉积矿定编 + directSpawn 桥接） | `harvest`（`resourceType` 区分元素矿）+ spawnDirector 需求源 | economy 计划阶段新模块（定编口径逐条搬运） | 单测：定编口径与退役前逐条一致 |
-| `UpdateBoostMission`（boost 池） | `boost` | 既有 boost 任务源 | `boostFunction` 读池改读任务板 |
+| `UpdateBoostMission`（boost 池） | boost 供给链整体随 boost 域切片处置：**boost 池不是任务板任务的退化副本，而是 boost 预订簿记**（`AssignBoostTask/SubmitBoostTask` 写入 owners/amount 预订记录，`UpdateBoostMission` 据此做 lab 预留/征用/清理/回运）。承载判定 = 预订簿记迁 `Memory.Nexus` 结构化域（labReservations 同层），`AssignBoostTask` 系改写簿记而非池，`UpdateBoostMission` 的 lab 管理逻辑迁 industry planning 模块；任务板 `boost` kind 保留给「单位去 lab 强化」的移动/执行任务（若需求出现）。该切片独立于域 1/2/3 执行（依赖：先于域 3 删池） | industry planning 新模块 + labReservations 簿记扩展 | 单测：预订/回收/超时清理口径与 boostMission 逐条一致；`boostFunction` 读池改读簿记 |
 | `TransportMissionCheck`/`BuildRepairMissionCheck`（自检） | 任务板 TTL 对账与 reconciliation 既有机制 | 既有 | 全场景门 |
 | `UpdateHighwayScan`（高速路扫描） | 按 0.3 摸底结论：活语义迁 economy 或随休眠链退役 | — | 摸底留档 |
 

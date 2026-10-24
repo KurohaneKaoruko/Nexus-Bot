@@ -297,10 +297,13 @@ export function planRemoteHarvest(
 	cancelStaleRemoteCarryTasks(ctx, board, room.roomName, expectedCarryKeys);
 }
 
-/** 活跃远程采集任务数 (定编口径: 本矿 harvester 编制 = 本矿源数 + 远程任务数) */
+/** 活跃远程采集任务数 (定编口径: 本矿 harvester 编制 = 本矿源数 + 远程任务数)。
+ *  带 resourceType 的 harvest 是过道矿合约 (economy/mineralWork, directSpawn
+ *  桥接自孵战斗件), 不计入 harvester 定编。 */
 export function activeRemoteHarvestCount(ctx: TickContext, board: TaskBoard): number {
 	let n = 0;
 	for (const task of board.list({ kinds: ["harvest"] })) {
+		if (task.resourceType !== undefined) continue;
 		if (task.targetPos?.roomName && task.targetPos.roomName !== task.roomName) n++;
 	}
 	return n;

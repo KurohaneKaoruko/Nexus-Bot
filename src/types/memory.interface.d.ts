@@ -432,6 +432,22 @@ interface OutMineMemory {
     highway?: string[];
 
     /**
+     * PowerBank 采集定编簿记 (specs/mission-pool-retirement mine 行迁移:
+     * 旧 mine 池任务 data 的 count/max/boostLevel 等定编字段收编至此)
+     */
+    powerMine?: {
+        [targetRoom: string]: PowerMineTaskData;
+    };
+
+    /**
+     * Deposit 采集定编簿记 (同上收编; 残留 deposit 级位置数据为旧格式,
+     * 由后续切片处置)
+     */
+    depositMine?: {
+        [targetRoomOrDepositId: string]: DepositMineTaskData | number;
+    };
+
+    /**
      * 外矿道路数据 (新格式)
      * @description 按房间分组存储道路位置，减少冗余
      */
