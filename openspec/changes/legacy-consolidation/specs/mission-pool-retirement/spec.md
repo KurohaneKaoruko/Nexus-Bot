@@ -8,7 +8,9 @@
 
 ### Requirement: 任务只存在于任务板
 
-系统 MUST 以任务板作为任务的唯一读写载体。以下结构 MUST 全部不存在于源码与 Memory 中：`MissionPools` 存储结构、池读写 API（`addMissionToPool` / `getMissionFromPool` 系列 / `updateMissionPool` / `deleteMissionFromPool` 等）、`MissionUpdate`/`UpdateXxxMission` 调度方法、`MISSION_POOLS`/`MissionPoolName` 词表。任务 MUST 经任务板的 dedupeKey 幂等 upsert 写入。
+系统 MUST 以任务板作为任务的唯一读写载体。以下结构 MUST 全部不存在于源码与 Memory 中：`MissionPools` 存储结构（**spawn 池除外**——见下）、池读写 API（`addMissionToPool` / `getMissionFromPool` 系列 / `updateMissionPool` / `deleteMissionFromPool` 等）、`MissionUpdate`/`UpdateXxxMission` 调度方法、`MISSION_POOLS`/`MissionPoolName` 词表。任务 MUST 经任务板的 dedupeKey 幂等 upsert 写入。
+
+**spawn 池归属（集成会话 2026-10-25 裁定，取证摸底档 J 节）**：spawn 池是孵化队列实现（`SpawnMissionAdd` 发单 → spawnDirector 消费），不是任务池——它是主线孵化链的一部分（与 warSpawn 族载载计数、rush 仲裁、statistics 队列长度共享），不在退役域。退役范围收窄为 transport/build/repair/terminal/mine/boost 六池；`Memory.MissionPools` 键在六池清空后若 spawn 队列仍驻留同键，则保留该键并登记为孵化域基建（域 5 孵化链收编时一并处置）。
 
 #### Scenario: 第二任务池写入被拒
 
