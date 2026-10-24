@@ -37,14 +37,15 @@ function runRoomFeatures(room: Room): void {
 	// ── 基础结构状态 (每 tick, 不可延迟) ──
 	// 孵化池 spawn 链已退役 (directSpawn 主线化): 生产端 UpdateSpawnMission 连带
 	// spawnRules/spawnMission Getter 已删 (5.6 批次二, 挂单零消费者实证);
-	// MissionUpdate 仅维护 transport/boost/manage/buildRepair/mine 池
+	// 任务池调度 (MissionUpdate) 已随域 3.2 退役——六池语义全部迁 planning 阶段
+	// (economy planners/mineralWork + industry boostLabWork/terminalWork 读簿记),
+	// spawn 池仅剩 warSpawn/external 去重计数消费 (spawnLoad), 不经调度入口维护;
 	// 工业结构链由 Industry 域驱动; 塔控/主动防御由主线 Defense (broker) 独家驱动,
 	// legacy TowerWork/activeDefense 退役——装配回收期 qos.getRoomQosLevel 从不存在,
 	// 特性链实际静默死亡期间主线单轨已验证
 	// 孵化消费端 (SpawnWork → spawnControl.SpawnCreep) 已退役: 与主线 spawnDirector
 	// 双孵化器分治——攒能/让位政策只约束主线, legacy 按平行定编静默孵化 (sim 实证
 	// 全场 179 只中 139 只无日志孵化, 让位期仍孵 upgrader/worker 把攒能窗口抽干)。
-	room.MissionUpdate?.()
 	room.updateEnergyState?.(false)
 
 	// 外矿双体系勘误 (2026-10-15): 外矿由任务板系 planRemoteHarvest 独家驱动

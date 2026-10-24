@@ -30,7 +30,7 @@ export interface BoostLedgerEntry {
 	owners: Record<string, { amount: number; time: number }>;
 }
 
-export const CURRENT_SCHEMA_VERSION = 14;
+export const CURRENT_SCHEMA_VERSION = 15;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
 

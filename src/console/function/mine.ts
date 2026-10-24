@@ -1,6 +1,4 @@
 
-import { addMissionToPool, checkSameMissionInPool, deleteMissionFromPool } from '@/modules/spawning';
-import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { CostMatrixCache, RoadMemory, RoadBuilder, PathPlanner, RoadVisual } from '@/modules/external';
 import { HighwayMineVisual } from '@/modules/visuals';
 import { getOutMineData, getRoomData } from '@/core/store/accessor';
@@ -286,12 +284,11 @@ export default {
                 prMax: prNum || 0,     // ranged孵化上限
             };
             
-            // 先尝试删除旧任务（如果存在）
-            const duplicateTask = { targetRoom } as any;
-            const existId = checkSameMissionInPool(room.name, MISSION_POOLS.mine, 'power', duplicateTask);
-            if (existId) deleteMissionFromPool(room.name, MISSION_POOLS.mine, existId);
-
-            addMissionToPool(room.name, MISSION_POOLS.mine, 'power', 1, data);
+            // 簿记写入 (原 mine 池 'power' 单, 域 3 池退役): mineralWork 定编续排
+            // 消费 powerMineBookOf 同键覆盖, 重复下令天然幂等
+            const book = getOutMineData(room.name);
+            book.powerMine ??= {};
+            book.powerMine[targetRoom] = data;
             console.log(`房间 ${sourceRoom} 即将向 ${targetRoom} 派出 ${num} 数量的T${boostLevel} Power开采队。`);
             return OK;
         },
@@ -300,19 +297,17 @@ export default {
             if (!sourceRoom || !targetRoom || !num) return -1;
             const room = Game.rooms[sourceRoom];
             if (!room) return;
-            
+
             const data: DepositMineTask = {
                 targetRoom: targetRoom,
                 num: num,                      // creep队伍数
                 active: true,                  // 是否激活
             }
 
-            // 先尝试删除旧任务（如果存在）
-            const duplicateTask = { targetRoom } as any;
-            const existId = checkSameMissionInPool(room.name, MISSION_POOLS.mine, 'deposit', duplicateTask);
-            if (existId) deleteMissionFromPool(room.name, MISSION_POOLS.mine, existId);
-
-            addMissionToPool(room.name, MISSION_POOLS.mine, 'deposit', 1, data);
+            // 簿记写入 (原 mine 池 'deposit' 单, 域 3 池退役): 同键覆盖幂等
+            const book = getOutMineData(room.name);
+            book.depositMine ??= {};
+            book.depositMine[targetRoom] = data;
             console.log(`房间 ${sourceRoom} 即将向 ${targetRoom} 派出 ${num} 数量的Deposit开采队。`);
             return OK;
         },
@@ -320,21 +315,14 @@ export default {
         cancel(sourceRoom: string, targetRoom: string, type: 'power' | 'deposit') {
             const room = Game.rooms[sourceRoom];
             if (!room) return;
-            
-            // 删除任务池中的任务
-            const mineTasks = room.getAllMissionFromPool?.(MISSION_POOLS.mine);
-            if (mineTasks) {
-                for (const task of mineTasks) {
-                    const data = task.data as MineTask;
-                    if (data.targetRoom !== targetRoom) continue;
-                    if (type && task.type !== type) continue;
-                    
-                    deleteMissionFromPool(room.name, MISSION_POOLS.mine, task.id);
-                }
-            }
+
+            // 簿记删除 (原 mine 池清理, 域 3 池退役): mineralWork 续排下一拍即止
+            const book = getOutMineData(room.name);
+            if (!type || type === 'power') delete book.powerMine?.[targetRoom];
+            if (!type || type === 'deposit') delete book.depositMine?.[targetRoom];
 
             // power/deposit 件孵化已桥接 directSpawn 不入 spawn 池——
-            // 在途蛋与活体无法取消孵化, 只移除后续轮次的派单 (上方 mine 池清理)
+            // 在途蛋与活体无法取消孵化, 只移除后续轮次的派单 (上方簿记清理)
             console.log(`房间 ${sourceRoom} 的 ${targetRoom} 开采已取消 (已下蛋/在编个体不召回)。`);
             return OK;
         }

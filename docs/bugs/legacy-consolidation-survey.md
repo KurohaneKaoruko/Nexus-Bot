@@ -180,3 +180,16 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 **随行缺陷修复**：sendLedger `pruneByRoomStock` 移植偏差（原 getSendMissionTotalAmount L419 原地删池单，移植版只过滤——已改原地 splice）+ 两处测试断言笔误（bugs/unit-test-awk-masking.md：单计数 awk 汇总掩盖 3 处失败，3.2a 的「20/20 绿」记录勘误）。sim 惰性域（sends 簿记 sim 恒空），无门效度影响。
 
 **1.3 删除面预研（门后执行）**：units/{manager,transporter}.ts（468 行）+ economy/index.ts 两导出行 + registry 两绑定 + UnitData 两 executor 字段（transporter/manager——摘字段后 exec() 静默跳过，无 missing-handler 告警）+ arch-allowlist 8 条 P7 条目收缩。**范围修订**：`utils/moveWork.ts` 挪 2.3——其消费者是 miner.ts+manager.ts，1.3 删 manager 时 miner 仍活（跨域纪律）；`console/function/resource.ts` 的 `TransportMissionAdd`（人操 task 命令）留域 3 池 API 全删时按 spec「迁任务板语义不变」改写（池未删不构成悬挂写入）。孵化侧定编（demandSources manager/transporter 行）不动——切换后是活的任务驱动件，非退役面。
+
+## P. 域 3.2 门读数与 sprint +526t 归因（2026-10-25）
+
+**门读数**：五 GREEN + sprint WARN（L3@35645→36171，+526t/1.5%，分段门漂移仅告警，门判定通过）。三绿门逐位一致（boot/race-body-audit/remote-mine），run-residue/stronghold-door 未受影响。
+
+**sprint 漂移二分归因（三组对照实验）**：
+1. 2.3 提交树（0f29565）跑 sprint = L3@35645 逐位（漂移非环境/非引擎抖动）；
+2. 3.2 工作区去掉 features.ts 改动（只留 console/v15）= 35645 逐位 → **漂移源唯一锁定 features.ts 的 MissionUpdate 摘除**；
+3. 插桩版（MissionUpdate 保留 + 每 5000t 采样池状态）= 35645 逐位，且 **50k tick 七池零写入**（probe3 无一次输出）。
+
+**机制结论**：MissionUpdate 在 sprint（RCL3）对池的净写入为零，但摘除仍致 +526t——静态分析六 updater 在 RCL3 的可达路径全部短路或死写（transport/manage/storage·terminal 短路、powerSpawn/nuker RCL8 短路、build placeholder 死写无人读、wallRepair 死字段）。唯一存活性差异在**间接效应**：MissionUpdate 每拍触发 workMission 的 `hasRepairTarget()`/`getOwnedConstructionSites()`（`find(FIND_STRUCTURES/FIND_CONSTRUCTION_SITES)`）与各 updater 的 structureCache getter 惰性扫描（room.storage/terminal/factory/structures），这些扫描预热 structureCache 的 tick 缓存与堆索引——摘除后主线同拍读这些索引时的扫描时序改变（structureCache「新对象需 update() 刷新索引」的增量语义下，新放置工地的可见时点可滞后），建造链开工延迟的微扰复利出 +526t。精确行级定位需插桩 structureCache 全 getter，成本高于收益，按「分段门漂移=趋势观察项」口径接受。
+
+**处置**：不回退（WARN 级未触回退线；绿门逐位不受影响）；漂移留档本节；后续 3.4 删 workMission/transportMission 文件后该间接效应自然消解（扫描不再存在），sprint 时间线预计再漂移一次（同方向，趋势观察）。

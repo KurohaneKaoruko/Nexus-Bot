@@ -434,6 +434,44 @@ export const migrateV13ToV14: MigrationFn = (memory) => {
 	return {};
 };
 
+/**
+ * v14 → v15: 任务池退役 (specs/mission-pool-retirement)——六池 (transport/build/
+ * repair/terminal/mine/boost) 语义已迁 planning 阶段任务板, 存量池单删除;
+ * spawn 键驻留 (warSpawn/external 的去重计数消费, 孵化基建非任务流)。
+ * 回退安全: 旧池代码对缺失池键 `??=` 惰性重建空数组, 不抛错。
+ * 迁移幂等: 已删键二次跑无变化。
+ */
+export const migrateV14ToV15: MigrationFn = (memory) => {
+	const RETIRED_POOL_KEYS = [
+		"transport",
+		"build",
+		"repair",
+		"terminal",
+		"mine",
+		"boost",
+	];
+	const pools = memory["MissionPools"];
+	if (isPlainObject(pools)) {
+		for (const roomName of Object.keys(pools)) {
+			const entry = pools[roomName];
+			if (!isPlainObject(entry)) {
+				delete pools[roomName];
+				continue;
+			}
+			for (const poolKey of RETIRED_POOL_KEYS) {
+				delete entry[poolKey];
+			}
+			if (Object.keys(entry).length === 0) {
+				delete pools[roomName];
+			}
+		}
+		if (Object.keys(pools).length === 0) {
+			delete memory["MissionPools"];
+		}
+	}
+	return {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -449,4 +487,5 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV11ToV12,
 	migrateV12ToV13,
 	migrateV13ToV14,
+	migrateV14ToV15,
 ];
