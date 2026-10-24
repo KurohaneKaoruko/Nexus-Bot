@@ -1,8 +1,7 @@
 
-import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { UNITS } from '@/constant/CreepConstant';
 import { getLabAB } from '@/modules/industry';
-import { getStructData } from '@/core/store/accessor';
+import { getOutMineData, getStructData } from '@/core/store/accessor';
 import { pcUsePower } from './powerAdapter';
 
 export default class PowerCreepUsePower extends PowerCreep {
@@ -68,8 +67,12 @@ export default class PowerCreepUsePower extends PowerCreep {
             const hasUnitEgg = this.room!.spawn!.some(
                 (s) => s.spawning && Memory.creeps?.[s.spawning.name]?.unit && unitSet.has(Memory.creeps[s.spawning.name]!.unit!)
             );
+            // mine 池判定改读 OutMineData 簿记 (powerMine/depositMine 非空即有过道矿在编)
+            const outMine = getOutMineData(this.room!.name);
+            const hasMineWork = Object.keys(outMine.powerMine ?? {}).length > 0 ||
+                Object.keys(outMine.depositMine ?? {}).length > 0;
             if (!Game.flags[this.name+'-upspawn'] && !this.room!.memory.defend &&
-                (!this.room!.checkMissionInPool! (MISSION_POOLS.mine) || !hasUnitEgg)) return false;
+                (!hasMineWork || !hasUnitEgg)) return false;
         }
         const spawns = this.room!.spawn!;
         if(!spawns) return false;
