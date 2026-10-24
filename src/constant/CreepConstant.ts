@@ -43,8 +43,7 @@ export const UnitData = {
         bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]],
         level: 6,
         code: 'MR',
-        executor: 'miner',
-    }, // 矿工
+    }, // 矿工 (域 2.2 切换任务驱动, 原型 executor 退役)
     'universal': {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 0,

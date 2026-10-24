@@ -110,22 +110,6 @@
 			"track": "P2 command-boundary (agentSystem 直连收编)",
 			"calls": 1
 		},
-		"src/modules/economy/units/miner.ts::moveTo": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 4
-		},
-		"src/modules/economy/units/miner.ts::suicide": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
-		"src/modules/economy/units/miner.ts::harvest": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
-		"src/modules/economy/units/miner.ts::transfer": {
-			"track": "P7 industry-adapter (economy/units adapter 化)",
-			"calls": 1
-		},
 		"src/modules/industry/console/lab.ts::remove": {
 			"track": "P7 industry-adapter",
 			"calls": 4

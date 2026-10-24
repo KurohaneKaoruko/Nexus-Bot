@@ -70,11 +70,8 @@ export default class MissionSubmit extends Room {
         const newData = { ...task.data, ...data };
         
         const deleteFunc = (taskdata: MineTask) => {
-            // 如果被标记为非激活且没有特定条件保留，则可能需要删除
-            // 但目前 mine 任务主要由 UpdateMineMission 管理生命周期，这里主要用于更新状态
+            // deposit 标记非激活时仅更新状态, 生命周期由消费方管理
             if (task.type === 'deposit' && (taskdata as DepositMineTask).active === false) {
-                // 可以选择在这里删除，或者等待 UpdateMineMission 清理
-                // 这里我们仅更新状态，让 UpdateMineMission 决定是否删除
                 return false;
             }
             return false;

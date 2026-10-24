@@ -29,7 +29,6 @@ export { default as Mission } from "@/modules/spawning/mission";
 export { default as MissionSubmit } from "@/modules/spawning/mission/pool/MissionSubmit";
 export { default as ManageMission, ManageTaskGetter } from "@/modules/spawning/mission/updaters/manageMission";
 export { default as WorkMission, WorkTaskGetter } from "@/modules/spawning/mission/updaters/workMission";
-export { default as MineMission } from "@/modules/spawning/mission/updaters/mineMission";
 export { default as SpawnMission } from "@/modules/spawning/mission/updaters/spawnMission";
 export { default as BoostMission } from "@/modules/spawning/mission/updaters/boostMission";
 export { default as TransportMission, TransportTaskGetter } from "@/modules/spawning/mission/updaters/transportMission";

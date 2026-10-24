@@ -15,8 +15,6 @@ export default class Mission extends Room {
     declare UpdateWallRepairMission: (offset?: number) => void;
     declare TransportMissionCheck: () => void;
     declare BuildRepairMissionCheck: () => void;
-    declare UpdateMineMission: () => void;
-    declare UpdateHighwayScan: () => void;
 
     /**
      * 任务更新主循环
@@ -26,15 +24,13 @@ export default class Mission extends Room {
         const profile = getRoomModeProfile(this);
         const transportInterval = profile.transportMissionInterval;
 
-        const schedule: Array<{ interval: number; offset: number; run: (offset: number) => void }> = [
+        const schedule: Array<{ interval: number; offset: number; run: (offset?: number) => void }> = [
             { interval: transportInterval, offset: 1, run: (offset) => this.UpdateTransportMission(offset) },
             { interval: 30, offset: 3, run: (offset) => this.UpdateManageMission(offset) },
             { interval: 50, offset: 4, run: (offset) => this.UpdateBuildRepairMission(offset) },
             { interval: 50, offset: 5, run: (offset) => this.UpdateWallRepairMission(offset) },
             { interval: 100, offset: 6, run: () => this.TransportMissionCheck() },
             { interval: 200, offset: 7, run: () => this.BuildRepairMissionCheck() },
-            { interval: 1, offset: 0, run: () => this.UpdateMineMission() },
-            { interval: 1, offset: 0, run: () => this.UpdateHighwayScan() },
         ];
 
         const roomPhase = getRoomPhase(this.name);

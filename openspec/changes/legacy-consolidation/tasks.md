@@ -26,7 +26,8 @@
 - [x] 2.2 切换与验证：`NEXUS_TASK_DRIVEN_CODES` 加入 miner；全场景门逐位 + 快照对照落档（mine/boost 两行）
   > 实现注记（2026-10-25）：miner 已入 NEXUS_TASK_DRIVEN_CODES + allocator 矿物合约闸（带 resourceType 的 harvest 拒领——agentSystem 无矿物执行分支，通用件误领会当 Source 空转）。miner 零孵化源（UnitData 全 RCL num:0，本房元素矿活链是 out-mineral 外矿链），切换仅为存量兜底；合并验证门（含本切换）六场景 GREEN 逐位一致（见 1.2 注记）。boost 切片已落地：`economy/boostLedger.ts`（Memory.Nexus.economy.boosts 簿记）+ Assign/Submit/Remove 三面改写 + lab 管理迁 industry/boostLabWork + boostFunction 两处读池改读簿记（25/25 单测）
   > boost 分歧裁决（集成会话 2026-10-25）：映射表 boost 行已修订——boost 池是预订簿记而非工作任务流，承载 = 簿记迁 `Memory.Nexus`（labReservations 同层）+ `UpdateBoostMission` 的 lab 管理迁 industry planning；该处置独立为 boost 切片，在域 3 删池前完成。域 2.1 的 mineralWork 已用 `AssignBoostTask` 原型面下订（池写入侧不变），断链随 boost 切片统一收口
-- [ ] 2.3 删除与对账：删 `src/modules/economy/units/miner.ts` 与 `mission/updaters/mineMission.ts`；豁免收缩 + 检查点推进 + 台账行（实服待补）；arch:guard + structure:guard 绿
+- [x] 2.3 删除与对账：删 `src/modules/economy/units/miner.ts` 与 `mission/updaters/mineMission.ts`；豁免收缩 + 检查点推进 + 台账行（实服待补）；arch:guard + structure:guard 绿
+  > 实现注记（2026-10-25）：连带删除——`utils/moveWork.ts`（末位消费者是 miner+manager，1.3 范围修订挪本切片）、mission/index.ts 两调度行（UpdateMineMission/UpdateHighwayScan）与 declare、spawning/index.ts 与 proto/Room/index.ts 的 MineMission 导出/extend、registry miner 绑定、UnitData executor 字段、economy/index.ts miner 导出、MissionSubmit 三行死注释。豁免 120→116（历史最小），检查点推进。删除确认门八门全绿（六场景 GREEN 逐位一致 + run-residue/stronghold-door）。**登记**：console mine.ts 的 power/deposit 人操命令仍写 mine 池（L294/L315），消费者已随本切片删除——悬挂写入按 spec「人工目标数据必须明确归属」由 3.4 改写为 OutMineData 簿记写入（mineralWork 消费面已就绪：powerMineBookOf/depositMineBookOf）
 
 ## 3. A 波域 3：mission pool 全链退役
 
