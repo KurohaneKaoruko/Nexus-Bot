@@ -18,3 +18,5 @@
 | 2026-10-17 | external/mine suicide + roadBuilder destroy/remove 直连（6 调用） | 334→328（−6） | ① destroyStructure/removeSite/suicide kind 既有；② 未上实服（人操不可达路径，sim 内亦不可达）；③ race L2@796 bit 一致；④ p95 5.0ms 持平 | ✅ 已删（8.7） |
 
 > 注：external 域 6 处为「直连收编」而非 legacy 角色删除，实服条件按「路径不可达 + sim 互证」口径豁免；9.2 的角色库删除必须四条件齐全才可执行。
+
+| 2026-10-25 | `rooms[].energyState`（energyState/energyStateTick） | 保留为 RoomFeatures 基础状态 | 5.1 裁定：活消费方在——statistics HUD（`core/statistics.ts:335,428`）、rush 仲裁、external/mine 休眠链（`state.ts:135` 经 `getEnergyState` 读）；transportMission 消费随域 3.4 删除但不影响保留判定。不迁移 v13（`room.memory` 域与 Nexus 结构化域分治，非退役对象） | sim 四场景门 + run-residue（随 5.2 总对账） |
