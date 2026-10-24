@@ -138,6 +138,11 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 	if (task.kind === "scout" && profile.work + profile.carry > 0) {
 		return false;
 	}
+	// 矿物合约 (带 resourceType 的 harvest): agentSystem 尚无矿物执行分支,
+	// 通用件误领会把矿物当 Source 空转重规划; 待矿物执行分支落地后放行
+	if (task.kind === "harvest" && task.resourceType !== undefined) {
+		return false;
+	}
 	// 反向: 侦查件只接侦查 (单 MOVE 身体不参与生产/搬运竞争)
 	if (
 		task.kind !== "scout" &&

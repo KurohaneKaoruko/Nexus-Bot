@@ -5,6 +5,7 @@ import { clearRoomRelatedMemory, ensureRoomData, getAutoData, getRoomData, getSt
 import { parseShardRoomName } from "@/utils/shardRoom";
 import { clearMemoryCache } from "@/proto";
 import { resolveRoomName } from "@/console/argUtils";
+import { upsertSendEntry } from "@/modules/economy/sendLedger";
 
 // 动态布局（无需布局中心）
 const DYNAMIC_LAYOUT_SET = new Set(['auto', '63auto', 'scorpior']);
@@ -274,7 +275,7 @@ export default {
         if (amount <= 0) return Error(`数量必须大于0。`);
 
         const room = Game.rooms[roomName];
-        room!.SendMissionAdd! (targetRoom, type, amount);
+        upsertSendEntry(Memory, targetRoom, type, amount);
         globalThis.log(`[任务模块] 在房间 ${room!.name!} 添加了发送任务: ${amount} ${type} -> ${targetRoom} `);
         return OK;
     },

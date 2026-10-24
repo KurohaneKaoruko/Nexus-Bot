@@ -5,6 +5,7 @@ import { LabMap, Goods, BarList } from "@/constant/ResourceConstant";
 import { BASE_CONFIG } from "@/constant/BaseConstant";
 import { getStructData } from "@/core/store/accessor";
 import { THRESHOLDS } from "@/constant/Thresholds";
+import { sendTotalByResource } from "@/modules/economy/sendLedger";
 
 const MANAGE_BALANCE = {
     // 自动调度资源阈值
@@ -112,7 +113,7 @@ function checkTerminalResourceBalance(room: Room): boolean {
     if (!room.storage.pos.inRange(room.terminal.pos, 2)) return false;
 
     // 发送任务资源数
-    const sendTotal = room.getSendMissionTotalAmount();
+    const sendTotal = sendTotalByResource(room, Memory);
     const thresholds = createTerminalThresholds();
     const totalRequestedAmount = getRequestedSendTotalAmount(sendTotal);
 

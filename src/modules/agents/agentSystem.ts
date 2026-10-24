@@ -1586,6 +1586,7 @@ const NEXUS_TASK_DRIVEN_CODES: ReadonlySet<string> = new Set([
 	UNIT_CODES.scout,
 	UNIT_CODES.claimer,
 	UNIT_CODES.reserver,
+	UNIT_CODES.miner,
 ]);
 
 export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoard): void {

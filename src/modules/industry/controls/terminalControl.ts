@@ -1,10 +1,9 @@
 
-import { updateMissionPool, deleteMissionFromPool } from '@/modules/spawning';
-import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { log } from '@/utils/log';
 import { THRESHOLDS } from "@/constant/Thresholds";
 import { isRoomTickAligned } from '@/utils/roomPhase';
 import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
+import { firstDispatchableSend, settleSendEntry, removeSendEntry } from '@/modules/economy/sendLedger';
 
 /** 终端发送任务执行: 相位错峰 + 发送任务消费 (原 TerminalWork 改写) */
 export function terminalWork(room: Room): void {
@@ -13,13 +12,12 @@ export function terminalWork(room: Room): void {
         const terminal = room.terminal;
         if (!terminal || terminal.cooldown > 0) return;
 
-        const task = room.getSendMission();
-        if (!task) return;
+        const entry = firstDispatchableSend(room, Memory);
+        if (!entry) return;
 
-        const sendData = task.data as SendTask;
-        const { targetRoom, resourceType, amount } = sendData;
+        const { targetRoom, resourceType, amount } = entry;
         if (!targetRoom || !resourceType || !amount || amount <= 0) {
-            deleteMissionFromPool(room.name, MISSION_POOLS.terminal, task.id);
+            removeSendEntry(Memory, entry);
             return;
         }
 
@@ -68,16 +66,11 @@ export function terminalWork(room: Room): void {
         });
         const result = sendResult.accepted ? OK : (sendResult.nativeReturnCode ?? ERR_INVALID_ARGS);
         if (result === OK) {
-            const remaining = amount - sendAmount;
-            if (remaining > 0) {
-                updateMissionPool(room.name, MISSION_POOLS.terminal, task.id, {data: {...sendData, amount: remaining}} as any);
-            } else {
-                deleteMissionFromPool(room.name, MISSION_POOLS.terminal, task.id);
-            }
+            settleSendEntry(Memory, entry, sendAmount);
             log('资源发送', `${room.name} -> ${targetRoom}, ${sendAmount} ${resourceType}, 能量消耗: ${cost}`);
         } else {
             if (result === ERR_INVALID_ARGS) {
-                deleteMissionFromPool(room.name, MISSION_POOLS.terminal, task.id);
+                removeSendEntry(Memory, entry);
             }
             log('资源发送', `${room.name} -> ${targetRoom}, ${sendAmount} ${resourceType} 失败，错误代码：${result}`);
         }

@@ -9,6 +9,17 @@ import { STRATEGY_CONFIG } from "@/config/strategy";
 import type { RoomModeName } from "@/config/roomMode";
 import type { NexusTask, TaskKind } from "./taskSchema";
 
+/**
+ * 终端发送簿记条目 (原 terminal 池 send 型任务的收编载体,
+ * 实现见 modules/economy/sendLedger): 同 {targetRoom, resourceType} 单条,
+ * amount 只增不减。
+ */
+export interface SendLedgerEntry {
+	targetRoom: string;
+	resourceType: ResourceConstant;
+	amount: number;
+}
+
 export const CURRENT_SCHEMA_VERSION = 14;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
@@ -258,6 +269,8 @@ export interface EconomyMemory {
 	 * auto 档 (rush) 不读此表。
 	 */
 	remoteTargets?: string[];
+	/** 终端发送簿记 (原 terminal 池 send 型): 人操 console upsert, terminalControl 消费 */
+	sends?: SendLedgerEntry[];
 }
 
 /** 全局战略政策 (docs/nexus-design/04 §4.2): 随姿态转移更新, 值域见 config/strategy */
