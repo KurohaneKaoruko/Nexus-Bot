@@ -3,7 +3,6 @@ export type UnitDefinition = {
     must?: boolean;                    // 是否无论战争还是和平都得孵化
     level?: number;                    // 孵化优先级，越小越优先
     code?: string;                     // 短代号，用于 creep 名称
-    executor?: string;                 // 统一 handler id
     boostmap?: Record<string, string>; // boost 配置
 };
 
@@ -23,12 +22,12 @@ export const UnitData = {
         bodypart: [[CARRY, 4], [MOVE, 2]],
         level: 2,
         code: 'T',
-    }, // 资源搬运 (域 1.2 切换任务驱动, 原型 executor 退役)
+    }, // 资源搬运 (任务驱动)
     'manager': {
         bodypart: [[CARRY, 4], [MOVE, 2]],
         level: 1,
         code: 'M',
-    }, // 中央搬运 (域 1.2 切换任务驱动, 原型 executor 退役)
+    }, // 中央搬运 (任务驱动)
     'upgrader': {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 7,
@@ -43,7 +42,7 @@ export const UnitData = {
         bodypart: [[WORK, 2], [CARRY, 1], [MOVE, 1]],
         level: 6,
         code: 'MR',
-    }, // 矿工 (域 2.2 切换任务驱动, 原型 executor 退役)
+    }, // 矿工 (任务驱动)
     'universal': {
         bodypart: [[WORK, 1], [CARRY, 1], [MOVE, 2]],
         level: 0,
@@ -63,26 +62,22 @@ export const UnitData = {
         bodypart: [[MOVE, 1]],
         level: 11,
         code: 'S',
-        executor: 'scout',
     },
     'logistic': {
         bodypart: [[CARRY, 3], [MOVE, 3]],
         level: 11,
         code: 'L',
-        executor: 'logistic',
     }, // 长途运输
     'cleaner': {
         bodypart: [[WORK, 25], [MOVE, 25]],
         level: 11,
         code: 'CLE',
-        executor: 'cleaner',
     }, // 清理者
     'dismantle': {
         bodypart: [[WORK, 40], [MOVE, 10]],
         boostmap: { [WORK]: 'XZH2O', [MOVE]: 'XZHO2' },
         level: 11,
         code: 'DIS',
-        executor: 'dismantle',
     }, // 拆除者
 
     /* 占领房间 */
@@ -90,13 +85,11 @@ export const UnitData = {
         bodypart: [[MOVE, 5], [CLAIM, 1]],
         level: 10,
         code: 'CL',
-        executor: 'claimer',
     },
     'attack-claimer': {
         bodypart: [[MOVE, 16], [CLAIM, 16]],
         level: 10,
         code: 'ACL',
-        executor: 'attack-claimer',
     },
 
     /* 战斗相关 */
@@ -105,19 +98,16 @@ export const UnitData = {
         bodypart: [[TOUGH, 10], [RANGED_ATTACK, 10], [MOVE, 10], [HEAL, 20]],
         level: 10,
         code: '1R',
-        executor: 'one-ranged',
     },
     aio: {
         bodypart: [[RANGED_ATTACK, 13], [MOVE, 25], [HEAL, 12]],
         level: 10,
         code: 'AIO',
-        executor: 'aio',
     }, // 进攻一体机
     saio: {
         bodypart: [[RANGED_ATTACK, 10], [MOVE, 25], [HEAL, 15]],
         level: 10,
         code: 'SAIO',
-        executor: 'aio',
     }, // 支援一体机
 
     /* 二人队 */
@@ -126,25 +116,22 @@ export const UnitData = {
         boostmap: { [ATTACK]: 'XUH2O', [MOVE]: 'XZHO2', [TOUGH]: 'XGHO2' },
         level: 10,
         code: '2A',
-        executor: 'double-attack',
     },
     'double-dismantle': {
         bodypart: [[WORK, 8], [TOUGH, 12], [WORK, 20], [MOVE, 10]],
         boostmap: { [WORK]: 'XZH2O', [MOVE]: 'XZHO2', [TOUGH]: 'XGHO2' },
         level: 10,
         code: '2D',
-        executor: 'double-dismantle',
     },
     'double-heal': {
         bodypart: [[TOUGH, 12], [HEAL, 28], [MOVE, 10]],
         boostmap: { [TOUGH]: 'XGHO2', [HEAL]: 'XLHO2', [MOVE]: 'XZHO2' },
         level: 10,
         code: '2H',
-        executor: 'double-heal',
     },
 
     /* 连结队 */
-    // 连结队成员由 Team 模块统一接管行动，因此不绑定常规 executor。
+    // 连结队成员由 Team 模块统一接管行动，不绑定常规执行器。
     'team-attack': { bodypart: [], level: 10, code: 'xA' },
     'team-dismantle': { bodypart: [], level: 10, code: 'xD' },
     'team-heal': { bodypart: [], level: 10, code: 'xH' },
@@ -156,28 +143,24 @@ export const UnitData = {
         level: 8,
         code: 'DFA',
         must: true,
-        executor: 'defend-attack',
     },
     'defend-ranged': {
         bodypart: [[RANGED_ATTACK, 40], [MOVE, 10]],
         level: 8,
         code: 'DFR',
         must: true,
-        executor: 'defend-ranged',
     },
     'defend-2attack': {
         bodypart: [[TOUGH, 5], [ATTACK, 35], [MOVE, 10]],
         level: 7,
         code: 'D2A',
         must: true,
-        executor: 'defend-2attack',
     },
     'defend-2heal': {
         bodypart: [[TOUGH, 10], [HEAL, 30], [MOVE, 10]],
         level: 7,
         code: 'D2H',
         must: true,
-        executor: 'defend-2heal',
     },
 
     /* 外矿相关 */
@@ -185,55 +168,46 @@ export const UnitData = {
         bodypart: [],
         level: 11,
         code: 'RSV',
-        executor: 'reserver',
     },
     'out-build': {
         bodypart: [],
         level: 12,
         code: 'OB',
-        executor: 'out-build',
     },
     'out-defend': {
         bodypart: [],
         level: 8,
         code: 'OD',
-        executor: 'out-defend',
     },
     'out-2attack': {
         bodypart: [],
         level: 8,
         code: 'O2A',
-        executor: 'out-2attack',
     },
     'out-2heal': {
         bodypart: [],
         level: 8,
         code: 'O2H',
-        executor: 'out-2heal',
     },
     'out-invader': {
         bodypart: [],
         level: 10,
         code: 'OI',
-        executor: 'out-invader',
     },
     'out-attack': {
         bodypart: [[ATTACK, 19], [MOVE, 25], [HEAL, 6]],
         level: 9,
         code: 'OA',
-        executor: 'out-attack',
     },
     'out-ranged': {
         bodypart: [[RANGED_ATTACK, 15], [MOVE, 25], [HEAL, 10]],
         level: 9,
         code: 'OR',
-        executor: 'out-ranged',
     },
     'out-mineral': {
         bodypart: [[WORK, 30], [CARRY, 5], [MOVE, 15]],
         level: 12,
         code: 'OMR',
-        executor: 'out-mineral',
     },
 
     /* 沉积物 */
@@ -241,31 +215,26 @@ export const UnitData = {
         bodypart: [[WORK, 20], [ATTACK, 2], [CARRY, 6], [MOVE, 22]],
         level: 11,
         code: 'DH',
-        executor: 'deposit-harvest',
     },
     'deposit-transfer': {
         bodypart: [[CARRY, 25], [MOVE, 25]],
         level: 11,
         code: 'DT',
-        executor: 'deposit-transfer',
     },
     'deposit-attack': {
         bodypart: [[ATTACK, 25], [MOVE, 25]],
         level: 8,
         code: 'DPA',
-        executor: 'deposit-attack',
     },
     'deposit-heal': {
         bodypart: [[HEAL, 25], [MOVE, 25]],
         level: 8,
         code: 'DPH',
-        executor: 'deposit-heal',
     },
     'deposit-ranged': {
         bodypart: [[RANGED_ATTACK, 17], [MOVE, 25], [HEAL, 8]],
         level: 8,
         code: 'DPR',
-        executor: 'deposit-ranged',
     },
 
     /* Power */
@@ -273,31 +242,26 @@ export const UnitData = {
         bodypart: [[TOUGH, 5], [MOVE, 25], [ATTACK, 20]],
         level: 10,
         code: 'PA',
-        executor: 'power-attack',
     },
     'power-heal': {
         bodypart: [[MOVE, 25], [HEAL, 25]],
         level: 10,
         code: 'PH',
-        executor: 'power-heal',
     },
     'pc-heal': {
         bodypart: [[MOVE, 25], [HEAL, 25]],
         level: 10,
         code: 'PCH',
-        executor: 'pc-heal',
     },
     'power-carry': {
         bodypart: [[MOVE, 25], [CARRY, 25]],
         level: 9,
         code: 'PC',
-        executor: 'power-carry',
     },
     'power-ranged': {
         bodypart: [[MOVE, 25], [RANGED_ATTACK, 17], [HEAL, 8]],
         level: 11,
         code: 'PR',
-        executor: 'power-ranged',
     },
 
     /* 跨分支共用角色：bodypart 与孵化由分支侧自行生成，此处仅提供命名 code */
@@ -318,15 +282,6 @@ export const isUnitId = (unit?: string): unit is UnitId =>
 export const UNITS = Object.freeze(
     Object.fromEntries((Object.keys(UnitData) as UnitId[]).map((id) => [id, id])),
 ) as { readonly [K in UnitId]: K };
-
-/** 执行器标识常量表（派生自 UnitData[].executor；roleRegistry 索引键与分发引用此表） */
-export const EXECUTORS = Object.freeze(
-    Object.fromEntries(
-        (Object.entries(UnitData) as [UnitId, UnitDefinition][])
-            .filter(([, def]) => def.executor)
-            .map(([, def]) => [def.executor!, def.executor!]),
-    ),
-) as Readonly<Record<string, string>>;
 
 // 根据等级的动态部件
 export const UnitLevelData = {

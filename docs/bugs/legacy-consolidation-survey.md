@@ -209,3 +209,18 @@ Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例�
 **structure-guard ⑥ 断言启用**：六池退役符号全仓扫描（56 符号，spawn 链 5 文件豁免）——首次跑出 7 处注释迁移溯源残留（AGENTS.md「注释不述来源」双重违规），已全部改写为功能描述。断言随本切片入守护主线。
 
 **门读数**：八门全绿——三绿门逐位（boot L3@8889/race L2@458 p95 7ms/remote-mine L3@0）、三分段门逐位（speedrun L4@28316/arena L3@11629/**sprint L3@36171 与 3.2 接受值一致零新漂移**）、run-residue L2@1059/p95 4ms、stronghold-door L8@0/p95 5ms。P 节预告的「删除后再漂移」未发生——+526t 在 3.2 调度入口摘除时已终态，updater 文件删除对时间线零扰动（惰性扫描间接效应归因获实证支持）。参考快照随本次读数推进（sprint 36171 锁定）。N 节 powerSpawn 待核证项关闭（powerSpawnControl 独立自治）。
+
+## R. 域 4.2 exec 双轨删除 + 域 4.3 词表孤儿预盘（2026-10-25）
+
+**exec() 双轨删除（4.1+4.2 合并）**：删除面 = runtime/{registry,execute}.ts + agentSystem exec 分支（NEXUS_TASK_DRIVEN_CODES 13 码）/legacyExecMode 开关 + CreepConstant executor 字段×35/EXECUTORS 派生表 + creep.interface exec 声明。驱动承接全景：任务驱动 13 码（harvester/carrier/transporter/manager/upgrader/worker/miner/universal/rush-courier/defender/scout/claimer/reserver）+ rush-courier 无租约直驱 + TeamController（team-* 4 码）+ PowerCreep 独立链（pc.exec 不在范围）。reportIdleUnit 限频诊断（同名 500t）入 runAgents。
+
+**4.2 门读数**：八门全绿逐位一致——六场景 sim-matrix --build（speedrun L4@28316/arena L3@11629/sprint L3@36171/boot L3@8889/race L2@458 p95 7ms/remote-mine L3@0）+ run-residue L2@1059/p95 4ms + stronghold-door L8@0/p95 5ms。exec 删除对全部场景零扰动——印证摸底 A 节「sim 全场 exec 0 实质调用」（registry 11 绑定中 sim 可达的 manager/transporter/miner 三码已在域 1.2/2.2 切换任务驱动）。
+
+**4.3 词表孤儿预盘（33 角色消费面分类）**：
+- **warSpawn 人操链（5）**：aio/cleaner/attack-claimer/dismantle/logistic（LOOT 旗孵 logistic 非 one-ranged）——H 节已定性 attack-claimer/cleaner/dismantle/logistic 四角色 handler 缺失语义已坏（executor 已删无从修复，warSpawn 旗语义随域 6 收口判定：删旗或词表条目）。aio handler 语义完好（teams 行为树），但驱动链已随 exec 退役——AIO 旗孵出的单位将只报「无任务待派」（人操链实服待补验证）；
+- **外矿休眠孵化链（13）**：out-build/out-defend/out-2attack/out-2heal/out-invader/out-attack/out-ranged/out-mineral/out-repair + deposit-×5——mine spawner SpawnMissionAdd 活代码（features.ts 已注释休眠：任务板 remoteMining 独家驱动）。原型系 outMine 全链保持休眠（勘误 2026-10-15），词表条目按「休眠链整体处置」留 C 波或启用时核证；
+- **防御/编队零源（8）**：defend-×4（I 节零孵化源）+ double-×3 + one-ranged + saio（零引用）——域 6 真孤儿候选（one-ranged 零孵化源核证：全仓无 SpawnMissionAdd/directSpawn/UNITS 引用，仅 boost 表一行）；
+- **Power 任务侧（5）**：power-attack/power-heal/power-carry/power-ranged/pc-heal——usePower 派单侧活代码（任务驱动 power 任务→孵化）,pc-heal 由 assist.ts directSpawn 活孵化。**注意**：这些角色 executor 已删但本就无 handler（power-* 原走 mine 池定编，2.3 已迁 mineralWork；pc-heal 原走 registry——assist.ts 孵出后谁驱动？assistHeal.ts:44 只读 memory.unit 做配对，无 run 调用——**pc-heal 孵出即空转**（与 attack-claimer 同型缺口，待域 6 判定）；
+- **簿记面**：boostFunction boost 表（one-ranged/double-attack/defend-attack 等 8 行）、qos.ts 冻结权重（cleaner -4 等）、UNIT_BODY_NAMES 中文名 54 行、UnitLevelData 体型表——随词表条目同删。
+
+**域 6 词表裁撤建议档**：真孤儿（零孵化源+零活驱动）≈ double-×3/one-ranged/saio/defend-×4 八件 + attack-claimer/cleaner/dismantle/logistic 四件（warSpawn 旗语义已坏，删词表需同步删旗处理）+ pc-heal（孵化链活但驱动死——修驱动或删孵化）；外矿 13 件留休眠链整体处置（C 波 8.2/8.3）；power-* 四件任务侧活代码保留。合计真候选 ≈ 11-13 件。

@@ -27,7 +27,6 @@ import { COURIER_CONFIG, CARRY_CONFIG } from "@/config/economy";
 import { rankHostiles } from "@/modules/defense";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 import { acquire } from "@/runtime/actorOwnership";
-import { isLegacyExecOn } from "@/config/capabilities";
 
 const RANGE_ADJACENT = 1;
 const RANGE_UPGRADE = 3;
@@ -1617,25 +1616,14 @@ function tryRelayHandoff(
 	return null;
 }
 
-/** 任务驱动角色代号集; 集合外角色走原型 exec() 自驱 */
-const NEXUS_TASK_DRIVEN_CODES: ReadonlySet<string> = new Set([
-	UNIT_CODES.harvester,
-	UNIT_CODES.carrier,
-	UNIT_CODES.upgrader,
-	UNIT_CODES.worker,
-	UNIT_CODES.universal,
-	UNIT_CODES["rush-courier"],
-	UNIT_CODES.defender,
-	UNIT_CODES.scout,
-	UNIT_CODES.claimer,
-	UNIT_CODES.reserver,
-	UNIT_CODES.miner,
-	// 域 1.2 切换 (specs/legacy-execution-retirement): manager/transporter 并入
-	// 任务驱动——供给面 linkQuota/manageQuota 已迁 planning 阶段, 矿池旧单
-	// (transport 池) 无孵化消费者; sim RCL≤3 结构性不孵化, 绿门构造性一致
-	UNIT_CODES.manager,
-	UNIT_CODES.transporter,
-]);
+/** 无任务待派限频诊断 (exec() 双轨退役后): 同名单位每 500 tick 提示一次 */
+const idleUnitReportTick: Record<string, number> = {};
+function reportIdleUnit(ctx: TickContext, name: string, unitCode: string): void {
+	const last = idleUnitReportTick[name] ?? -1000;
+	if (ctx.tick - last < 500) return;
+	idleUnitReportTick[name] = ctx.tick;
+	console.log(`[agents] 无任务待派: ${name} (${unitCode})`);
+}
 
 export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoard): void {
 	const world = ctx.world.current;
@@ -1654,24 +1642,6 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 			if (creep.spawning) {
 				continue;
 			}
-			// 原型角色执行体 (manager/transporter/miner): 无任务指针时走原型 exec()
-			// 注意: NEXUS_TASK_DRIVEN_CODES 是 Set, 成员判定必须用 has——
-			// `in` 是对象属性键检查, 对 Set 成员恒 false, 会让任务驱动角色
-			// 全部漏进 exec() (scout/claimer 无 registry 处理器, 刷屏空转)
-			// legacyExecMode 全局关 (任务 5.5 三级开关末段): 类别级收编
-			// (加 NEXUS_TASK_DRIVEN_CODES) 完成后的全量切换点
-			const liveVendor = Game.creeps[creep.name];
-			if (
-				isLegacyExecOn() &&
-				!NEXUS_TASK_DRIVEN_CODES.has(creep.unitCode) &&
-				liveVendor &&
-				!liveVendor.memory.taskId &&
-				typeof liveVendor.exec === "function"
-			) {
-				acquire(creep.name, "legacy-exec", ctx.tick);
-				liveVendor.exec();
-				continue;
-			}
 			// 快递爬: 无任务租约的角色驱动 (specs/rush-courier)
 			if (creep.unitCode === UNIT_CODES["rush-courier"]) {
 				// 孵化中不产出计划 (bugs/P0-16c): 出生前提交的计划全部
@@ -1685,6 +1655,9 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 			}
 			const taskId = Game.creeps[creep.name]?.memory.taskId;
 			if (!taskId) {
+				// 无任务待派诊断 (限频): 任务驱动是唯一路径后, 持续无租约的
+				// 存活单位 = 词表孤儿或孵化链脏数据, 归因移交域 6 裁撤
+				reportIdleUnit(ctx, creep.name, creep.unitCode);
 				continue;
 			}
 			const task = board.get(taskId);

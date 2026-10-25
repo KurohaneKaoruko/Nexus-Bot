@@ -12,7 +12,6 @@ import CombatFunction from '@/proto/Creep/function/combatFunction'
 import BuildFunction from '@/proto/Creep/function/buildFunction'
 import HaulFunction from '@/proto/Creep/function/haulFunction'
 import ControllerFunction from '@/proto/Creep/function/controllerFunction'
-import CreepExecute from '@/proto/Creep/runtime/execute'
 
 /**
  * Creep 原型扩展注册表
@@ -33,5 +32,4 @@ export default () => {
     extend(Creep, BuildFunction)
     extend(Creep, HaulFunction)
     extend(Creep, ControllerFunction)
-    extend(Creep, CreepExecute)
 }

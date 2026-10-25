@@ -139,19 +139,13 @@ interface CreepFlatCache {
  */
 interface Creep {
     // ==================== 核心方法 ====================
-    /** 
+    /**
      * 初始化
      * @description 初始化creep的状态和缓存
      */
     init(): void;
-    
-    /** 
-     * 运行
-     * @description 执行creep的主循环逻辑
-     */
-    exec(): void;
-    
-    /** 
+
+    /**
      * 爬唱歌
      * @description 随机显示一条消息
      */
