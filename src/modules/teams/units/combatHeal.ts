@@ -8,7 +8,7 @@ import { combatHeal, combatMoveTo, combatRangedHeal } from '@/modules/combat';
  * 治疗型角色的统一实现。
  *
  * @remarks
- * `out-2heal` / `deposit-heal` / `defend-2heal` / `double-heal` 四个角色的行为是同一件事：
+ * `out-2heal` / `deposit-heal` / `defend-2heal` 三个角色的行为是同一件事：
  * **认一个搭档、跟着它、给它回血**。差别只在「跟谁」「怎么自愈」「还没结上伴时干什么」——
  * 全是策略，不是逻辑。这四份实现原本各写一遍，改一处要改四处（且已经开始漂移：
  * 有的自愈是「只要受伤就治」，有的是「比搭档更惨才治」）。
@@ -73,19 +73,6 @@ const COMBAT_HEAL_POLICIES: Record<string, CombatHealPolicy> = {
         },
         selfHeal: 'ifWorseThanPartner',
         unbound: 'selfHeal',
-        lockPosition: true,
-        unBoostWhenDying: true,
-        ensureBoosted: true,
-    },
-    // 双人队的治疗手：只在小队内结伴；等搭档时顺手救最近的伤兵
-    [UNITS['double-heal']]: {
-        bind: {
-            cacheKey: 'double_heal_squad_candidates',
-            filter: (self, candidate) =>
-                candidate.memory.unit !== UNITS['double-heal'] && candidate.memory.squad === self.memory.squad,
-        },
-        selfHeal: 'ifWorseThanPartner',
-        unbound: { kind: 'rescueNearest', minDamage: 100 },
         lockPosition: true,
         unBoostWhenDying: true,
         ensureBoosted: true,

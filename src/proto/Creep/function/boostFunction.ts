@@ -10,13 +10,6 @@ export const ROLE_BOOST_CONFIGS: Record<string, Record<string, MineralBoostConst
     [UNITS.worker]: { [WORK]: ['XLH2O', 'LH2O', 'LH'] },
     [UNITS.dismantle]: { [WORK]: ['XZH2O', 'ZH2O', 'ZH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
     [UNITS.aio]: { [TOUGH]: ['XGHO2'], [HEAL]: ['XLHO2'], [RANGED_ATTACK]: ['XKHO2'], [MOVE]: ['XZHO2'] },
-    [UNITS['one-ranged']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [UNITS['double-attack']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [ATTACK]: ['XUH2O', 'UH2O', 'UH'] },
-    [UNITS['double-heal']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'] },
-    [UNITS['double-dismantle']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [WORK]: ['XZH2O', 'ZH2O', 'ZH'] },
-    [UNITS['defend-attack']]: { [ATTACK]: ['XUH2O', 'UH2O', 'UH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [UNITS['defend-ranged']]: { [RANGED_ATTACK]: ['XKHO2', 'KHO2', 'KO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
-    [UNITS['defend-2attack']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [ATTACK]: ['XUH2O', 'UH2O', 'UH'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
     [UNITS['defend-2heal']]: { [TOUGH]: ['XGHO2', 'GHO2', 'GO'], [HEAL]: ['XLHO2', 'LHO2', 'LO'], [MOVE]: ['XZHO2', 'ZHO2', 'ZO'] },
 };
 

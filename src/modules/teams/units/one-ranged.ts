@@ -69,7 +69,6 @@ const runCombat = (creep: Creep) => {
 
 const one_ranged = {
     prepare: (creep: any) => {
-        // boost 配置见 ROLE_BOOST_CONFIGS['one-ranged']
         return creep.ensureBoosted(creep.memory['boostmap']);
     },
     run: runCombat

@@ -94,41 +94,11 @@ export const UnitData = {
 
     /* 战斗相关 */
     /* 一体机 */
-    'one-ranged': {
-        bodypart: [[TOUGH, 10], [RANGED_ATTACK, 10], [MOVE, 10], [HEAL, 20]],
-        level: 10,
-        code: '1R',
-    },
     aio: {
         bodypart: [[RANGED_ATTACK, 13], [MOVE, 25], [HEAL, 12]],
         level: 10,
         code: 'AIO',
     }, // 进攻一体机
-    saio: {
-        bodypart: [[RANGED_ATTACK, 10], [MOVE, 25], [HEAL, 15]],
-        level: 10,
-        code: 'SAIO',
-    }, // 支援一体机
-
-    /* 二人队 */
-    'double-attack': {
-        bodypart: [[ATTACK, 8], [TOUGH, 12], [ATTACK, 20], [MOVE, 10]],
-        boostmap: { [ATTACK]: 'XUH2O', [MOVE]: 'XZHO2', [TOUGH]: 'XGHO2' },
-        level: 10,
-        code: '2A',
-    },
-    'double-dismantle': {
-        bodypart: [[WORK, 8], [TOUGH, 12], [WORK, 20], [MOVE, 10]],
-        boostmap: { [WORK]: 'XZH2O', [MOVE]: 'XZHO2', [TOUGH]: 'XGHO2' },
-        level: 10,
-        code: '2D',
-    },
-    'double-heal': {
-        bodypart: [[TOUGH, 12], [HEAL, 28], [MOVE, 10]],
-        boostmap: { [TOUGH]: 'XGHO2', [HEAL]: 'XLHO2', [MOVE]: 'XZHO2' },
-        level: 10,
-        code: '2H',
-    },
 
     /* 连结队 */
     // 连结队成员由 Team 模块统一接管行动，不绑定常规执行器。
@@ -138,24 +108,6 @@ export const UnitData = {
     'team-ranged': { bodypart: [], level: 10, code: 'xR' },
 
     /* 主动防御 */
-    'defend-attack': {
-        bodypart: [[ATTACK, 40], [MOVE, 10]],
-        level: 8,
-        code: 'DFA',
-        must: true,
-    },
-    'defend-ranged': {
-        bodypart: [[RANGED_ATTACK, 40], [MOVE, 10]],
-        level: 8,
-        code: 'DFR',
-        must: true,
-    },
-    'defend-2attack': {
-        bodypart: [[TOUGH, 5], [ATTACK, 35], [MOVE, 10]],
-        level: 7,
-        code: 'D2A',
-        must: true,
-    },
     'defend-2heal': {
         bodypart: [[TOUGH, 10], [HEAL, 30], [MOVE, 10]],
         level: 7,
@@ -438,25 +390,6 @@ export const UnitLevelData = {
         6: { bodypart: [[MOVE, 7], [HEAL, 7]], num: 0 },
         7: { bodypart: [[MOVE, 18], [HEAL, 18]], num: 0 },
         8: { bodypart: [[MOVE, 25], [HEAL, 25]], num: 0 },
-    },
-    "defend-attack": {
-        1: { bodypart: [[ATTACK, 2], [MOVE, 2]], num: 0 },
-        2: { bodypart: [[ATTACK, 4], [MOVE, 4]], num: 0 },
-        3: { bodypart: [[ATTACK, 6], [MOVE, 6]], num: 0 },
-        4: { bodypart: [[ATTACK, 10], [MOVE, 10]], num: 0 },
-        5: { bodypart: [[ATTACK, 12], [MOVE, 12]], num: 0 },
-        6: { bodypart: [[ATTACK, 15], [MOVE, 15]], num: 0 },
-        7: { bodypart: [[ATTACK, 40], [MOVE, 10]], num: 0 },
-        8: { bodypart: [[ATTACK, 40], [MOVE, 10]], num: 0 },
-    },
-    "defend-ranged": {
-        6: { bodypart: [[RANGED_ATTACK, 10], [MOVE, 10]], num: 0 },
-        7: { bodypart: [[RANGED_ATTACK, 30], [MOVE, 10]], num: 0 },
-        8: { bodypart: [[RANGED_ATTACK, 40], [MOVE, 10]], num: 0 },
-    },
-    "defend-2attack": {
-        7: { bodypart: [[TOUGH, 5], [ATTACK, 35], [MOVE, 10]], num: 0 },
-        8: { bodypart: [[TOUGH, 5], [ATTACK, 35], [MOVE, 10]], num: 0 },
     },
     "defend-2heal": {
         7: { bodypart: [[TOUGH, 5], [HEAL, 20], [MOVE, 10]], num: 0 },

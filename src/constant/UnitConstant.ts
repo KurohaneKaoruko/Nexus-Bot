@@ -49,14 +49,9 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	"attack-claimer": "强攻占领体",
 
 	/* 一体机 */
-	"one-ranged": "远程一体体",
 	aio: "进攻一体体",
-	saio: "支援一体体",
 
 	/* 二人队 */
-	"double-attack": "双人突击体",
-	"double-dismantle": "双人拆除体",
-	"double-heal": "双人治疗体",
 
 	/* 连结队 */
 	"team-attack": "连结突击体",
@@ -66,9 +61,6 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 
 	/* 主动防御 */
 	defender: "防御体",
-	"defend-attack": "防御突击体",
-	"defend-ranged": "防御远程体",
-	"defend-2attack": "防御双人突击体",
 	"defend-2heal": "防御双人治疗体",
 
 	/* 外矿 */

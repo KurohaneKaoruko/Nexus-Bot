@@ -66,8 +66,28 @@ const PROTO_IMPORTS_FROZEN = new Set([
 	'src/modules/visuals/proto/index.ts -> @/proto/registry',
 ]);
 
-/** 词表三方一致断言开关 (A 波域 6 完成后置 true) */
-const VOCAB_TRIPLE_CHECK = false;
+/** 词表三方一致断言开关 (域 4.2/4.3 后启用: exec() 已退场, 角色驱动面收敛) */
+const VOCAB_TRIPLE_CHECK = true;
+
+/**
+ * 角色驱动面登记表 (域 4.3 口径): 每个词表角色的可执行路径归因。
+ * - task: 任务驱动 (agentSystem 认领租约)
+ * - courier: rush-courier 无租约直驱
+ * - team: TeamController 编队驱动 (team-* 前缀)
+ * - powercreep: PowerCreep 链孵化/驱动
+ * - dormant-spawn: 休眠孵化链 (external/mine spawner, 原型系 outMine 休眠中)
+ * - manual: warSpawn 人操旗豁免链 (域 7 定性)
+ * - algorithm: 算法资产待复用 (无孵化源, 仅词表登记)
+ */
+const UNIT_DRIVE_ATTRIBUTION = {
+	task: ['harvester', 'carrier', 'transporter', 'manager', 'upgrader', 'worker', 'miner', 'universal', 'rush-courier', 'defender', 'scout', 'claimer', 'reserver'],
+	courier: [],
+	team: ['team-attack', 'team-dismantle', 'team-heal', 'team-ranged'],
+	powercreep: ['pc-heal'],
+	'dormant-spawn': ['out-build', 'out-defend', 'out-2attack', 'out-2heal', 'out-invader', 'out-attack', 'out-ranged', 'out-mineral', 'out-repair', 'deposit-harvest', 'deposit-transfer', 'deposit-attack', 'deposit-heal', 'deposit-ranged', 'power-attack', 'power-heal', 'power-carry', 'power-ranged'],
+	manual: ['aio', 'cleaner', 'attack-claimer', 'dismantle', 'logistic'],
+	algorithm: ['defend-2heal'],
+};
 
 /**
  * 六池退役符号扫描 (mission-pool-retirement spec: 池 API 与词表全仓清零,
@@ -260,8 +280,21 @@ function checkDependencies(files) {
  */
 function checkVocabTriple() {
 	if (!VOCAB_TRIPLE_CHECK) return null;
-	// 域 6 实施时填充: 解析 UnitData executor、roleRegistry/handler 表、孵化源表
-	return { orphans: [] };
+	// 词表三方一致 (域 4.3 口径): UnitData 键集 ↔ 驱动面登记表 双向差集为空
+	const creepConst = files
+		.filter((f) => f.endsWith('src/constant/CreepConstant.ts'))
+		.map((f) => fs.readFileSync(f, 'utf8'))
+		.join('');
+	const unitMatch = creepConst.match(/export const UnitData = \{([\s\S]*?)\n\}(?: satisfies|;)/);
+	if (!unitMatch) return { orphans: ['UnitData 解析失败'] };
+	const unitKeys = new Set(
+		[...unitMatch[1].matchAll(/\n\s+'?([a-zA-Z0-9-]+)'?: \{/g)].map((m) => m[1]).filter((k) => k !== 'boostmap'),
+	);
+	const attributed = new Set(Object.values(UNIT_DRIVE_ATTRIBUTION).flat());
+	const orphans = [];
+	for (const k of unitKeys) if (!attributed.has(k)) orphans.push(`词表孤儿 (无驱动面归因): ${k}`);
+	for (const k of attributed) if (!unitKeys.has(k)) orphans.push(`登记面悬空 (词表已删): ${k}`);
+	return { orphans };
 }
 
 // ── 主流程 ────────────────────────────────────────────────
