@@ -240,3 +240,12 @@ Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例�
 **终局算术**：80 − PC 19 + renew 执行器 1 = 62；再收编 P3 planner 2（compute.ts/layoutPlanner.ts 的 site.remove → removeSite kind 既有）= 60 ✓ 达 ≤60 闸门。
 
 **连锁发现（4.5b 一并处置候选）**：makeCombatHealHandler 工厂零消费方（4.3 暂留依据的复活路径已随 defendSingle/defendDuo 删除断链），其 COMBAT_HEAL_POLICIES 表含 defend2-attack 死键；combatHeal 纯函数（combatHeal/combatRangedHeal）仍是 TeamBattle/boundPartner/aio 活消费——工厂删、纯函数留。
+
+## T. 域 8（4.5b）PC 域收编落档（2026-10-25）
+
+- **PC 全链收编**：powerAdapter 由 2 函数扩至 13 函数（pcMoveTo/pcStep/pcTransfer/pcWithdraw/pcRenew/pcSuicide/pcHealerSuicide/pcHealerHeal/pcHealerRangedHeal/pcHealerMoveTo/pcHealerStep/pcFlagRemove + 既有 pcUsePower/pcEnableRoom）；move 管线扩 plainCost/swampCost 透传（PC 链 47 处依赖）；renew 新增 ActionKind+执行器（--allow-growth 决策：净 +1 条目，P6 −19 远大于 +1）；rangedHeal 复用 combatHealAction kind（healMode 判别，语义一致零新条目）。
+- **assistHeal.ts 删除**：全仓零引用死文件（pc-heal 的 handler 从未接线——R 节已登记「孵出即空转」缺口，4.2 reportIdleUnit 诊断承接，实服待补）。其 P6 4 条随之清零。
+- **planner P3 收编**：compute.ts 两处 + layoutPlanner.ts 一处 remove → submitIntent（removeFlag/removeSite kind 既有），P3 清零。
+- **终态**：豁免 60 条 = P8 22 + P2 14 + 人操 13 + P7 4 + 编队 5 + P4 1 + P8 spawn 1。P6/P3 全清。**A 波闸门 ≤60 达成**。
+- **makeCombatHealHandler 遗留**：工厂零消费方（defendSingle/defendDuo 删除断链），combatHeal 纯函数（TeamBattle/boundPartner/aio 活消费）保留——待 C 波 8.3 死导出收敛处置。
+- **并行工作警示**：src/modules/comms/（b2b 协议三件）系另一会话 13:36 落盘的未完成工作（channel.ts 仍有 tsc 错误），不属本切片，未动。

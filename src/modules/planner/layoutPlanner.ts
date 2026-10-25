@@ -9,6 +9,7 @@
  * 具体实现按域拆分至 layout/ 子模块: types/layoutCache/roomContext/staticLayout/sitePlacement/compute。
  */
 import { compress } from '@/utils/compress';
+import { submitIntent } from '@/runtime/intentQueue';
 import { rosPlanner } from './rosPlanner';
 import { autoPlanner63 } from './dynamic/63Planner';
 import LayoutVisual from './layoutVisual';
@@ -227,7 +228,16 @@ function visualByFlags(layoutType: 'auto' | '63auto'): number {
     const roomName = pa.roomName;
 
     const storagePos = Game.flags.storagePos || Game.flags.centerPos;
-    if (storagePos && storagePos.pos.roomName !== roomName) storagePos.remove();
+    if (storagePos && storagePos.pos.roomName !== roomName) {
+        submitIntent(Game.time, {
+            actorName: roomName,
+            kind: 'removeFlag',
+            pipeline: 'flag',
+            priority: 30,
+            payload: { flagName: storagePos.name },
+            dedupeKey: `layout-storageflag-remove:${storagePos.name}`,
+        });
+    }
 
     const planner = layoutType === '63auto' ? autoPlanner63 : rosPlanner;
     const computeManor = planner.ManagerPlanner.computeManor;

@@ -1,5 +1,6 @@
 
 import { directSpawn } from '@/modules/spawning';
+import { pcEnableRoom, pcMoveTo, pcRenew, pcWithdraw, pcFlagRemove, pcHealerMoveTo } from '@/proto/PowerCreep/function/powerAdapter';
 
 import { UNITS } from '@/constant/CreepConstant';
 import { UnitData } from '@/constant/CreepConstant';
@@ -48,7 +49,7 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
     const targetController = targetRoomObj?.controller;
     if (targetController?.safeMode) {
         mem.assistAbortReason = 'safeMode';
-        assistFlag.remove();
+        pcFlagRemove(assistFlag);
         mem.assistState = 'retreat';
     }
 
@@ -57,13 +58,13 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
         const reachable = isControllerReachable(pc.pos, controller);
         if (reachable) {
             if (pc.pos.isNearTo(controller)) {
-                pc.enableRoom(controller);
+                pcEnableRoom(pc, controller);
                 return true;
             }
             if (activeHealer && healerOk) {
                 pc.pcDoubleMoveTo(controller.pos, activeHealer, '#ffffff', { plainCost: 1, swampCost: 5 } as any);
             } else {
-                pc.moveTo(controller, { plainCost: 1, swampCost: 5 });
+                pcMoveTo(pc, controller, { plainCost: 1, swampCost: 5 });
             }
             return true;
         }
@@ -85,13 +86,13 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
         }
         if (pc.pos.isRoomEdge()) {
             if (activeHealer && healerOk) pc.pcDoubleFleeEdge(activeHealer, { plainCost: 1, swampCost: 5 } as any);
-            else pc.moveTo(idlePos, { plainCost: 1, swampCost: 5 });
+            else pcMoveTo(pc, idlePos, { plainCost: 1, swampCost: 5 });
             return true;
         }
         if (!pc.pos.isEqualTo(idlePos)) {
             if (!canStandOn(pc.room!, idlePos)) return true;
             if (activeHealer && healerOk) pc.pcDoubleMoveTo(idlePos, activeHealer, '#ffffff', { plainCost: 1, swampCost: 5 } as any);
-            else pc.moveTo(idlePos, { plainCost: 1, swampCost: 5 });
+            else pcMoveTo(pc, idlePos, { plainCost: 1, swampCost: 5 });
             return true;
         }
         mem.assistState = 'recover';
@@ -106,10 +107,10 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
         }
         const powerSpawn = pc.room!.powerSpawn!;
         if (powerSpawn && pc.ticksToLive! < PC_RECOVER_TTL) {
-            if (pc.pos.isNearTo(powerSpawn)) pc.renew(powerSpawn);
+            if (pc.pos.isNearTo(powerSpawn)) pcRenew(pc, powerSpawn);
             else {
                 if (activeHealer && healerOk) pc.pcDoubleMoveTo(powerSpawn.pos, activeHealer, '#ffffff', { plainCost: 1, swampCost: 5 } as any);
-                else pc.moveTo(powerSpawn, { plainCost: 1, swampCost: 5 });
+                else pcMoveTo(pc, powerSpawn, { plainCost: 1, swampCost: 5 });
             }
             return true;
         }
@@ -132,13 +133,13 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
 
         if (activeHealer && healerOk && activeHealer.room.name === idleRoom) {
             if (!pc.pos.isNearTo(activeHealer)) {
-                pc.moveTo(activeHealer, { plainCost: 1, swampCost: 5, range: 1, ignoreCreeps: true });
+                pcMoveTo(pc, activeHealer, { plainCost: 1, swampCost: 5, range: 1, ignoreCreeps: true });
                 mem.assistState = 'assemble';
                 return true;
             }
         } else if (!pc.pos.isEqualTo(idlePos)) {
             if (!canStandOn(pc.room!, idlePos)) return true;
-            pc.moveTo(idlePos, { plainCost: 1, swampCost: 5 });
+            pcMoveTo(pc, idlePos, { plainCost: 1, swampCost: 5 });
             mem.assistState = 'recruit';
             return true;
         }
@@ -240,7 +241,7 @@ export function runAssist(pc: PowerCreep, assistFlag: Flag): boolean {
 
         if (anchorHealerPos && pc.pos.isNearTo(activeHealer) && !activeHealer.pos.isEqualTo(anchorHealerPos)) {
             if (activeHealer.fatigue > 0) return true;
-            activeHealer.moveTo(anchorHealerPos, { range: 0, ignoreCreeps: true, maxRooms: 1, reusePath: 5 });
+            pcHealerMoveTo(activeHealer, anchorHealerPos, { range: 0, ignoreCreeps: true, maxRooms: 1, reusePath: 5 });
             return true;
         }
 
@@ -338,10 +339,10 @@ function fillOpsBeforeAssist(pc: PowerCreep, moveOpts: MoveToOpts): boolean {
     if (amount <= 0) return false;
 
     if (pc.pos.isNearTo(target)) {
-        pc.withdraw(target, RESOURCE_OPS, amount);
+        pcWithdraw(pc, target, RESOURCE_OPS, amount);
         return true;
     }
-    pc.moveTo(target, moveOpts);
+    pcMoveTo(pc, target, moveOpts);
     return true;
 }
 

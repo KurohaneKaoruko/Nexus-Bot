@@ -1,6 +1,6 @@
 
 import { inWhitelist } from '@/utils/whitelist';
-import { pcEnableRoom } from './powerAdapter';
+import { pcEnableRoom, pcMoveTo, pcTransfer, pcWithdraw, pcRenew } from './powerAdapter';
 import { getStructData } from '@/core/store/accessor';
 
 export default class BaseFunction extends PowerCreep {
@@ -21,7 +21,7 @@ export default class BaseFunction extends PowerCreep {
         const controller = this.room?.controller;
         if(!controller!.isPowerEnabled) {
             if(this.pos.isNearTo(controller!)) pcEnableRoom(this, controller!);
-            else this.moveTo(controller!)
+            else pcMoveTo(this, controller)
             return true;
         }
         return false
@@ -37,12 +37,12 @@ export default class BaseFunction extends PowerCreep {
             const amount = Math.min(halfOps, this.store[RESOURCE_OPS] - 200, free);
             if (amount <= 0) return false;
             if (this.pos.isNearTo(target)) {
-                const code = this.transfer(target, RESOURCE_OPS, amount);
+                const code = pcTransfer(this, target, RESOURCE_OPS, amount);
                 if (code === OK) return true;
                 if (code === ERR_NOT_IN_RANGE) return true;
                 return false;
             } else {
-                this.moveTo(target);
+                pcMoveTo(this, target);
             }
             return true;
         }
@@ -51,12 +51,12 @@ export default class BaseFunction extends PowerCreep {
             if (!target) return false;
 
             if (this.pos.isNearTo(target)) {
-                const code = this.transfer(target, RESOURCE_OPS);
+                const code = pcTransfer(this, target, RESOURCE_OPS);
                 if (code === OK) return true;
                 if (code === ERR_NOT_IN_RANGE) return true;
                 return false;
             } else {
-                this.moveTo(target);
+                pcMoveTo(this, target);
             }
             return true;
         }
@@ -69,9 +69,9 @@ export default class BaseFunction extends PowerCreep {
             const target = storageOps > amount ? this.room?.storage : this.room?.terminal;
             if(!target) return false;
             if(this.pos.isNearTo(target)) {
-                this.withdraw(target, RESOURCE_OPS, amount - this.store[RESOURCE_OPS]);
+                pcWithdraw(this, target, RESOURCE_OPS, amount - this.store[RESOURCE_OPS]);
             } else {
-                this.moveTo(target);
+                pcMoveTo(this, target);
             }
             return true;
         }
@@ -79,11 +79,11 @@ export default class BaseFunction extends PowerCreep {
     }
     private tryRenewAt(target: StructurePowerSpawn | StructurePowerBank): boolean {
         if (!this.pos.isNearTo(target)) {
-            this.moveTo(target);
+            pcMoveTo(this, target);
             return true;
         }
 
-        const result = this.renew(target);
+        const result = pcRenew(this, target);
         return result === OK || result === ERR_NOT_IN_RANGE;
     }
     override ToRenew(): boolean {
@@ -101,7 +101,7 @@ export default class BaseFunction extends PowerCreep {
         if (Game.flags[this.name + '-renew']) {
             const flag = Game.flags[this.name + '-renew'];
             if(this.pos.roomName !== flag!.pos.roomName! || this.pos.isRoomEdge()) {
-                this.moveTo(flag!);
+                pcMoveTo(this, flag!);
                 return true;
             } else if(this.room!.powerSpawn!) {
                 return this.tryRenewAt(this.room!.powerSpawn!);
@@ -122,18 +122,18 @@ export default class BaseFunction extends PowerCreep {
 
         if (this.pos.isNearTo(powerSpawn)) {
             if (powerSpawn.store[RESOURCE_POWER] < 50 && this.store[RESOURCE_POWER] > 0) {
-                this.transfer(powerSpawn, RESOURCE_POWER);
+                pcTransfer(this, powerSpawn, RESOURCE_POWER);
                 return true;
             }
         }
 
         if (this.pos.isNearTo(storage)) {
             if (powerSpawn.store[RESOURCE_POWER] > 60 && this.store[RESOURCE_POWER] > 0) {
-                this.transfer(storage, RESOURCE_POWER);
+                pcTransfer(this, storage, RESOURCE_POWER);
                 return true;
             }
             if ((powerSpawn.store[RESOURCE_POWER] ?? 0) < 50 && (this.store[RESOURCE_POWER] ?? 0) == 0) {
-                this.withdraw(storage, RESOURCE_POWER, 100);
+                pcWithdraw(this, storage, RESOURCE_POWER, 100);
                 return true;
             }
         }
@@ -151,14 +151,14 @@ export default class BaseFunction extends PowerCreep {
         });
 
         if (route === ERR_NO_PATH || route.length <= 0) {
-            this.moveTo(new RoomPosition(25, 25, roomName), opts);
+            pcMoveTo(this, { x: 25, y: 25, roomName }, opts);
             return true;
         }
 
         const nextRoom = route[0]!.room!;
         const exitDir = this.room!.findExitTo(nextRoom);
         if (exitDir === ERR_NO_PATH || exitDir === ERR_INVALID_ARGS) {
-            this.moveTo(new RoomPosition(25, 25, nextRoom), opts);
+            pcMoveTo(this, { x: 25, y: 25, roomName: nextRoom }, opts);
             return true;
         }
 
@@ -166,7 +166,7 @@ export default class BaseFunction extends PowerCreep {
         const exitPos = this.pos.findClosestByRange(exitTiles);
         if (!exitPos) return false;
 
-        this.moveTo(exitPos, opts);
+        pcMoveTo(this, exitPos, opts);
         return true;
     }
 }

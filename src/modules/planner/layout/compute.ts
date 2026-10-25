@@ -3,6 +3,7 @@
  * 布局计算域: 静态/动态布局计算（含三级缓存命中）与重算后的残留工地清理。
  */
 import { decompress } from '@/utils/compress';
+import { submitIntent } from '@/runtime/intentQueue';
 import { rosPlanner } from '../rosPlanner';
 import { autoPlanner63 } from '../dynamic/63Planner';
 import { plannerLog as log, dynamicBucketFloor } from '../memory';
@@ -154,7 +155,16 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
     }
 
     const storagePos = Game.flags.storagePos;
-    if (storagePos && storagePos.pos.roomName !== roomName) storagePos.remove();
+    if (storagePos && storagePos.pos.roomName !== roomName) {
+        submitIntent(Game.time, {
+            actorName: roomName,
+            kind: 'removeFlag',
+            pipeline: 'flag',
+            priority: 30,
+            payload: { flagName: storagePos.name },
+            dedupeKey: `layout-storageflag-remove:${storagePos.name}`,
+        });
+    }
 
     const planner = layoutType === '63auto' ? autoPlanner63 : rosPlanner;
     const computeManor = planner.ManagerPlanner.computeManor;
@@ -238,6 +248,15 @@ export function removeStaleSites(roomName: string, computed: CachedLayout, previ
     }
     for (const site of room.find(FIND_MY_CONSTRUCTION_SITES)) {
         const staleKey = `${site.structureType}:${site.pos.x},${site.pos.y}`;
-        if (staleKeys.has(staleKey) && !layoutKeys.has(staleKey)) site.remove();
+        if (staleKeys.has(staleKey) && !layoutKeys.has(staleKey)) {
+            submitIntent(Game.time, {
+                actorName: roomName,
+                kind: 'removeSite',
+                pipeline: 'construction',
+                priority: 30,
+                targetId: site.id,
+                dedupeKey: `layout-stale-site:${site.id}`,
+            });
+        }
     }
 }

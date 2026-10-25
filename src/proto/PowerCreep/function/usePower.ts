@@ -2,7 +2,7 @@
 import { UNITS } from '@/constant/CreepConstant';
 import { getLabAB } from '@/modules/industry';
 import { getOutMineData, getStructData } from '@/core/store/accessor';
-import { pcUsePower } from './powerAdapter';
+import { pcUsePower, pcMoveTo } from './powerAdapter';
 
 export default class PowerCreepUsePower extends PowerCreep {
     private usePowerOrMove(
@@ -14,7 +14,7 @@ export default class PowerCreepUsePower extends PowerCreep {
         const moveRange = (moveOpts as any).range ?? range;
         const moveOptions = moveRange === (moveOpts as any).range ? moveOpts : { ...moveOpts, range: moveRange };
         if (!this.pos.inRangeTo(target, range)) {
-            this.moveTo(target, moveOptions);
+            pcMoveTo(this, target, moveOptions);
             return true;
         }
 
@@ -23,7 +23,7 @@ export default class PowerCreepUsePower extends PowerCreep {
             return true;
         }
         if (result === ERR_NOT_IN_RANGE) {
-            this.moveTo(target, moveOptions);
+            pcMoveTo(this, target, moveOptions);
             return true;
         }
         return false;
@@ -192,7 +192,7 @@ export default class PowerCreepUsePower extends PowerCreep {
             if(this.pos.inRangeTo(pos, 0)) {
                 pcUsePower(this, PWR_SHIELD);
             } else {
-                this.moveTo(pos);
+                pcMoveTo(this, pos);
             }
             return true;
         }
@@ -220,7 +220,7 @@ export default class PowerCreepUsePower extends PowerCreep {
 
         const result = pcUsePower(this, PWR_DISRUPT_TOWER, target);
         if (result === ERR_NOT_IN_RANGE) {
-            this.moveTo(target, { plainCost: 1, swampCost: 1 });
+            pcMoveTo(this, target, { plainCost: 1, swampCost: 1 });
         }
         return result === OK || result === ERR_NOT_IN_RANGE;
     }
@@ -245,7 +245,7 @@ export default class PowerCreepUsePower extends PowerCreep {
 
         const result = pcUsePower(this, PWR_DISRUPT_SPAWN, target);
         if (result === ERR_NOT_IN_RANGE) {
-            this.moveTo(target, { plainCost: 1, swampCost: 1 });
+            pcMoveTo(this, target, { plainCost: 1, swampCost: 1 });
         }
         return result === OK || result === ERR_NOT_IN_RANGE;
     }

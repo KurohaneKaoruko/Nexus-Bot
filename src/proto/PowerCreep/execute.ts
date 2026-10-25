@@ -1,6 +1,7 @@
 
 import { UNITS } from '@/constant/CreepConstant';
 import { runAssist } from '@/proto/PowerCreep/mode/assist';
+import { pcMoveTo, pcHealerSuicide } from '@/proto/PowerCreep/function/powerAdapter';
 import { runOperate } from '@/proto/PowerCreep/mode/operate';
 
 export default class PowerCreepExecute extends PowerCreep {
@@ -33,13 +34,13 @@ export default class PowerCreepExecute extends PowerCreep {
 
             if (this.pos.isRoomEdge()) {
                 if (healerOk) this.pcDoubleFleeEdge(healer, { plainCost: 1, swampCost: 5 } as any);
-                else this.moveTo(idlePos, { plainCost: 1, swampCost: 5 });
+                else pcMoveTo(this, idlePos, { plainCost: 1, swampCost: 5 });
                 return;
             }
 
             if (!this.pos.isEqualTo(idlePos)) {
                 if (healerOk) this.pcDoubleMoveTo(idlePos, healer, '#ffffff', { plainCost: 1, swampCost: 5 } as any);
-                else this.moveTo(idlePos, { plainCost: 1, swampCost: 5 });
+                else pcMoveTo(this, idlePos, { plainCost: 1, swampCost: 5 });
                 return;
             }
 
@@ -50,7 +51,7 @@ export default class PowerCreepExecute extends PowerCreep {
                 if (!healer!.pos.inRangeTo(idlePos, 1)) {
                     return;
                 }
-                healer!.suicide();
+                pcHealerSuicide(healer!);
                 delete mem.healerName;
             }
 

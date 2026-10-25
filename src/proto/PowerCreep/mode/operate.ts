@@ -1,6 +1,8 @@
 
 type Step = () => boolean;
 
+import { pcMoveTo } from '@/proto/PowerCreep/function/powerAdapter';
+
 export function runOperate(pc: PowerCreep): boolean {
     const name = pc.name;
     const flag = Game.flags[`${name}-move`];
@@ -10,13 +12,13 @@ export function runOperate(pc: PowerCreep): boolean {
         () => {
             if (!flag || pc.pos.inRangeTo(flag, 0)) return false;
             pc.Generate_OPS();
-            pc.moveTo(flag, { visualizePathStyle: { stroke: '#ff0000' }, plainCost: 1, swampCost: 1 });
+            pcMoveTo(pc, flag, { visualizePathStyle: { stroke: '#ff0000' }, plainCost: 1, swampCost: 1 });
             return true;
         },
         () => {
             if (!flagHome) return false;
             if (pc.room?.name === flagHome.pos.roomName && !pc.pos.isRoomEdge()) return false;
-            pc.moveTo(flagHome, { plainCost: 1, swampCost: 1 });
+            pcMoveTo(pc, flagHome, { plainCost: 1, swampCost: 1 });
             return true;
         },
         () => pc.PowerEnabled(),
@@ -56,7 +58,7 @@ export function runOperate(pc: PowerCreep): boolean {
         }
         if (!pc.pos.isEqualTo(idleFlag.pos)) {
             if (!canStandOn(pc.room!, idleFlag.pos)) return true;
-            pc.moveTo(idleFlag, { plainCost: 1, swampCost: 1 });
+            pcMoveTo(pc, idleFlag, { plainCost: 1, swampCost: 1 });
         }
     }
     return true;

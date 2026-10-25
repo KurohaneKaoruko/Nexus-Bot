@@ -22,6 +22,7 @@ export type ActionKind =
 	| "repair"
 	| "activateSafeMode"
 	| "suicide"
+	| "renew"
 	| "createSite"
 	| "removeSite"
 	| "destroyStructure"
@@ -142,6 +143,8 @@ export interface MoveOptsPayload {
 	ignoreCreeps?: boolean;
 	maxRooms?: number;
 	reusePath?: number;
+	plainCost?: number;
+	swampCost?: number;
 	costCallback?: (roomName: string, costMatrix: CostMatrix) => void;
 }
 
@@ -312,6 +315,8 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 					if (m.ignoreCreeps !== undefined) opts.ignoreCreeps = m.ignoreCreeps;
 					if (m.maxRooms !== undefined) opts.maxRooms = m.maxRooms;
 					if (m.reusePath !== undefined) opts.reusePath = m.reusePath;
+					if (m.plainCost !== undefined) (opts as any).plainCost = m.plainCost;
+					if (m.swampCost !== undefined) (opts as any).swampCost = m.swampCost;
 				}
 				const code = creep.moveTo(position, {
 					maxRooms: position.roomName === creep.pos.roomName ? 1 : 16,
@@ -506,6 +511,20 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 					};
 				}
 				const code = creep.repair(target);
+				const t = triage(code);
+				return { ...base, accepted: t.accepted, nativeReturnCode: code, category: t.category };
+			}
+			case "renew": {
+				// PowerCreep 续命 (power 管线): 目标 powerSpawn/powerBank
+				const spawn = resolve<StructurePowerSpawn>(plan.targetId);
+				if (!spawn) {
+					return { ...base, accepted: false, category: "replan", reason: "target-gone" };
+				}
+				const pc = Game.powerCreeps[plan.actorName];
+				if (!pc) {
+					return invalid("power-creep-gone");
+				}
+				const code = pc.renew(spawn);
 				const t = triage(code);
 				return { ...base, accepted: t.accepted, nativeReturnCode: code, category: t.category };
 			}

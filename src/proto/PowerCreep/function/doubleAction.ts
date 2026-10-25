@@ -1,5 +1,6 @@
 
 import { UNITS } from '@/constant/CreepConstant';
+import { pcStep, pcMoveTo, pcHealerMoveTo, pcHealerStep } from './powerAdapter';
 export default class PowerCreepDoubleAction extends PowerCreep {
     override pcDoubleMove(Direction: DirectionConstant, healer?: Creep): number {
         const bindCreep = healer || this.getPcHealer();
@@ -9,14 +10,14 @@ export default class PowerCreepDoubleAction extends PowerCreep {
         if (this.pos.isNearTo(bindCreep.pos)) {
             if (bindCreep.fatigue > 0) return ERR_TIRED;
             const followDir = bindCreep.pos.getDirectionTo(this.pos);
-            const result = this.move(Direction);
+            const result = pcStep(this, Direction);
             if (result === OK) {
-                bindCreep.move(followDir);
+                pcHealerStep(bindCreep, followDir);
             }
             return result;
         } else {
-            if (this.pos.isRoomEdge()) this.move(Direction);
-            bindCreep.moveTo(this as any, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
+            if (this.pos.isRoomEdge()) pcStep(this, Direction);
+            pcHealerMoveTo(bindCreep, this, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
             return OK;
         }
     }
@@ -33,14 +34,14 @@ export default class PowerCreepDoubleAction extends PowerCreep {
         if (this.pos.isNearTo(bindCreep.pos)) {
             if (bindCreep.fatigue > 0) return ERR_TIRED;
             const followDir = bindCreep.pos.getDirectionTo(this.pos);
-            const result = this.moveTo(target, _ops);
+            const result = pcMoveTo(this, target, _ops);
             if (result === OK) {
-                bindCreep.move(followDir);
+                pcHealerStep(bindCreep, followDir);
             }
             return result;
         } else {
-            if (this.pos.isRoomEdge()) this.moveTo(target, _ops);
-            bindCreep.moveTo(this as any, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
+            if (this.pos.isRoomEdge()) pcMoveTo(this, target, _ops);
+            pcHealerMoveTo(bindCreep, this, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
             return OK;
         }
     }
@@ -62,16 +63,16 @@ export default class PowerCreepDoubleAction extends PowerCreep {
         if (!bindCreep) return;
         bindCreep.memory.dontPullMe = false;
         if (bindCreep.fatigue > 0) {
-            bindCreep.moveTo(this as any, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
+            pcHealerMoveTo(bindCreep, this, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
             return true;
         }
 
         if (this.pos.isRoomEdge()) {
             const dir = getInwardDirection(this.pos);
-            if (dir) this.move(dir);
-            else this.moveTo(new RoomPosition(25, 25, this.room!.name!), { ...ops, range: 10 });
+            if (dir) pcStep(this, dir);
+            else pcMoveTo(this, { x: 25, y: 25, roomName: this.room!.name! }, { ...ops, range: 10 });
 
-            bindCreep.moveTo(this as any, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
+            pcHealerMoveTo(bindCreep, this, { range: 1, ignoreCreeps: true, maxRooms: 16, reusePath: 5 });
             return true;
         }
 
@@ -91,7 +92,7 @@ export default class PowerCreepDoubleAction extends PowerCreep {
             });
             if (!Pos) return false;
             const toPos = new RoomPosition(Pos[0]!, Pos[1]!, this.room!.name);
-            bindCreep.move(bindCreep.pos.getDirectionTo(toPos));
+            pcHealerStep(bindCreep, bindCreep.pos.getDirectionTo(toPos));
         }
         return false;
     }
