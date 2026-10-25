@@ -208,4 +208,4 @@ Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例�
 
 **structure-guard ⑥ 断言启用**：六池退役符号全仓扫描（56 符号，spawn 链 5 文件豁免）——首次跑出 7 处注释迁移溯源残留（AGENTS.md「注释不述来源」双重违规），已全部改写为功能描述。断言随本切片入守护主线。
 
-**门读数**：见 tasks.md 3.4 行（删除确认门六场景 + run-residue/stronghold-door）；sprint 预告同方向漂移（P 节预告：workMission/transportMission 文件删除后惰性扫描间接效应自然消解）。
+**门读数**：八门全绿——三绿门逐位（boot L3@8889/race L2@458 p95 7ms/remote-mine L3@0）、三分段门逐位（speedrun L4@28316/arena L3@11629/**sprint L3@36171 与 3.2 接受值一致零新漂移**）、run-residue L2@1059/p95 4ms、stronghold-door L8@0/p95 5ms。P 节预告的「删除后再漂移」未发生——+526t 在 3.2 调度入口摘除时已终态，updater 文件删除对时间线零扰动（惰性扫描间接效应归因获实证支持）。参考快照随本次读数推进（sprint 36171 锁定）。N 节 powerSpawn 待核证项关闭（powerSpawnControl 独立自治）。
