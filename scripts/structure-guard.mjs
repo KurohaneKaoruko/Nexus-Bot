@@ -69,6 +69,55 @@ const PROTO_IMPORTS_FROZEN = new Set([
 /** 词表三方一致断言开关 (A 波域 6 完成后置 true) */
 const VOCAB_TRIPLE_CHECK = false;
 
+/**
+ * 六池退役符号扫描 (mission-pool-retirement spec: 池 API 与词表全仓清零,
+ * spawn 池链豁免)。域 3.4 启用: 命中即红。
+ * 豁免面: spawn 池基建 (MissionPools.ts/MissionSubmit.ts/spawnMission.ts/
+ * MissionConstant.ts/accessor.ts 存储层 + docs/bugs 留档)。
+ */
+const RETIRED_POOL_SYMBOLS = [
+	'MissionUpdate', 'UpdateTransportMission', 'UpdateManageMission',
+	'UpdateBuildRepairMission', 'UpdateWallRepairMission', 'UpdateMineMission',
+	'UpdateHighwayScan', 'UpdateEnergyMission', 'UpdateLabMission',
+	'UpdateLabBoostMission', 'UpdatePowerMission', 'UpdateNukerMission',
+	'TransportMissionCheck', 'BuildRepairMissionCheck',
+	'getTransportMission', 'getBuildMission', 'getRepairMission', 'getWallMission',
+	'getManageMission', 'getSendMission', 'getSendMissionTotalAmount',
+	'TransportMissionAdd', 'addTransportMission', 'ManageMissionAdd',
+	'BuildRepairMissionAdd', 'SendMissionAdd', 'SendMissionUpsertMax',
+	'submitTransportMission', 'submitMineMission',
+	'getMissionFromPool', 'getMissionFromPoolFirst', 'getMissionFromPoolRandom',
+	'checkSameMissionInPool', 'checkMissionInPool', 'checkMissionPool',
+	'lockMissionInPool', 'unlockMissionInPool', 'updateMissionPool',
+	'initMissionPool',
+	'TransportLevel', 'toPosNumber',
+	'TransportTask', 'BuildTask', 'RepairTask', 'ManageTask', 'SendTask', 'BoostTask',
+	'TransportMission', 'ManageMission', 'WorkMission', 'BoostMission', 'MineMission',
+	'TransportTaskGetter', 'WorkTaskGetter', 'ManageTaskGetter',
+];
+const RETIRED_POOL_EXEMPT_FILES = new Set([
+	'src/modules/spawning/mission/pool/MissionPools.ts', // spawn 池基建 (词表/存储面)
+	'src/modules/spawning/mission/pool/MissionSubmit.ts', // spawn 提交面
+	'src/modules/spawning/mission/updaters/spawnMission.ts', // spawn 池写入面
+	'src/constant/MissionConstant.ts', // spawn 词表
+	'src/core/store/accessor.ts', // spawn 池存储 accessor
+]);
+
+function checkRetiredPoolSymbols(files) {
+	const hits = [];
+	for (const file of files) {
+		const rel = path.relative(ROOT, file);
+		if (RETIRED_POOL_EXEMPT_FILES.has(rel)) continue;
+		const text = stripBlockComments(fs.readFileSync(file, 'utf8'));
+		for (const sym of RETIRED_POOL_SYMBOLS) {
+			// 词边界匹配: 排除子串误报 (如 getXxxMission 不会匹配 xxxMission)
+			const re = new RegExp(`\\b${sym}\\b`);
+			if (re.test(text)) hits.push(`${rel} :: ${sym}`);
+		}
+	}
+	return hits;
+}
+
 // ── 通用: 源文件枚举与注释剥离 ─────────────────────────────
 
 function walkTs(dir, out = []) {
@@ -233,6 +282,7 @@ const lineViolations = checkLineLimit(files);
 const typeEscape = checkTypeEscape(files);
 const deps = checkDependencies(files);
 const vocab = checkVocabTriple();
+const retiredPoolHits = checkRetiredPoolSymbols(files);
 
 const depViolationCount =
 	deps.r1.length + deps.r2.length + deps.r3.length;
@@ -280,6 +330,13 @@ if (depViolationCount > 0) {
 
 if (vocab && vocab.orphans.length > 0) {
 	failures.push(`⑤ 词表三方一致孤儿 ${vocab.orphans.length} 处`);
+}
+
+if (retiredPoolHits.length > 0) {
+	failures.push(
+		`⑥ 六池退役符号残留 ${retiredPoolHits.length} 处 (mission-pool-retirement; spawn 池链豁免):\n` +
+			retiredPoolHits.map((v) => `   ${v}`).join('\n'),
+	);
 }
 
 if (doReport) {

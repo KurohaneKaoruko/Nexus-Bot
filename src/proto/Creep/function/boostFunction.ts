@@ -32,7 +32,7 @@ export default class BoostFunction extends Creep {
      *
      * 解析优先级：显式传入 > memory.boostmap > ROLE_BOOST_CONFIGS[unit]。
      * - 无任何配置 → 视为无需 boost，直接完成
-     * - 非强制语义：boost 资源不足时等待 BoostMission 补料 80 tick 后自动放弃，
+     * - 非强制语义：boost 资源不足时等待 lab 补料 80 tick 后自动放弃，
      *   退化为无 boost 工作（goBoost 内建）
      */
     override ensureBoosted(
@@ -279,7 +279,7 @@ export default class BoostFunction extends Creep {
             if (!boostCache.boostAttempts) boostCache.boostAttempts = 0;
             boostCache.boostAttempts++;
 
-            // must=false：不直接当作完成。短暂等待 BoostMission 分配/补料后再放弃，避免“明明能 boost 却直接跳过”。 
+            // must=false：不直接当作完成。短暂等待 lab 分配/补料后再放弃，避免“明明能 boost 却直接跳过”。 
             if (!must) {
                 const optStart = boostCache.boostOptionalStartTime as number | undefined;
                 if (!optStart) boostCache.boostOptionalStartTime = Game.time;
@@ -436,7 +436,7 @@ export default class BoostFunction extends Creep {
         boostCache.boostTargetFailCount = failCount + 1;
 
         if (result === ERR_NOT_ENOUGH_RESOURCES) {
-            // 缺矿/缺能量：确保有对应的 boost 任务，驱动 BoostMission 去补矿/补能量
+            // 缺矿/缺能量：确保有对应的 boost 任务，驱动 lab 补矿/补能量
             const ensureInterval = 10;
             const lastEnsure = boostCache.boostEnsureTime as number | undefined;
             const allowEnsure = !lastEnsure || Game.time - lastEnsure >= ensureInterval;

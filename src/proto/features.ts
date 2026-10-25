@@ -37,7 +37,7 @@ function runRoomFeatures(room: Room): void {
 	// ── 基础结构状态 (每 tick, 不可延迟) ──
 	// 孵化池 spawn 链已退役 (directSpawn 主线化): 生产端 UpdateSpawnMission 连带
 	// spawnRules/spawnMission Getter 已删 (5.6 批次二, 挂单零消费者实证);
-	// 任务池调度 (MissionUpdate) 已随域 3.2 退役——六池语义全部迁 planning 阶段
+	// (该拍任务调度位已退役, 语义在 planning 阶段任务板)
 	// (economy planners/mineralWork + industry boostLabWork/terminalWork 读簿记),
 	// spawn 池仅剩 warSpawn/external 去重计数消费 (spawnLoad), 不经调度入口维护;
 	// 工业结构链由 Industry 域驱动; 塔控/主动防御由主线 Defense (broker) 独家驱动,

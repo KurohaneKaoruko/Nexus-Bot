@@ -193,3 +193,19 @@ boot + sprint + remote-mine + arena 四场景 7 池全程空 → **旧池在 sim
 **机制结论**：MissionUpdate 在 sprint（RCL3）对池的净写入为零，但摘除仍致 +526t——静态分析六 updater 在 RCL3 的可达路径全部短路或死写（transport/manage/storage·terminal 短路、powerSpawn/nuker RCL8 短路、build placeholder 死写无人读、wallRepair 死字段）。唯一存活性差异在**间接效应**：MissionUpdate 每拍触发 workMission 的 `hasRepairTarget()`/`getOwnedConstructionSites()`（`find(FIND_STRUCTURES/FIND_CONSTRUCTION_SITES)`）与各 updater 的 structureCache getter 惰性扫描（room.storage/terminal/factory/structures），这些扫描预热 structureCache 的 tick 缓存与堆索引——摘除后主线同拍读这些索引时的扫描时序改变（structureCache「新对象需 update() 刷新索引」的增量语义下，新放置工地的可见时点可滞后），建造链开工延迟的微扰复利出 +526t。精确行级定位需插桩 structureCache 全 getter，成本高于收益，按「分段门漂移=趋势观察项」口径接受。
 
 **处置**：不回退（WARN 级未触回退线；绿门逐位不受影响）；漂移留档本节；后续 3.4 删 workMission/transportMission 文件后该间接效应自然消解（扫描不再存在），sprint 时间线预计再漂移一次（同方向，趋势观察）。
+
+## Q. 域 3.4 六池全链删除落档（2026-10-25，实现交付）
+
+**删除面**：`mission/index.ts`（Mission 调度壳）+ updaters 四件（transportMission/manageMission/workMission/boostMission）+ MissionSubmit 的 transport/mine 提交方法 + MissionPools 六池死函数（getMissionFromPool 系/lock·unlock/update/check/submit/init）+ 本地词表与 TASK_TYPE_TO_POOL 双源副本 + 死缓存（spawnMissionNumCache/Tick 只删不写）+ `mission.interface.d.ts` 死方法/死类型（638→~225 行：TransportTask/BuildTask/RepairTask/ManageTask/SendTask/BoostTask 及全部池 API 声明）+ accessor TASK_TYPE_TO_POOL/sanitize/createEmpty 七池形状收缩 + creep-cache 死字段（task/wallTask 零读写）+ proto/Room extends 8→2（MissionSubmit/SpawnMission）+ spawning/index 死导出。
+
+**保留面（spawn 池链逐点核证）**：MissionPools.ts（add/delete/getNum/getAll/getById + getRoomMissionPools 形状校验——残留六池键视为非法形状触发 sanitize 回收，v15 迁移防线补充）、MissionSubmit（submitSpawnMission/deleteSpawnMissionsByRole——external/mine:459 活用）、spawnMission.ts（SpawnMissionAdd——TeamSpawner/external 发单面）、MISSION_POOLS.spawn 键。消费面：spawnLoad/statistics:338/rush:380/roomVisuals:383/ExpandController（含 cleanupExpandSpawnMissions）/external-mine spawner×N——全部只读 spawn 池。
+
+**三处池活写入改任务板（dedupeKey 幂等 upsert）**：
+- boostLabWork lab 填充/清理：`carry:boost:{room}:{labId}:{res}`——能量向可执行（executor 原生兜底覆盖 lab），矿物向 allocator 闸拒领（N 节登记缺位）；
+- factoryControl 产出回灌：`carry:factory:{room}:{product}`（factory→storage）；
+- console resource.task 人操：`carry:manual:{room}:{src}:{dst}:{res}`。
+Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例）。
+
+**structure-guard ⑥ 断言启用**：六池退役符号全仓扫描（56 符号，spawn 链 5 文件豁免）——首次跑出 7 处注释迁移溯源残留（AGENTS.md「注释不述来源」双重违规），已全部改写为功能描述。断言随本切片入守护主线。
+
+**门读数**：见 tasks.md 3.4 行（删除确认门六场景 + run-residue/stronghold-door）；sprint 预告同方向漂移（P 节预告：workMission/transportMission 文件删除后惰性扫描间接效应自然消解）。

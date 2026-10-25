@@ -2,12 +2,14 @@
  * Boost lab 管理 (原 UpdateBoostMission 的 lab 分配/填充/清理语义,
  * 自 mission/updaters/boostMission 迁移):
  * 预订需求读 economy/boostLedger (原读 boost 池), lab 单表预留
- * (ensureBoostLabs) 与搬运发单 (transport 池) 口径不变。
- * 搬运发单将随 transport 池退役切片统一收口为任务板 carry。
+ * (ensureBoostLabs) 口径不变; 搬运发单改任务板 carry (原 transport 池,
+ * 域 3.4 收口)——能量方向可执行, 矿物方向待矿物执行分支 (摸底档 N 节登记)。
  */
 import { getLabAB, ensureBoostLabs } from '@/modules/industry';
 import { getStructData } from '@/core/store/accessor';
 import { activeBoostEntries, pruneBoostEntries } from '@/modules/economy/boostLedger';
+import { priorityFor } from '@/core/store/taskSchema';
+import type { TaskBoard } from '@/modules/tasks';
 
 const BOOST_LAB_CAPACITY = 3000;
 const BOOST_LAB_ENERGY_TARGET = 2000;
@@ -28,30 +30,43 @@ const forbiddenBoostLabIds = (room: Room): Set<string> => {
 	return forbidden;
 };
 
-/** 搬运发单 (transport 池, 口径原样): 去重后下 lab↔storage 点对点单 */
+/** 搬运发单 (任务板 carry, 原 transport 池口径): lab↔storage 点对点单 */
 const addBoostTransport = (
 	room: Room,
+	board: TaskBoard | undefined,
 	task: { source: string; target: string; resourceType: ResourceConstant; amount: number },
-	match: { source?: string; target?: string; resourceType: ResourceConstant },
 ): void => {
-	room.addTransportMission(room.TransportLevel('boost'), {
-		pos: 0,
-		source: task.source as Id<Structure>,
-		target: task.target as Id<Structure>,
-		resourceType: task.resourceType,
-		amount: task.amount,
-	} as never);
-	void match;
+	if (!board) return;
+	const source = Game.getObjectById(task.source as Id<AnyStoreStructure>);
+	const target = Game.getObjectById(task.target as Id<AnyStoreStructure>);
+	if (!source || !target) return;
+	board.upsert(
+		{
+			dedupeKey: `carry:boost:${room.name}:${task.target}:${task.resourceType}`,
+			kind: 'carry',
+			roomName: room.name,
+			targetId: task.source,
+			targetPos: { x: source.pos.x, y: source.pos.y, roomName: room.name },
+			destId: task.target,
+			destPos: { x: target.pos.x, y: target.pos.y, roomName: room.name },
+			resourceType: task.resourceType,
+			amount: task.amount,
+			priority: priorityFor('carry'),
+			requiredCapabilities: ['carry', 'move'],
+			deadline: Game.time + 300,
+		},
+		Game.time,
+	);
 };
 
 /** lab 回收 (原 cleanupBoostLab): 非目标矿清回 storage */
-const cleanupBoostLab = (room: Room, lab: StructureLab): void => {
+const cleanupBoostLab = (room: Room, board: TaskBoard | undefined, lab: StructureLab): void => {
 	const mineral = lab.mineralType;
 	if (!mineral || lab.store[mineral] <= 0 || !room.storage) return;
 	addBoostTransport(
 		room,
+		board,
 		{ source: lab.id, target: room.storage.id, resourceType: mineral, amount: lab.store[mineral] },
-		{ source: lab.id, resourceType: mineral },
 	);
 };
 
@@ -71,11 +86,11 @@ const findBestLab = (
 };
 
 /** lab 填充管理 (原 manageBoostLab): 补矿 + 补能量 */
-const manageBoostLab = (room: Room, lab: StructureLab | null, mineral: ResourceConstant, amount: number): void => {
+const manageBoostLab = (room: Room, board: TaskBoard | undefined, lab: StructureLab | null, mineral: ResourceConstant, amount: number): void => {
 	if (!lab) return;
 
 	if (lab.mineralType && lab.mineralType !== mineral) {
-		cleanupBoostLab(room, lab);
+		cleanupBoostLab(room, board, lab);
 		return;
 	}
 
@@ -90,8 +105,8 @@ const manageBoostLab = (room: Room, lab: StructureLab | null, mineral: ResourceC
 			if (needed > 0) {
 				addBoostTransport(
 					room,
+					board,
 					{ source: source.id, target: lab.id, resourceType: mineral, amount: needed },
-					{ target: lab.id, resourceType: mineral },
 				);
 			}
 		}
@@ -102,18 +117,18 @@ const manageBoostLab = (room: Room, lab: StructureLab | null, mineral: ResourceC
 
 	addBoostTransport(
 		room,
+		board,
 		{
 			source: room.storage.id,
 			target: lab.id,
 			resourceType: RESOURCE_ENERGY,
 			amount: BOOST_LAB_ENERGY_TARGET - lab.store[RESOURCE_ENERGY],
 		},
-		{ target: lab.id, resourceType: RESOURCE_ENERGY },
 	);
 };
 
 /** 清空 task 征用 (原 clearAllBoostData): 无预订时只留 fixed 配置 */
-const clearAllBoostData = (room: Room): void => {
+const clearAllBoostData = (room: Room, board: TaskBoard | undefined): void => {
 	const botmem = getStructData(room.name);
 	const { labAId, labBId } = getLabAB(room.name, room);
 	const reactionActive =
@@ -125,7 +140,7 @@ const clearAllBoostData = (room: Room): void => {
 		if (!entry || entry.mode !== 'task') continue;
 		if (!reactionActive && ((labAId && labId === labAId) || (labBId && labId === labBId))) continue;
 		const lab = Game.getObjectById(labId);
-		if (lab) cleanupBoostLab(room, lab);
+		if (lab) cleanupBoostLab(room, board, lab);
 	}
 	for (const labId in boostLabs) {
 		if (boostLabs[labId]?.mode === 'task') delete boostLabs[labId];
@@ -133,7 +148,7 @@ const clearAllBoostData = (room: Room): void => {
 };
 
 /** 每拍入口 (原 UpdateBoostMission 主体): 巡检簿记 → lab 分配 → 填充 */
-export function planBoostLabWork(room: Room): void {
+export function planBoostLabWork(room: Room, board?: TaskBoard): void {
 	pruneBoostEntries();
 
 	const labs = room.lab;
@@ -144,11 +159,11 @@ export function planBoostLabWork(room: Room): void {
 	const entries = activeBoostEntries();
 
 	if (entries.length === 0) {
-		clearAllBoostData(room);
+		clearAllBoostData(room, board);
 		for (const labId in boostLabs) {
 			const entry = boostLabs[labId];
 			if (!entry || entry.mode !== 'fixed' || forbidden.has(labId)) continue;
-			manageBoostLab(room, Game.getObjectById(labId as Id<StructureLab>), entry.mineral, BOOST_LAB_CAPACITY);
+			manageBoostLab(room, board, Game.getObjectById(labId as Id<StructureLab>), entry.mineral, BOOST_LAB_CAPACITY);
 		}
 		return;
 	}
@@ -180,13 +195,13 @@ export function planBoostLabWork(room: Room): void {
 
 		if (entry.mode === 'fixed') {
 			assignedLabs.add(labId);
-			manageBoostLab(room, Game.getObjectById(labId as Id<StructureLab>), mineral, BOOST_LAB_CAPACITY);
+			manageBoostLab(room, board, Game.getObjectById(labId as Id<StructureLab>), mineral, BOOST_LAB_CAPACITY);
 			continue;
 		}
 
 		if (neededMinerals.has(mineral)) {
 			assignedLabs.add(labId);
-			manageBoostLab(room, Game.getObjectById(labId as Id<StructureLab>), mineral, neededMineralsMap[mineral] || 0);
+			manageBoostLab(room, board, Game.getObjectById(labId as Id<StructureLab>), mineral, neededMineralsMap[mineral] || 0);
 			neededMinerals.delete(mineral);
 			continue;
 		}
@@ -200,6 +215,6 @@ export function planBoostLabWork(room: Room): void {
 		if (!targetLab) continue;
 		boostLabs[targetLab.id] = { mineral, mode: 'task' };
 		assignedLabs.add(targetLab.id);
-		manageBoostLab(room, targetLab, mineral, neededMineralsMap[mineral] || 0);
+		manageBoostLab(room, board, targetLab, mineral, neededMineralsMap[mineral] || 0);
 	}
 }

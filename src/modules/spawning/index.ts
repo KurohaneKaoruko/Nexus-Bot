@@ -18,19 +18,11 @@ export const Spawning: TickModule = {
 // ── 公共面: 任务池 / 任务更新器 / 孵化执行 ──
 export {
 	addMissionToPool,
-	checkSameMissionInPool,
 	deleteMissionFromPool,
 	getAllMissionFromPool,
 	getMissionNumInPool,
-	submitMission,
-	updateMissionPool,
 } from "@/modules/spawning/mission/pool/MissionPools";
-export { default as Mission } from "@/modules/spawning/mission";
 export { default as MissionSubmit } from "@/modules/spawning/mission/pool/MissionSubmit";
-export { default as ManageMission, ManageTaskGetter } from "@/modules/spawning/mission/updaters/manageMission";
-export { default as WorkMission, WorkTaskGetter } from "@/modules/spawning/mission/updaters/workMission";
 export { default as SpawnMission } from "@/modules/spawning/mission/updaters/spawnMission";
-export { default as BoostMission } from "@/modules/spawning/mission/updaters/boostMission";
-export { default as TransportMission, TransportTaskGetter } from "@/modules/spawning/mission/updaters/transportMission";
 export { directSpawn } from "@/modules/spawning/spawnDirector";
 export { buildBody } from "@/modules/spawning/bodyFactory";

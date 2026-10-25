@@ -61,12 +61,6 @@ interface CreepCacheTarget {
     posInfo?: number;
 
     /**
-     * 任务数据
-     * @description 当前执行的建造或维修任务数据
-     */
-    task?: BuildTask | RepairTask;
-
-    /**
      * 任务 ID
      * @description 任务的唯一标识符
      */
@@ -77,12 +71,6 @@ interface CreepCacheTarget {
      * @description 任务的具体类型分类
      */
     tasktype?: 'build' | 'repair';
-
-    /**
-     * 墙体维修任务
-     * @description 专门针对墙体的维修任务数据
-     */
-    wallTask?: RepairTask;
 
     /**
      * 目标血量

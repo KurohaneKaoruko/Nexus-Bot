@@ -427,7 +427,7 @@ const handleDepositMine = (
 	}
 };
 
-// ── highway 轮询 (原 UpdateHighwayScan + handleHighwayRoom 逐条搬运) ──
+// ── highway 轮询: 名单逐房侦测 + 定编续排 ──
 
 /** 侦测回调: 视野已到位的过道房侦测 PowerBank/Deposit → 产出 harvest 任务 + 定编簿记 */
 const handleHighwayRoom = (
@@ -501,13 +501,12 @@ const handleHighwayRoom = (
 
 /**
  * 过道矿计划入口: 人操开关/能量门槛/highway 名单轮询 + 既有定编簿记续排。
- * 每 tick 对每个己方房调用; 名单轮询与定编续排同拍 (原 UpdateHighwayScan +
- * UpdateMineMission 两链合一, 人操语义不变)。
+ * 每 tick 对每个己方房调用; 名单轮询与定编续排同拍。
  */
 export function planMineralWork(ctx: TickContext, board: TaskBoard, room: Room): void {
 	const lookInterval = OUTMINE_CONFIG.LOOK_INTERVAL;
 
-	// 定编续排 (原 UpdateMineMission): 侦测过的簿记条目逐条续排
+	// 定编续排: 侦测过的簿记条目逐条续排
 	const powerBook = powerMineBookOf(room.name);
 	for (const [targetRoom, data] of Object.entries(powerBook)) {
 		handlePowerMine(ctx, board, room, targetRoom, data as PowerMineTask);
@@ -518,7 +517,7 @@ export function planMineralWork(ctx: TickContext, board: TaskBoard, room: Room):
 		handleDepositMine(ctx, board, room, targetRoom, data as DepositMineTask);
 	}
 
-	// highway 名单轮询 (原 UpdateHighwayScan)
+	// highway 名单轮询
 	if (!isRoomTickAligned(room.name, lookInterval)) return;
 
 	if (roomEnergyOf(room) < OUTMINE_ENERGY_THRESHOLD) return;

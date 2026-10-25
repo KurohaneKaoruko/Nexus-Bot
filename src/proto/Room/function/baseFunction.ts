@@ -754,7 +754,7 @@ export default class BaseFunction extends Room {
 
         // 3. 找被 boostLabs 预定给该资源的 Lab (即使它是空的，或者正在清理)
         if (botmem && botmem.boostLabs) {
-            // task/fixed 都允许命中：这里仅负责“选中哪个 lab”，真正的填充/清理由 BoostMission/Transport 负责
+            // task/fixed 都允许命中：这里仅负责“选中哪个 lab”，真正的填充/清理由 lab 管理与搬运任务板负责
             const reservedLabId = Object.keys(botmem.boostLabs).find(id => botmem.boostLabs[id]?.mineral === mineral);
             if (reservedLabId) {
                 const reservedLab = Game.getObjectById(reservedLabId as Id<StructureLab>);

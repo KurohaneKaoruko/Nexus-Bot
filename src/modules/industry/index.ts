@@ -17,18 +17,20 @@ import { runAutoFactory } from '@/modules/industry/autoFactory'
 import { runAutoMarket } from '@/modules/industry/autoMarket'
 import { runAutoPower } from '@/modules/industry/autoPowerSpawn'
 import { NukeModule } from '@/modules/industry/nukeSync'
+import { createTaskBoard } from '@/modules/tasks'
 import type { TickContext, TickModule } from '@/core'
 
-function runIndustry(room: Room): void {
+function runIndustry(ctx: TickContext, room: Room): void {
 	const tier = qos.getQoS()?.level ?? 'normal'
+	const board = createTaskBoard(ctx.memory.tasks)
 
 	// ── 结构控制 (每 tick, 不可延迟) ──
 	runObserveCallbackTick()
 	linkWork(room)
 	terminalWork(room)
-	boostLabWork(room)
+	boostLabWork(room, board)
 	labWork(room)
-	factoryWork(room)
+	factoryWork(room, board)
 	powerSpawnWork(room)
 	runObserveWork(room)
 
@@ -55,10 +57,10 @@ export const Industry: TickModule = {
 	name: 'industry',
 	phase: 'planning',
 	band: 'P2',
-	run(_ctx: TickContext): void {
+	run(ctx: TickContext): void {
 		for (const room of Object.values(Game.rooms)) {
 			if (!room.controller?.my) continue
-			runIndustry(room)
+			runIndustry(ctx, room)
 		}
 	},
 }

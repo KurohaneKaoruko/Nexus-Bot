@@ -4,7 +4,7 @@ import { BASE_CONFIG } from '@/constant/BaseConstant';
 import { log } from '@/utils/log';
 import { getMissionPools, sanitizeMissionPoolMemory, getStructData } from "@/core/store/accessor";
 
-const MISSION_POOL_NAME_SET = new Set<MissionPoolName>(['transport', 'build', 'repair', 'terminal', 'spawn', 'mine', 'boost']);
+const MISSION_POOL_NAME_SET = new Set<MissionPoolName>(['spawn']);
 
 // 基础与杂项
 const Base = {

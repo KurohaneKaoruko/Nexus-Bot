@@ -6,16 +6,8 @@ import { OutMine } from '@/modules/external'
 
 
 import {
-    BoostMission,
-    ManageMission,
-    ManageTaskGetter,
-    Mission,
     MissionSubmit,
     SpawnMission,
-    TransportMission,
-    TransportTaskGetter,
-    WorkMission,
-    WorkTaskGetter,
 } from '@/modules/spawning'
 
 /**
@@ -27,14 +19,6 @@ export default () => {
 
 
 
-    extend(Room, Mission)                  // 任务模块
-    extend(Room, TransportTaskGetter)      // 获取 transport 任务
-    extend(Room, WorkTaskGetter)           // 获取 build/repair/wall 任务
-    extend(Room, ManageTaskGetter)         // 获取 terminal 任务
-    extend(Room, MissionSubmit)            // 提交任务
-    extend(Room, ManageMission)            // 管理任务
-    extend(Room, WorkMission)              // 工作任务
-    extend(Room, SpawnMission)             // 孵化任务
-    extend(Room, BoostMission)             // 强化任务
-    extend(Room, TransportMission)         // 运输任务
+    extend(Room, MissionSubmit)            // 提交任务 (spawn 池链)
+    extend(Room, SpawnMission)             // 孵化任务 (SpawnMissionAdd → spawn 池)
 }

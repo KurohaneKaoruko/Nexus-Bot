@@ -432,31 +432,18 @@ export function clearRoomRelatedMemory(roomName: string): void {
 }
 
 // ── 任务池归属映射与池内存整形（MissionPools/ClearModule/展示层共用）──
+// 六池已随域 3.4 退役, 仅 spawn 池驻留 (孵化队列基建)
 
 /** 任务类型 → 池归属（新增任务类型必须在此登记） */
 export const TASK_TYPE_TO_POOL: Record<MissionTaskType, MissionPoolName> = {
-    transport: 'transport',
-    manage: 'transport',
-    build: 'build',
-    repair: 'repair',
-    send: 'terminal',
     spawn: 'spawn',
-    power: 'mine',
-    deposit: 'mine',
-    boost: 'boost',
 };
 
 export const createEmptyMissionPoolMemory = (): MissionPoolMemory => ({
-    transport: [],
-    build: [],
-    repair: [],
-    terminal: [],
     spawn: [],
-    mine: [],
-    boost: [],
 });
 
-/** 池内存整形：按 task.type 归池重建，清掉非法键 */
+/** 池内存整形：spawn 池按 task.type 重建, 其余残留键 (六池遗存) 全部回收 */
 export const sanitizeMissionPoolMemory = (memory?: MissionPoolMemory | Record<string, Task[]> | null): MissionPoolMemory => {
     const normalized = createEmptyMissionPoolMemory();
     if (!memory || typeof memory !== 'object') return normalized;
@@ -464,9 +451,8 @@ export const sanitizeMissionPoolMemory = (memory?: MissionPoolMemory | Record<st
     for (const tasks of Object.values(memory)) {
         if (!Array.isArray(tasks)) continue;
         for (const task of tasks) {
-            const poolName = TASK_TYPE_TO_POOL[task?.type as MissionTaskType];
-            if (!poolName) continue;
-            normalized[poolName].push! (task);
+            if (task?.type !== 'spawn') continue;
+            normalized.spawn.push(task);
         }
     }
 

@@ -1,6 +1,7 @@
 
 import { getResourceManage } from '@/core/store/accessor';
 import { BASE_CONFIG } from '@/constant/BaseConstant';
+import { createTaskBoard } from '@/modules/tasks';
 
 /**
  * 资源控制台命令：
@@ -114,13 +115,26 @@ export default {
                 if (!sourceId || !targetId) return Error('源或目标不存在');
                 if (sourceId == targetId) return Error('源和目标不能相同');
 
-                room.TransportMissionAdd(2, {
-                    source: sourceId as Id<StructureStorage | StructureTerminal>,
-                    target: targetId as Id<StructureStorage | StructureTerminal>,
+                // 任务板 carry 人操单 (原 transport 池单, 域 3.4 收口):
+                // 同键幂等, 矿物方向待矿物执行分支 (摸底档 N 节)
+                const srcObj = Game.getObjectById(sourceId);
+                const dstObj = Game.getObjectById(targetId);
+                if (!srcObj || !dstObj) return Error('源或目标不可见');
+                const board = createTaskBoard((Memory as any).Nexus?.tasks ?? {});
+                board.upsert({
+                    dedupeKey: `carry:manual:${roomName}:${sourceId}:${targetId}:${resource}`,
+                    kind: 'carry',
+                    roomName,
+                    targetId: sourceId,
+                    targetPos: { x: srcObj.pos.x, y: srcObj.pos.y, roomName },
+                    destId: targetId,
+                    destPos: { x: dstObj.pos.x, y: dstObj.pos.y, roomName },
                     resourceType: resource as ResourceConstant,
-                    amount: amount,
-                    pos: 0,
-                    });
+                    amount,
+                    priority: 4,
+                    requiredCapabilities: ['carry', 'move'],
+                    deadline: Game.time + 600,
+                }, Game.time);
                 return OK;
             }
         }

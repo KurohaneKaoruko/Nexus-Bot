@@ -207,7 +207,7 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 		// 特化单位: 结构到位才激活 (RCL 门控短路, 避免低 RCL 每帧遍历)
 		manager: rooms.some((r) => r.rcl >= 4 && r.stores.some((s) => s.structureType === "storage")) ? 1 : 0,
 		// transporter 依赖 transport 任务池调度, 生产端无 storage/terminal 不产单
-		// (UpdateTransportMission 开头短路)——门控对齐任务生产条件, 否则纯站桩空转
+		// 门控对齐任务生产条件, 否则纯站桩空转
 		transporter: rooms.some(
 			(r) =>
 				r.rcl >= 3 &&
