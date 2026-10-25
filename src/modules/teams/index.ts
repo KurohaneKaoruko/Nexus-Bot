@@ -27,9 +27,6 @@ export const Teams: TickModule = {
 // ── 公共面: 角色单位 (原型角色注册表消费) + 战争旗标配置 ──
 export { default as aio } from "@/modules/teams/units/aio";
 export { makeCombatHealHandler } from "@/modules/teams/units/combatHeal";
-export { default as oneRanged } from "@/modules/teams/units/one-ranged";
-export { default as doubleAttack } from "@/modules/teams/units/double-attack";
-export { default as doubleDismantle } from "@/modules/teams/units/double-dismantle";
 export {
 	AIO_CONFIG,
 	LOOT_CONFIG,

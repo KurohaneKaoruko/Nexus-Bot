@@ -1,5 +1,41 @@
 
 import { parseShardRoomName } from '@/utils/shardRoom';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
+
+/** 房间导航移动统一经 broker move 管线提交 (原生调用收编, api/17) */
+const submitNavMove = (
+    creep: Creep,
+    target: { x: number; y: number; roomName: string },
+    moveOpts: Record<string, any>
+): ScreepsReturnCode => {
+    const result = sharedBrokerForDirectCommands().executeNow({
+        id: `nav-move:${creep.name}:${Game.time}:${Math.floor(creep.pos.x * 50 + creep.pos.y)}`,
+        tick: Game.time,
+        actorName: creep.name,
+        kind: 'move',
+        pipeline: 'move',
+        priority: 40,
+        targetPos: { x: target.x, y: target.y, roomName: target.roomName },
+        payload: { moveOpts },
+        dedupeKey: `nav-move:${creep.name}:${Game.time}`,
+    });
+    return (result.nativeReturnCode ?? (result.accepted ? OK : ERR_INVALID_ARGS)) as ScreepsReturnCode;
+};
+
+/** 单步方向移动经 broker 提交 (combatStep 执行器方向语义等价) */
+const submitNavStep = (creep: Creep, direction: DirectionConstant): ScreepsReturnCode => {
+    const result = sharedBrokerForDirectCommands().executeNow({
+        id: `nav-step:${creep.name}:${Game.time}`,
+        tick: Game.time,
+        actorName: creep.name,
+        kind: 'combatStep',
+        pipeline: 'move',
+        priority: 40,
+        payload: { direction },
+        dedupeKey: `nav-step:${creep.name}:${Game.time}`,
+    });
+    return (result.nativeReturnCode ?? (result.accepted ? OK : ERR_INVALID_ARGS)) as ScreepsReturnCode;
+};
 
 const isRoomEdgePosition = (pos: { x: number; y: number }): boolean => (
     pos.x === 0 || pos.x === 49 || pos.y === 0 || pos.y === 49
@@ -42,7 +78,7 @@ export default class MoveFunction extends Creep {
      * @param options 传给 `moveTo` 的移动参数。
      * @returns 移动结果；疲劳时返回 `ERR_TIRED`。
      */
-    override moveToRoom(roomName: string, options = {}) {
+    override moveToRoom(roomName: string, options: MoveToOpts & { bypassRange?: number } = {}): ScreepsReturnCode {
         if (this.fatigue > 0) return ERR_TIRED;
 
         const { full: fullRoomName, roomName: localRoomName, shard } = parseShardRoomName(roomName);
@@ -65,7 +101,7 @@ export default class MoveFunction extends Creep {
 
         if (sameShard && currentRoom !== localRoomName && isRoomEdgePosition(this.pos)) {
             if (exitDirection && isOnExitEdge(this.pos, exitDirection)) {
-                return this.move(exitDirection);
+                return submitNavStep(this, exitDirection);
             }
             if (this.handleRoomEdge()) {
                 return OK;
@@ -136,7 +172,7 @@ export default class MoveFunction extends Creep {
             }
             if (exitPos) {
                 if (opts.maxRooms === undefined) opts.maxRooms = 1;
-                return this.moveTo(exitPos, Object.assign({}, opts, { maxRooms: 1, range: 0 }));
+                return submitNavMove(this, exitPos, Object.assign({}, opts, { maxRooms: 1, range: 0 }));
             }
         }
 
@@ -146,9 +182,9 @@ export default class MoveFunction extends Creep {
 
         if (sameShard) {
             const tarPos = new RoomPosition(targetPos.x, targetPos.y, localRoomName);
-            return this.moveTo(tarPos, opts);
+            return submitNavMove(this, tarPos, opts);
         }
-        return this.moveTo({ x: targetPos.x, y: targetPos.y, roomName: fullRoomName } as any, opts);
+        return submitNavMove(this, { x: targetPos.x, y: targetPos.y, roomName: fullRoomName }, opts);
     }
 
     /**
@@ -163,41 +199,6 @@ export default class MoveFunction extends Creep {
         return false;
     }
 
-    /**
-     * 移动到 `memory.targetRoom` 指定的目标房间。
-     * @param options 传给 `moveToRoom` 的移动参数。
-     * @returns `true` 表示已经到达，`false` 表示仍在路上。
-     */
-    override moveToTargetRoom(options?: MoveToOpts): boolean {
-        const targetRoom = this.memory.targetRoom;
-        if (!targetRoom) { return true; }
-        
-        const { roomName: localTarget, shard } = parseShardRoomName(targetRoom);
-        if ((!shard || shard === Game.shard.name) && this.room.name === localTarget && !this.handleRoomEdge()) {
-            return true;
-        }
-        
-        this.moveToRoom(targetRoom, options || {});
-        return false;
-    }
-
-    /**
-     * 移动到 `memory.sourceRoom` 指定的补给/来源房。
-     * @param options 传给 `moveToRoom` 的移动参数。
-     * @returns `true` 表示已经到达，`false` 表示仍在路上。
-     */
-    override moveToSourceRoom(options?: MoveToOpts): boolean {
-        const sourceRoom = this.memory.sourceRoom;
-        if (!sourceRoom) { return true; }
-        
-        const { roomName: localSource, shard } = parseShardRoomName(sourceRoom);
-        if ((!shard || shard === Game.shard.name) && this.room.name === localSource && !this.handleRoomEdge()) {
-            return true;
-        }
-        
-        this.moveToRoom(sourceRoom, options || {});
-        return false;
-    }
 
     /**
      * 处理房间边缘卡位，避免跨房移动时停在 0/49 边界。
@@ -216,9 +217,9 @@ export default class MoveFunction extends Creep {
             else if (y === 49) direction = TOP;
             
             if (direction) {
-                const code = this.move(direction);
+                const code = submitNavStep(this as unknown as Creep, direction);
                 if (code !== OK && code !== ERR_TIRED) {
-                    this.moveTo(new RoomPosition(25, 25, this.room.name), { maxRooms: 1, range: 20 });
+                    submitNavMove(this, { x: 25, y: 25, roomName: this.room.name }, { maxRooms: 1, range: 20 });
                 }
             }
             return true;

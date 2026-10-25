@@ -293,6 +293,7 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 
 		switch (plan.kind) {
 			case "move": {
+				const payload = plan.payload ?? {};
 				if (!plan.targetPos) {
 					return invalid("move-without-position");
 				}
@@ -303,8 +304,18 @@ export function createBroker(deps: BrokerDeps): ActionBroker {
 				);
 				// 同房目标禁出房寻路: 墙多地形上跨房捷径会把 creep 甩出视野, 在无人区耗死;
 				// 跨房目标 (如归位) 保持默认跨房路由
+				const opts: MoveToOpts = {};
+				if (payload.moveOpts) {
+					const m = payload.moveOpts;
+					if (m.range !== undefined) opts.range = m.range;
+					if (m.visualizePathStyle) opts.visualizePathStyle = m.visualizePathStyle;
+					if (m.ignoreCreeps !== undefined) opts.ignoreCreeps = m.ignoreCreeps;
+					if (m.maxRooms !== undefined) opts.maxRooms = m.maxRooms;
+					if (m.reusePath !== undefined) opts.reusePath = m.reusePath;
+				}
 				const code = creep.moveTo(position, {
 					maxRooms: position.roomName === creep.pos.roomName ? 1 : 16,
+					...opts,
 				});
 				const t = triage(code);
 				return { ...base, accepted: t.accepted, nativeReturnCode: code, category: t.category };

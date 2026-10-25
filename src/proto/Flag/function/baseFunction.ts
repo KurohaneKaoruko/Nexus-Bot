@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
 export default class FlagBaseFunction extends Flag {
     // 移动旗帜
@@ -74,8 +75,19 @@ export default class FlagBaseFunction extends Flag {
             delete this.memory['nextTryTick'];
         }
 
-        // 达到计划数量才删除旗帜，未完成则下次 tick 自动重试
-        if (launchedCount >= amount) this.remove();
+        // 达到计划数量才删除旗帜，未完成则下次 tick 自动重试 (原生调用经 broker flag 管线)
+        if (launchedCount >= amount) {
+            sharedBrokerForDirectCommands().executeNow({
+                id: `nuke-flag-remove:${this.name}:${Game.time}`,
+                tick: Game.time,
+                actorName: this.pos.roomName,
+                kind: 'removeFlag',
+                pipeline: 'flag',
+                priority: 50,
+                payload: { flagName: this.name },
+                dedupeKey: `nuke-flag-remove:${this.name}:${Game.time}`,
+            });
+        }
         return true;
     }
 }

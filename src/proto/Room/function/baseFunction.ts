@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 import { assignBoost, submitBoost, removeBoostEntry } from '@/modules/economy/boostLedger';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 import { UNITS } from '@/constant/CreepConstant';
 import { UnitData, UnitLevelData } from '@/constant/CreepConstant';
 import { buildCarrierBodyConfig, RELAY_CARRIER_CARRY_SIZE, DIRECT_CARRIER_CARRY_SIZE } from '@/utils/remoteBody';
@@ -864,7 +865,19 @@ export default class BaseFunction extends Room {
                     s.structureType !== STRUCTURE_ROAD && s.structureType !== STRUCTURE_RAMPART);
                 if (blocked) continue;
                 if (pos.lookFor(LOOK_CONSTRUCTION_SITES).length > 0) continue;
-                if (pos.createConstructionSite(wanted) === OK) return;
+                // 工地创建经 broker construction 管线 (原生调用收编 api/17)
+                const r = sharedBrokerForDirectCommands().executeNow({
+                    id: `cc-buffer-site:${this.name}:${Game.time}:${x},${y}`,
+                    tick: Game.time,
+                    actorName: this.name,
+                    kind: 'createSite',
+                    pipeline: 'construction',
+                    priority: 40,
+                    targetPos: { x, y, roomName: this.name },
+                    payload: { structureType: wanted },
+                    dedupeKey: `cc-buffer-site:${this.name}:${Game.time}:${x},${y}`,
+                });
+                if (r.accepted) return;
             }
         }
     }

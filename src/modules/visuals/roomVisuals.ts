@@ -3,7 +3,7 @@
  * 冲级行数据 + spawn 标注: 只产出 HudLine[], 面板渲染统一在 core/boot drawHud。
  * 分段评估消费 utils/raceSegments (与主线单源), 判废快照仅最新单条入 Memory。
  * 能量管线采集 (进账/消耗/接力/远矿积压) 由本文件独家结算, 记账点散在
- * workFunction (源矿进账) 与 carrier (接力成交)。
+ * 源矿进账与 carrier (接力成交)。
  */
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import { isSpawningUnit } from "@/modules/spawning/spawningRoster";

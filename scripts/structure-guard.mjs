@@ -62,7 +62,6 @@ const PROTO_IMPORTS_FROZEN = new Set([
 	'src/modules/defense/units/defendSingle.ts -> @/proto',
 	'src/modules/external/mine/shared.ts -> @/proto',
 	'src/modules/teams/runtime/TeamController.ts -> @/proto',
-	'src/modules/teams/units/double-dismantle.ts -> @/proto',
 	'src/modules/visuals/proto/index.ts -> @/proto/registry',
 ]);
 

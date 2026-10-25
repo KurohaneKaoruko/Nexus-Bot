@@ -167,21 +167,6 @@ interface Creep {
      */
     moveHomeRoom(): boolean;
     
-    /** 
-     * 移动到目标房间
-     * @param options - 可选的移动选项
-     * @returns true表示已到达，false表示正在移动
-     * @description 移动到creep.memory.targetRoom指定的房间
-     */
-    moveToTargetRoom(options?: MoveToOpts): boolean;
-    
-    /** 
-     * 移动到资源房间
-     * @param options - 可选的移动选项
-     * @returns true表示已到达，false表示正在移动
-     * @description 移动到creep.memory.sourceRoom指定的房间
-     */
-    moveToSourceRoom(options?: MoveToOpts): boolean;
     
     /** 
      * 检查是否在房间边缘并处理
@@ -189,88 +174,12 @@ interface Creep {
      * @description 防止creep卡在房间边界
      */
     handleRoomEdge(): boolean;
-
-    /**
-     * 远离危险目标。
-     * @param targets - 需要规避的目标或带 range 的目标描述
-     * @param options - 可选的寻路参数
-     * @returns 寻路结果状态码
-     */
-    flee(targets: Array<RoomPosition | { pos: RoomPosition; range?: number }>, options?: MoveToOpts): ScreepsReturnCode;
-
-
-    // ==================== 双人小队功能 (DoubleAction) ====================
-    /** 
-     * 双人小队移动
-     * @param Direction - 移动方向常量
-     * @returns 移动结果
-     * @description 两个绑定的creep同时移动
-     */
-    doubleMove(Direction: DirectionConstant): number;
-    
-    /** 
-     * 双人小队移动到目标
-     * @param target - 目标位置
-     * @param color - 可选，路径可视化颜色
-     * @param ops - 可选，移动选项
-     * @returns 移动结果
-     */
-    doubleMoveTo(target: RoomPosition, color?: string, ops?: MoveToOpts): number | boolean;
-    
-    /** 
-     * 双人小队移动到目标房间
-     * @param roomName - 目标房间名
-     * @param color - 可选，路径可视化颜色
-     * @returns true表示已到达，false表示正在移动
-     */
-    doubleMoveToRoom(roomName: string, color?: string): boolean;
-    
-    /** 
-     * 躲边界
-     * @returns true表示需要躲避，false表示不需要
-     * @description 防止双人小队卡在房间边界
-     */
-    doubleFleeEdge(): boolean;
-    
-    /** 
-     * 规避敌人
-     * @returns 规避结果
-     * @description 双人小队躲避敌方单位
-     */
-    doubleFlee(): number;
-    
-    /** 
-     * 双人小队攻击
-     * @param target - 攻击目标
-     * @returns 攻击结果
-     */
-    doubleToAttack(target: Creep | Structure): number | boolean;
-    
-    /** 
-     * 双人小队拆除
-     * @param target - 拆除目标
-     * @returns 拆除结果
-     */
-    doubleToDismantle(target: Structure): number | boolean;
-
-    // ==================== 基础功能 (BaseFunction) ====================
-    /** 
-     * 获取能量
-     * @param pickup - 可选，是否拾取掉落资源，默认true
-     * @description 智能获取能量：优先从建筑提取，其次拾取掉落，最后采集source
-     * @example creep.TakeEnergy(); // 自动获取能量
-     * @example creep.TakeEnergy(false); // 不拾取掉落资源
-     * @returns true 表示本 tick 成功取能后会装满，false 表示仍需继续取能或仅执行了移动
-     */
-    TakeEnergy(pickup?: boolean): boolean;
-
     /**
      * 仅在首次调用时关闭被攻击通知。
      * @description 将 notifyWhenAttacked(false) 与 memory.notified 的样板逻辑下沉到通用层。
      */
     disableAttackNotificationsOnce(): void;
 
-    yieldSourcePosition(source: Source): boolean;
 
     resolveSourceByPriority(source?: Source | null): Source | null;
 
@@ -315,26 +224,7 @@ interface Creep {
      * @description 检查creep所有者是否在Memory['whitelist']中
      */
     isWhiteList(): boolean;
-    
     /** 
-     * 检查 boost 是否就绪
-     * @returns true表示boost就绪或不需要boost，false表示未完成
-     * @description 检查creep是否已完成所有需要的boost
-     */
-    isBoostReady(): boolean;
-    
-    /** 
-     * 切换任务状态
-     * @param resourceType - 可选，检查的资源类型，不传则检查所有资源
-     * @returns 'source'表示需要获取资源，'target'表示需要执行任务，null表示不需要切换
-     * @description 根据creep存储状态判断应该切换到哪个状态
-     * @example
-     * const state = creep.switchTaskState(RESOURCE_ENERGY);
-     * if (state === 'source') { // 去获取能量 }
-     * else if (state === 'target') { // 去执行任务 }
-     */
-    switchTaskState(resourceType?: ResourceConstant): 'source' | 'target' | null;
-
     // ==================== 缓存功能 (CacheFunction) ====================
     /**
      * 获取当前 creep 的统一缓存根对象。
@@ -502,69 +392,6 @@ interface Creep {
      * @returns 可提取目标；找不到时返回 `null`。
      */
     findWithdrawTarget(resourceType?: ResourceConstant): CreepWithdrawTarget | null;
-
-    /**
-     * 采集资源
-     * @param target - 采集目标（Source或Mineral）
-     * @returns true表示正在采集，false表示正在移动，null表示目标无效
-     * @description 如果不在范围内会自动移动
-     */
-    goHaverst(target: Source | Mineral): boolean;
-    
-    /** 
-     * 从指定结构中提取资源
-     * @param target - 提取目标（Structure、Tombstone或Ruin）
-     * @param resourceType - 可选，资源类型，不传则提取第一种资源
-     * @param amount - 可选，提取数量
-     * @returns true表示正在提取，false表示正在移动，null表示目标无效
-     * @description 如果不在范围内会自动移动
-     * @example creep.goWithdraw(storage, RESOURCE_ENERGY, 1000);
-     */
-    goWithdraw(target: Structure | Tombstone | Ruin, resourceType?: ResourceConstant, amount?: number): boolean;
-    
-    /** 
-     * 向指定结构转移资源
-     * @param target - 转移目标（Creep、PowerCreep或Structure）
-     * @param resourceType - 可选，资源类型，不传则转移第一种资源
-     * @param amount - 可选，转移数量
-     * @returns true表示正在转移，false表示正在移动，null表示目标无效
-     * @description 如果不在范围内会自动移动
-     */
-    goTransfer(target: AnyCreep | Structure, resourceType?: ResourceConstant, amount?: number): boolean;
-    
-    /** 
-     * 拾取掉落资源
-     * @param target - 掉落的资源对象
-     * @returns true表示正在拾取，false表示正在移动，null表示目标无效
-     * @description 如果不在范围内会自动移动
-     */
-    goPickup(target: Resource): boolean;
-    
-    /** 
-     * 建造
-     * @param target - 建筑工地
-     * @returns true表示正在建造，false表示正在移动，null表示目标无效
-     * @description 如果不在范围内（3格）会自动移动
-     */
-    goBuild(target: ConstructionSite): boolean;
-    
-    /** 
-     * 维修
-     * @param target - 需要维修的建筑
-     * @returns true表示正在维修或已满血，false表示正在移动，null表示目标无效
-     * @description 如果不在范围内（3格）会自动移动，满血时返回true
-     */
-    goRepair(target: Structure): boolean;
-
-    /** 
-     * 升级控制器
-     * @param
-     * @returns true 表示正在升级或已在范围内，false 表示正在移动中，null 表示目标不存在
-     */
-    goUpgrade(): boolean;
-
-
-
     // ==================== 能量源功能 (SourceFunction) ====================
     /**
      * 计算采集产能
@@ -775,47 +602,6 @@ interface Creep {
         hasHeal?: boolean;
     }): Creep[];
     
-    /** 
-     * 攻击最近的敌人
-     * @returns ScreepsReturnCode - OK表示成功，ERR_NO_BODYPART表示没有攻击部件，ERR_NOT_FOUND表示没有敌人
-     * @description 使用近战攻击最近的敌人，如果不在范围内会自动移动
-     */
-    attackNearestHostile(): ScreepsReturnCode;
-    
-    /** 
-     * 远程攻击最近的敌人
-     * @returns ScreepsReturnCode - OK表示成功，ERR_NO_BODYPART表示没有远程攻击部件，ERR_NOT_FOUND表示没有敌人
-     * @description 使用远程攻击最近的敌人，如果不在范围内会自动移动
-     */
-    rangedAttackNearestHostile(): ScreepsReturnCode;
-    
-    /** 
-     * 自动攻击
-     * @param target - 可选，攻击目标，不传则自动寻找最近的敌人
-     * @returns ScreepsReturnCode - OK表示成功，ERR_NO_BODYPART表示没有攻击部件，ERR_NOT_FOUND表示没有敌人，ERR_NOT_IN_RANGE表示正在移动
-     * @description 根据身体部件和距离自动选择攻击方式（近战或远程）
-     * @example
-     * creep.autoAttack(); // 自动寻找并攻击最近的敌人
-     * creep.autoAttack(target); // 攻击指定目标
-     */
-    autoAttack(target?: Creep | Structure): ScreepsReturnCode;
-    
-    /** 
-     * 逃离敌人
-     * @param range - 可选，危险范围，默认5
-     * @returns true表示正在逃跑，false表示安全
-     * @description 使用PathFinder计算逃跑路径，躲避有攻击能力的敌人
-     */
-    fleeFromHostiles(range?: number): boolean;
-    
-    /** 
-     * 检查boost是否就绪
-     * @param boostTypes - 可选，boost类型数组
-     * @param must - 可选，是否必须boost，默认false
-     * @returns true表示已就绪或不需要boost，false表示未完成
-     * @description 检查指定的boost类型是否都已完成
-     */
-    checkBoostReady(boostTypes?: string[], must?: boolean): boolean;
 }
 
 /**

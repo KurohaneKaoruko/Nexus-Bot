@@ -2,6 +2,7 @@
 import { ensureMemoryCache } from '@/proto/Creep/function/cacheFunction';
 import { UNITS } from '@/constant/CreepConstant';
 import { activeBoostEntries, reservedAmountOf } from '@/modules/economy/boostLedger';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 // ── 中央 boost 配置表（Tier 1 boost 管理统一）──────────────────
 // 角色 -> 部件 -> 候选 boost 资源（按优先级降级，前者不足自动用后者）。
 // 仅收「标准角色」；动态分档（power 的 boostLevel、defend-single 的 must 切换）
@@ -17,6 +18,26 @@ export const ROLE_BOOST_CONFIGS: Record<string, Record<string, MineralBoostConst
 export const getBoostCache = (memory: CreepMemory): Record<string, any> => {
     const root = ensureMemoryCache(memory);
     return (root.boost ??= {}) as Record<string, any>;
+};
+
+/** boost 链移动统一经 broker move 管线提交 (原生调用收编, api/17) */
+const submitBoostMove = (
+    creep: Creep,
+    target: RoomPosition,
+    moveOpts: { ignoreCreeps?: boolean; maxRooms?: number; range?: number; visualizePathStyle?: { stroke: string } }
+): number => {
+    const result = sharedBrokerForDirectCommands().executeNow({
+        id: `boost-move:${creep.name}:${Game.time}`,
+        tick: Game.time,
+        actorName: creep.name,
+        kind: 'move',
+        pipeline: 'move',
+        priority: 40,
+        targetPos: { x: target.x, y: target.y, roomName: target.roomName },
+        payload: { moveOpts },
+        dedupeKey: `boost-move:${creep.name}:${Game.time}`,
+    });
+    return result.nativeReturnCode ?? (result.accepted ? OK : ERR_INVALID_ARGS);
 };
 
 export default class BoostFunction extends Creep {
@@ -360,11 +381,7 @@ export default class BoostFunction extends Creep {
             this.memory.dontPullMe = false;
             // 使用 ignoreCreeps: true 启用 moveOptimization 的对穿逻辑
             // maxRooms: 1 限制在同房间
-            this.moveTo(targetLab, { 
-                ignoreCreeps: true,
-                maxRooms: 1,
-                range: 1
-            });
+            submitBoostMove(this, targetLab.pos, { ignoreCreeps: true, maxRooms: 1, range: 1 });
             return 1;
         }
 
@@ -420,7 +437,7 @@ export default class BoostFunction extends Creep {
             return 1; // 继续下一轮检查
         } else if (result === ERR_NOT_IN_RANGE) {
             // 理论上 isNearTo 已经检查了，但防止边界情况
-            this.moveTo(targetLab, { ignoreCreeps: true, maxRooms: 1, range: 1 });
+            submitBoostMove(this, targetLab.pos, { ignoreCreeps: true, maxRooms: 1, range: 1 });
             return 1;
         }
 
@@ -488,33 +505,9 @@ export default class BoostFunction extends Creep {
         if (this.pos.isEqual(container.pos)) {
             return (lab as StructureLab).unboostCreep(this) === OK;
         } else {
-            this.moveTo(container, { visualizePathStyle: { stroke: '#ffffff' } });
+            submitBoostMove(this, container.pos, { visualizePathStyle: { stroke: '#ffffff' } });
             return false;
         }
-    }
-
-    /**
-     * 检查 boost 是否就绪（简化版）
-     * 检查 creep 是否已完成所有需要的 boost，或者不需要 boost
-     * @returns boolean - true 表示 boost 就绪或不需要 boost
-     */
-    override isBoostReady(): boolean {
-        // 如果 creep 没有配置 boostmap，则不需要 boost
-        const boostmap = this.memory['boostmap'] as { [part: string]: MineralBoostConstant | MineralBoostConstant[] } | undefined;
-        if (!boostmap || Object.keys(boostmap).length === 0) {
-            return true;
-        }
-
-        // 检查所有需要 boost 的部件是否都已被 boost
-        const allBoosted = this.body.every(part => {
-            // 如果该部件类型不在 boostmap 中，则不需要 boost
-            const conf = boostmap[part.type];
-            if (!conf || (Array.isArray(conf) && conf.length <= 0)) return true;
-            // 如果该部件已被 boost，则通过
-            return !!part.boost;
-        });
-
-        return allBoosted;
     }
 }
 

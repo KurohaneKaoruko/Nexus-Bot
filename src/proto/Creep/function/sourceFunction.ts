@@ -6,20 +6,6 @@ export default class SourceFunction extends Creep {
      * 计算采集产能
      * @returns 每 tick 预计获得的能量值（考虑 WORK 部件与 boost）
      */
-    override calculateHarvestIncomePerTick(): number {
-        let energy = 0;
-        for (const part of this.body) {
-            if (part.type !== WORK) continue;
-            if (part.hits === 0) continue;
-            if (!part.boost) {
-                energy += 2;
-                continue;
-            }
-            // boost 表缺项时按未 boost 处理，避免异常数据导致运行时错误。
-            energy += 2 * ((BOOSTS.work[part.boost] as any) ?.['harvest'] || 1);
-        }
-        return energy;
-    }
 
     /**
      * 获取绑定的能量源
@@ -46,9 +32,6 @@ export default class SourceFunction extends Creep {
      * 绑定能量源 ID
      * @param id - Source 的 ID
      */
-    override setBoundSourceId(id: Id<Source>) {
-        this.memory.targetSourceId = id;
-    }
 
     /**
      * 按优先级解析采集源。
@@ -118,35 +101,12 @@ export default class SourceFunction extends Creep {
      * @param range - 搜索范围，默认 2
      * @returns 附近的 StructureContainer 或 null
      */
-    override getNearbySourceContainer(range = 2): StructureContainer | null {
-        const source = this.getBoundSource();
-        if (!source) return null;
-        const containers = this.room.container;
-        if (!containers) return null;
-        const candidates = containers.filter(c => source.pos.inRangeTo(c, range));
-        if (candidates.length === 0) return null;
-        if (candidates.length === 1) return candidates[0];
-        return this.pos.findClosestByRange(candidates) ?? null;
-    }
 
     /**
      * 获取绑定能量源附近的 Link
      * @param range - 搜索范围，默认 2
      * @returns 附近的 StructureLink 或 null（RCL < 5 时也返回 null）
      */
-    override getNearbySourceLink(range = 2): StructureLink | null {
-        if (this.room.level < 5) return null;
-        const source = this.getBoundSource();
-        if (!source) return null;
-        const links = this.room.link;
-        if (!links) return null;
-        const candidates = links.filter(l => source.pos.inRangeTo(l, range));
-        if (candidates.length === 0) return null;
-        if (typeof this.pos.findClosestByRange === 'function') {
-            return this.pos.findClosestByRange(candidates) ?? null;
-        }
-        return candidates[0] ?? null;
-    }
 
     /**
      * 移动并重合到能量源附近的容器上
@@ -222,120 +182,17 @@ export default class SourceFunction extends Creep {
         return score;
     }
 
-    override moveToSourceWorkTile(source: Source | null = this.getBoundSource()): boolean {
-        if (!source) return false;
 
-        const sourceContainer = this.getNearbySourceContainer(1);
-        const sourceLink = this.getNearbySourceLink(2);
-
-        // 站位口径：容器已建则必站容器本体（harvest 直落脚下容器，零搬运/掉落损耗）；
-        // 容器缺席时才退而求其次：link 临位（有承接空间）或任意源旁格稳定站位
-        if (this.pos.inRangeTo(source, 1)) {
-            if (sourceContainer) {
-                if (this.pos.isEqualTo(sourceContainer.pos)) return true;
-            } else if (sourceLink && this.pos.isNearTo(sourceLink) && sourceLink.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-                return true;
-            } else {
-                return true;
-            }
-        }
-
-        const { bestPos } = evaluateSourceWorkTiles(this, source);
-
-        if (bestPos) {
-            if (this.pos.isEqualTo(bestPos)) return true;
-            this.moveTo(bestPos, { range: 0, maxRooms: 1, reusePath: 0 });
-            return false;
-        }
-
-        if (this.pos.inRangeTo(source, 1)) return true;
-
-        this.moveTo(source, { range: 1, maxRooms: 1 });
-        return false;
-    }
-
-    override sitOnSourceContainer(): boolean {
-        return SourceFunction.prototype.moveToSourceWorkTile.call(this);
-    }
 
     /**
      * 维护 Source 旁的 Container（修理/建造已有工地）
      * @returns `acted` 表示本 tick 已处理；`blocked` 表示想建但当前建不出来；`idle` 表示当前无需处理
      */
-    override maintainSourceContainer(): 'acted' | 'blocked' | 'idle' {
-        if (this.store[RESOURCE_ENERGY] === 0) return 'idle';
-        
-        const container = this.getNearbySourceContainer(1);
-        if (container) {
-            if (container.hits < container.hitsMax * 0.8) {
-                this.repair(container);
-                return 'acted';
-            }
-            return 'idle';
-        }
-
-        // 寻找容器工地
-        const source = this.getBoundSource();
-        if (!source) return 'idle';
-        
-        let site = source.pos.findInRange(FIND_CONSTRUCTION_SITES, 2, {
-            filter: s => s.structureType === STRUCTURE_CONTAINER
-        })[0];
-        
-        if (!site) {
-            // 如果附近有 Link，则不需要 Container
-            if (source.pos.findInRange(FIND_STRUCTURES, 2, { filter: s => s.structureType === STRUCTURE_LINK }).length > 0) {
-                return 'idle';
-            }
-
-            // 仅禁止主房 harvester 自动创建容器工地（其他角色仍可自动建）
-            const unit = this.memory?.unit as string | undefined;
-            const allowAutoSite = unit !== UNITS.harvester;
-            if (allowAutoSite && this.pos.inRangeTo(source, 1)) {
-                const result = this.pos.createConstructionSite(STRUCTURE_CONTAINER);
-                return result === OK ? 'acted' : 'blocked';
-            }
-
-            // 其他角色交给布局系统创建容器工地
-            return 'idle';
-        }
-        
-        this.build(site);
-        return 'acted';
-    }
 
     /**
      * 将能量转移到 Source 旁的 Link 或 Container
      * @returns 是否成功转移
      */
-    override transferToSourceStructure(): boolean {
-        if (this.store[RESOURCE_ENERGY] === 0) return false;
-
-        const source = this.getBoundSource();
-        if (!source) return false;
-
-        const links = this.room.link;
-        const linkCandidates = (links || []).filter(
-            (l) => source.pos.inRangeTo(l, 2) && l.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-        );
-        const inRangeLinks = linkCandidates.filter(link => this.pos.isNearTo(link));
-        if (inRangeLinks.length > 0) {
-            const link = this.pos.findClosestByRange(inRangeLinks) as StructureLink | null;
-            if (link) return this.transfer(link, RESOURCE_ENERGY) === OK;
-        }
-
-        const containers = this.room.container;
-        const containerCandidates = (containers || []).filter(
-            (c) => source.pos.inRangeTo(c, 2) && c.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-        );
-        const inRangeContainers = containerCandidates.filter(container => this.pos.isNearTo(container));
-        if (inRangeContainers.length > 0) {
-            const container = this.pos.findClosestByRange(inRangeContainers) as StructureContainer | null;
-            if (container) return this.transfer(container, RESOURCE_ENERGY) === OK;
-        }
-        
-        return false;
-    }
 }
 
 export type SourceWorkTileReport = {

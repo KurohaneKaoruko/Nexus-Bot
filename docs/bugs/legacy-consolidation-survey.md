@@ -224,3 +224,19 @@ Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例�
 - **簿记面**：boostFunction boost 表（one-ranged/double-attack/defend-attack 等 8 行）、qos.ts 冻结权重（cleaner -4 等）、UNIT_BODY_NAMES 中文名 54 行、UnitLevelData 体型表——随词表条目同删。
 
 **域 6 词表裁撤建议档**：真孤儿（零孵化源+零活驱动）≈ double-×3/one-ranged/saio/defend-×4 八件 + attack-claimer/cleaner/dismantle/logistic 四件（warSpawn 旗语义已坏，删词表需同步删旗处理）+ pc-heal（孵化链活但驱动死——修驱动或删孵化）；外矿 13 件留休眠链整体处置（C 波 8.2/8.3）；power-* 四件任务侧活代码保留。合计真候选 ≈ 11-13 件。
+
+## S. 域 8（4.5）proto 行为库收编落档（2026-10-25）
+
+**本批（4.5a）处置面**（Creep 15 + Flag 2 + Room 1 = 18 条 P6 → 0；豁免 98→80）：
+
+- **死文件删除（7 件）**：proto/Creep/function/{workFunction,controllerFunction,collectFunction,haulFunction,buildFunction,doubleAction}（休眠闭环/双人原语——消费方 defendSingle/defendDuo/double-attack/double-dismantle/one-ranged 同批删除）+ teams/units/{double-attack,double-dismantle,one-ranged} + defense/units/{defendSingle,defendDuo}（真孤儿：词表 4.3 已裁撤、无孵化源无驱动、导出零外部消费）；cacheFunction 保留（ensureMemoryCache 是 boost 链基建，4 处活 import）。
+- **死方法删除**：baseFunction::TakeEnergy/switchTaskState/yieldSourcePosition（消费链闭环验证：closestSource/getBoundSource 唯一消费方是 TakeEnergy）；moveFuntion::moveToTargetRoom/moveToSourceRoom（零调用）；combatFunction::attackNearestHostile/rangedAttackNearestHostile/autoAttack/fleeFromHostiles/checkBoostReady（零外部调用，aio 内同名局部函数/TeamBattle.autoAttack 是独立实现）；boostFunction::isBoostReady（零调用）。
+- **收编面（broker 提交，行为等价）**：boostFunction 3 处 moveTo → submitBoostMove（broker move 管线 + moveOpts 透传）；moveFuntion 6 处 move/moveTo → submitNavMove/submitNavStep；Flag nuke 旗 remove + Flag/utils getSpawnRoomOrRemove → broker removeFlag（flag 管线）；Room ensureControllerBufferSite createConstructionSite → broker createSite（construction 管线）。actionBroker case "move" 扩 moveOpts payload 透传（先例：combatMove）。
+- **sourceFunction 纯库化**：删 getBoundSource/resolveSourceByPriority 类挂载（消费链已随 TakeEnergy 断），仅存 evaluateSourceWorkTiles 纯函数导出。
+- **interface 同步**：creep.interface.d.ts 删 22 条死声明（go* 系/flee/double 系/TakeEnergy/switchTaskState/attackNearestHostile/autoAttack/fleeFromHostiles/checkBoostReady/isBoostReady/moveToTargetRoom/moveToSourceRoom/yieldSourcePosition）。
+
+**4.5b 待办（PC 域 19 条 P6）**：PC baseFunction 4 + PC doubleAction 2 + PC execute 2 + usePower 1 + assist 5 + assistHeal 4 + operate 1。处置口径同本批：原型方法保留，体内原生调用改 powerAdapter 模式提交（power/move 管线），全部落 actionBroker 既有条目。**注意**：`renew` 不在 broker ActionKind——需扩 kind（净 +1 条目）或复用 move 管线；assist 的 directSpawn（spawnCreep）已有 spawn 管线先例。
+
+**终局算术**：80 − PC 19 + renew 执行器 1 = 62；再收编 P3 planner 2（compute.ts/layoutPlanner.ts 的 site.remove → removeSite kind 既有）= 60 ✓ 达 ≤60 闸门。
+
+**连锁发现（4.5b 一并处置候选）**：makeCombatHealHandler 工厂零消费方（4.3 暂留依据的复活路径已随 defendSingle/defendDuo 删除断链），其 COMBAT_HEAL_POLICIES 表含 defend2-attack 死键；combatHeal 纯函数（combatHeal/combatRangedHeal）仍是 TeamBattle/boundPartner/aio 活消费——工厂删、纯函数留。
