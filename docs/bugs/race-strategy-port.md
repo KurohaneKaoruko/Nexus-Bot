@@ -1585,3 +1585,401 @@ race 入口回 Nexus 架构, 基线逐位复现 (L4@28,316)。
 docs/nexus-design/08-race-speedrun.md 的 P0-P5 机制清单保留作
 原生路线参考, 其中「机制图谱」数据 (income 驱动定编 / spawnUsage
 记账 / 背包外矿选择 / porter CARRY 部件定编) 仍是 6.1 的攻关素材。
+
+## 批次 X · 矿工驻点持续采集 A/B (2026-10-25, 零收益撤档)
+
+**靶点**: 上游 speedrun bot 矿工带 1 CARRY 站同格容器连续采集, 溢出经引擎
+`drop_overflow` 直写容器, 免卸货 tick。假设: Nexus 矿工满载卸货分支
+(agentSystem harvest case) 每满仓损失 1 采集 tick, 改为驻点 (矿工坐标 =
+containerSpot) 上跳过卸货可提速。
+
+**改动**: harvest case 满载分支加 `onContainerTile` 短路——矿工在容器格上
+时不 transfer/ext 直填/drop, 落到下方 harvest 连续采集 (引擎把超容量部分
+自动写入同格容器)。typecheck/lint 过。
+
+**A/B 结果 (40k speedrun, 基准 L2@458 / L3@11343 / L4@28316)**:
+
+| 变体 | 40k 走势 | 判定 |
+|---|---|---|
+| 满载驻点持续采集 | L2@458 L3@11343 L4@28316, GCL/单位数逐位一致 | **零漂移, 判负** |
+
+**零漂移根因**: race 线矿工常态不带 CARRY (`noCarrierOnSite` 只在无搬运工
+窗口为真), 无 carry 部件 → `carryEnergy === 0` → 满载分支恒不进入, 矿工
+本就每 tick 连续采集, 溢出本来就直写同格容器——设计意图早已被
+「无 carry 落地采集 + worksite 驻点合一」覆盖。改动只在「带 CARRY 矿工
+满载」窗口生效, 而该窗口集中在 spawn 自回能限速的 RCL1 期, 能量不是瓶颈。
+
+**结论**: 与上游的采集机制差距不存在 (Nexus 已等价), 上游优势仍归
+外矿全开收入与 spawn 吞吐分配 (批次 W 结论不变)。改动已还原,
+agentSystem.ts 与 HEAD 无 diff。
+
+## 批次 Y · 专用外矿物流链 v1 (2026-10-25, 40k 判负待诊断)
+
+**靶点** (承批次 R/W 结论 + 用户确认): 上游 speedrun bot 收入 85 e/t 的主体
+是「每远程源专用 miner+hauler」物流链。移植三件套:
+1. `spawning/remoteBudget.ts`: race 准入闸 (hasRemoteSpawnBudget, 部件数口径,
+   本地编成先行扣减, 批次 L 原样口径重写);
+2. `demandSources.remoteCarryTargetOf`: race buildCarryPlan 吞吐定编
+   (2×路程×e/t折算÷单件容量, remoteSourceWeightOf 预订系数前置) 进 carrier 目标;
+3. `spawnDirector` 定向替补环扩 carry: 远程 carry 任务 available 无在岗租约
+   → 定向孵 carrier (taskId 绑定), 同过准入闸。SkipReason 加 "remote-budget"。
+
+**A/B**: 40k L4@**32,014** (基线 28,316, **慢 3,698t, 判负**)。
+L2@458 / L3@11,343 逐位一致 → 前段无扰动, 失血全在 L3→L4 段
+(10,885→11,343 后 20,671t vs 基线 16,973t)。
+20k 短跑与基线状态哈希逐位一致 → 改动在 20k 前完全未激活
+(remoteSourceWeightOf 回运通道前置未满足, 定编恒 0; 容器未建成,
+carry 任务恒缺)。外矿链启动在 20k 后, 启动即失血。
+
+**32k 中点对照 (基线 L4@28,316 已达成 vs v1 尚未达成, t32k)**:
+
+| 指标 | 基线 t32k | v1 t32k | Δ |
+|---|---|---|---|
+| upgradeController | 53,458 | 48,334 | **-5,124 (-9.6%) 升级面失血主体** |
+| harvest | 90,648 | 87,950 | -2,698 采集面反而更少 |
+| spawnCreep | 421 | 439 | +18 孵化量相近, 非 churn 崩 |
+| reserveController | 8,783 | 6,902 | -1,881 预订链更弱 |
+| transfer | 9,561 | 9,020 | -541 |
+| move | 181,078 | 183,532 | +2,454 走路更多 (跨房腿增加) |
+
+采集与升级同降 → 缺口不是「外矿抢了本地孵化槽」, 而是**跨房腿的移动
+时间成本**: +2.4k move 意图伴随采集/升级双降, 远程腿 (矿工长途+搬运
+往返+预订来回) 的路上时间吞掉了工位在岗时间。批次 V 教训复述成立:
+「上游外矿全开也只贡献 1/3 升级量」——上游的 85 e/t 里本地双源满采
+(20 e/t) 之外, 外矿净贡献靠的是**房距 1 的短途**与满配容器链, 而 sim
+场景 W4N8 等邻房与 W5N8 之间隔房间走廊, 路程 50+ tick, 往返 100+ tick,
+在 1500t 寿命里只覆盖 ~13 趟, 每趟均摊在路上时间过半。
+
+**新版 40k 全量意图对照基线**:
+
+| 指标 | 基线 | Y-v1 | Δ |
+|---|---|---|---|
+| upgradeController | ~34k@20k→L4 段 97k 总 | 55,137 | 升级面塌 (GCL 222k vs 基线同段 ~330k) |
+| harvest | ~66.5k@20k | 103,052 | 采集意图大增 (外矿确实开动) |
+| spawnCreep | 265@20k | 545 | 孵化 churn 翻倍 (545 产/525 死, 存活 19) |
+| reserveController | 2,817@20k | 8,811 | 预订链满转 |
+| transfer | 3,442@20k | 13,693 | 搬运活动大增 |
+
+**初步病理** (32k 中点对照已证实): 缺口不是孵化槽挤占 (spawnCreep +18),
+是**跨房腿移动时间成本**——move +2,454 伴随采集 -2,698 / 升级 -5,124 双降,
+远程矿工长途与搬运往返把工位在岗时间吞掉。批次 V 教训复述: 上游外矿
+全开也只贡献 1/3 升级量, 其外矿净收益建立短途 (房距 1 无走廊) 与
+本地满采 (20 e/t) 之上; sim 场景邻房走廊路程放大了长途税。
+
+**处置**: v1 保留在工作树 (改动语义正确, 诊断后修闸再 A/B), 不撤——
+撤了等于回到「外矿链 20k 前永不启动」的原状, 与上游 8 房全开的目标
+背道而驰。下一轮取证: ① 准入闸 leftover 逐 tick 日志 (t20-30k);
+② 远程矿工/搬运只数与换代周期; ③ cc 水位与 spawn 队列占用比;
+④ 对照上游 remoteBody: 上游矿工 16W 高配 (同源单只满采) + hauler
+maxCarry 16——我们是 5W + 微型接力件, 单趟运力 200 vs 上游 1600,
+同路程下趟数差 8 倍即路上时间差 8 倍。**优先假设: 运力件太小,
+改大件直运 (carrier direct 段) 可能直接翻盘**。
+
+### 批次 Y-v2 · 远程定向 hauler 大件直运 (2026-10-25, 40k 追平 + 经济面反超)
+
+**改动** (单变量, 对齐上游 hauler maxCarry 16 口径):
+- `remoteBudget.remoteHaulPartsOf` 8→48 (32C+16M 大件直运段预算口径);
+- `spawnArbiter` hints: `remote:carry:` 定向请求豁免 relay 微型档,
+  恒走 directCarrier 大件段 (200 容量/趟 → 1600 容量/趟, 同路程趟数
+  少 8 倍, 路上时间税同比收缩)。
+
+**A/B (40k, 基线 = 批次 W 基准)**:
+
+| 指标 | 基线 | Y-v2 | Δ |
+|---|---|---|---|
+| **L4** | **28,316** | **28,316** | **持平** (v1 是 32,014, 收复 3,698t) |
+| upgradeController | 57,428 | 57,842 | +414 |
+| harvest | 102,816 | 104,888 | **+2,072** |
+| move | 242,368 | 236,121 | **-6,247 (路上时间税收缩)** |
+| transfer | 14,909 | 14,492 | -417 |
+| reserveController | 10,984 | 10,440 | -544 |
+| spawnCreep | 516 | 511 | -5 |
+| GCL 进度 | 230,255 | 232,629 | **+2,374** |
+| 移动执行率 | 96.2% | 96.0% | 持平 |
+
+**判读**: RCL 时间线追平但经济面 (采集/升级/GCL) 全面小胜——外矿链
+从「启动即失血」修正为「启动即净赚」, 收益体现在 GCL 进度 +2,374
+(约 +1%)。距离「上游 8 房全开净赚 65 e/t」还差两个量级, 但**方向
+已证**: 大件直运是外矿链正收益的前提条件, 微型接力件跑长途必亏。
+
+**v2 保留, 继续下一刀**: 32k 中点 v2 升级 +1,474 / 采集 +1,537 /
+move -3,134 vs 基线, 末段 (t32-40k) 收益回落——疑似远程容器 decay
+链断裂 (容器死→回运中断→矿工 drop 腐烂) 或预订续订空窗。下轮取证
+t32-40k 段的远程容器存量与预订 ticksToEnd 时序。
+
+**矩阵回归 (2026-10-25)**: boot ✓ / arena ✓ / remote-mine ✓ /
+race-body-audit ✓ / speedrun ✓ / sprint WARN (L3 35,156 vs 参考
+36,171, **提前 1,015t**, 分段门漂移仅告警——v2 在 sprint 也是净正)。
+typecheck / lint 干净。
+
+**Y-v2 收档判定**: 净正保留 (零红线, speedrun 经济面 +1%, sprint
+提前 1k)。改动面: remoteBudget.ts (新) + demandSources (吞吐定编) +
+spawnDirector (定向 carry 替补 + 准入闸) + spawnArbiter (remote:carry
+豁免接力档) + cpuBudget (SkipReason)。用户未授权提交, 留工作树。
+
+## 批次 Z · 上游 speedrun bot 逐位移植与入口隔离 (2026-10-25, 20k/40k 逐位对齐)
+
+**背景**: 批次 Y/Y-v2 走的是「Nexus 架构内自研外矿链」路线, 40k 追平基线但
+距上游 speedrun bot 差距仍在。本期放弃渐进逼近, 直接把上传的上游冲级赛 bot
+(`/tmp/opencode/uploads/.../speedrun-bot/`, 1165 行 main.js + plan.json +
+terrain.txt + sim.mjs) 逐位移植进 race 变体, 后续再逐步替换为 Nexus 实现。
+
+**移植方式 (拒绝手抄)**: python 按行切片从上游 main.js 机械搬运, 零手工键入,
+拆分为 `src/branch/race/speedrun/` 8 模块 + index.ts + plan.json:
+
+| 模块 | 内容 |
+|---|---|
+| layout.ts | 固定布局锚点 (SPF_POS, 5×5 buildPlan 扫描) + plan.json 装载 (K.usePlan=0 缺省, 上游实测最优) |
+| traffic.ts | 寻路/让位 (moveTo 覆写, 行人优先级) |
+| economy.ts | 经济面 (harvest/transfer/upgrade 意图) |
+| towing.ts | 拖拽救援 |
+| roles.ts | creep 角色分派 (LANE_Y 留上游原位) |
+| spawning.ts | 孵化 (renewable/bayUnload/bayStop/renew/renewLow) |
+| telemetry.ts | 遥测 (score/timeline/CPU) |
+| loop.ts | 主循环 (newRun 首tick清 Memory, 保留 creeps/jitter/debug) |
+
+plan.json (183KB) 经 rolldown JSON import 打进 bundle; K 旋钮可在 sim/线上经
+`globalThis.__K` 覆写。
+
+**入口物理隔离 (本期根因修复)**: race 一度出现 miner 冻死在 EXIT (17,30) 的
+病理。取证定位: Nexus 模块链的 betterMove 在 Creep.prototype.move/moveTo 上
+的 wrapFn 覆写, 与 speedrun bot 的同原型覆写在同一 bundle 内按模块加载顺序
+互相吞 intent —— speedrun 的 moveTo 先挂, Nexus betterMove 后挂把 intent
+链断掉, miner 走不出房间。define 编译期开关与静态 import 都无法规避模块
+顶层副作用, 唯一解是**物理分入口**: `src/branch/race/speedrunEntry.ts`
+(仅 re-export `./speedrun`) + rolldown.config.js 在 `SPEEDRUN_MODE=1` 时把
+race 入口从 main.ts 切到 speedrunEntry.ts。两个 bundle 互斥, 原型覆写永不共存。
+race/main.ts 保持 Nexus 主线 (用户 Comms 挂载原样保留), 其余变体不受影响。
+
+**逐位对齐验证 (同 bundle 同引擎)**: sim/speedrun-upstream.sim.ts
+(3×3 W1N1..W3N3, terrain.txt 原始地形, sources [21,13]/[30,29], ctrl (17,25),
+mineral (34,6) O 35000, home W2N2 spawn (17,31) energy 300, seed 42, 40k tick):
+
+| 时点 | 上游原版 bundle | 移植版 bundle | 判定 |
+|---|---|---|---|
+| 20k | 971,773 (L5, progress 386,573, hash 0xf681c279e8689193) | 971,773 (同 hash) | **逐位一致** |
+| 40k | 2,101,390 (L6, hash 0xc42954967efc81a1) | 2,101,390 (同 hash) | **逐位一致** |
+
+时间线: L2@1,083 / L3@3,523 / L4@6,364 / L5@13,322 / L6@34,818;
+CPU p95 19ms, 榜口径 4 闸全过 (L4≤10k, L5≤20k, L6≤40k)。
+sim 断言 4@10k / 5@20k / 6@40k + noErrors 全绿。
+
+**回归**: boot/arena/remote-mine GREEN; sprint WARN (L3@35,156 vs 参照
+36,171, 提前 1k, Y-v2 净正项延续)。sim/speedrun.sim.ts (Nexus 主线 W5N8 闸)
+维持基线 L4@28,316 判负不变 —— 该闸衡量的是 Nexus 架构自研链, 与本批无关,
+榜上冲线走 speedrunEntry bundle。
+
+**与榜差距**: 40k 移植版 2,101,390 vs 榜 #1 2,157,183 (gap ~55.8k);
+20k 971,773 vs #1 952,740 (我们反超 19k)。40k 段的优化空间在 K 旋钮
+(`globalThis.__K` sim 内先调参) 与 usePlan 布局, 不在移植层。
+
+**收档判定**: 移植收档, 零红线。改动面: `src/branch/race/speedrun/` (新,
+8 模块 + plan.json + index.ts) + speedrunEntry.ts (新) + rolldown.config.js
+(入口切换) + .oxlintrc.json (允许 `__K`/`_boxes`/`_hubs` 下划线) +
+race/main.ts (仅注释头)。sim/speedrun-upstream.sim.ts (新, 验收场景)。
+用户未授权提交, 留工作树。
+
+## 批次 AA · 上游外矿链融合 (2026-10-25, 四子件二分, 两负一留)
+
+**目标** (用户口径): 布局与升级工分配保持 Nexus 现状, 只融合上游 speedrun
+bot 的外矿链。四子件按依赖拆分上 A/B, 40k sim 逐项验证。
+
+**基线**: L2@458 / L3@11,343 / L4@28,316 (HEAD, 含 Y-v2)。
+
+**子件与判定**:
+
+| 子件 | 内容 | 判定 |
+|---|---|---|
+| 件1 | 驻点远程矿工 (remoteMiner 体型: W 拉满+1C+M 按 2~3:1, 永不离源 drop/卸容器) + runRemoteHarvest 驻点化 | **判负撤档** |
+| 件2 | 搬运定编实时化 (needCarry=ceil(dug×(2×dist+6)×0.81/50), 撤 hasReturnPath 前置) + carry 部件缺口环 + 无缝换班 (TTL < body×3+dist 预替补) + reserver×2 | **判负撤档** |
+| 件3a | 对角房扫描面 (diagonalNeighbors + PathFinder 密度排序) | **判负撤档** |
+| 件3b | 远程源实测路程注册表 (economy.remoteSources, registerRemoteSourceDist) | **保留** |
+| 件4 | refreshTicks 500 (上游 reserveBuffer 口径) | **判负撤档** |
+
+**二分取证** (L4 时点):
+- 全四件: L4@33,596 (慢 5,280t), L3@9,868 (反而快 1,475t)
+- 撤件1+2 (留 3+4): L4@33,596 不变 → 毒在件 3/4
+- 件3+4 再撤 reserver×2 与 refreshTicks500: L4@33,596 不变 → 毒在件3a 对角房
+- 撤件3a (留注册表): L4@**28,316** 逐位回基线 → 定位
+
+**病理分析**:
+
+1. **对角房毒 (件3a)**: 无视野期密度 = sources/(1+线性距离), 对角房线性
+   距离算 1 与正邻同权, 实际路程 √2 倍——3 房预算被远房吃 1~2 个。
+   上游 diag 判据是「与本房共享两条边」且 sources() 一次性对 16 源做
+   PathFinder 实测排序取最近; 我们的排序在无视野期失真。sim 场景 8 正邻
+   全双源平地, 对角房天然劣质, 纯稀释预算。**若重启: 对角房必须实测路程
+   准入 (dist ≤ 最近正邻 ×1.3) 才进候选**。
+
+2. **驻点矿工孤儿化 (件1)**: 上游驻点矿工与专职 hauler 是**同时在场**的
+   共生件 (miner drop → hauler pickup 面对面交接); 我们的任务板里搬运
+   定编滞后 (hasReturnPath 要容器建成才认), 驻点矿工单独先上 = 能量堆在
+   源头烂 (1500t 产 10 e/t, 无 hauler 时 0 实现)。**若重启: 矿工+搬运
+   定编必须捆绑切换, 搬运先行或同拍到位**。
+
+3. **reserver×2 无收益 (件4/件2)**: 「预订完成即收编」语义下单 CLAIM+
+   refreshTicks 2000 无断档痛点 (任务消失→定编归零→续订线到 2000 再发),
+   双件只添 churn。
+
+**保留资产**: `economy.remoteSources` 注册表 + `registerRemoteSourceDist`
+(remoteMining 有视野登记时写实测 PathFinder 路长, 首次注册后零 CPU)。
+后续融合 (搬运定编实测化/无缝换班/准入闸) 直接消费, 不再线性猜路程。
+
+**矩阵回归**: boot/arena/remote-mine/race-body-audit GREEN, sprint WARN
+(L3 35,156 vs 36,171, Y-v2 延续), speedrun ✗@28,316 与参考逐位重合 (既有门)。
+tsc/oxlint 干净。用户未授权提交, 留工作树。
+
+## 批次 AB/AC · 外矿链融合二轮 (2026-10-25, 三刀连判负, 病根定位)
+
+承批次 AA 的「搬运链先行」计划, 三刀依次上 A/B, 全部判负撤档:
+
+| 刀 | 内容 | L4 | 判定 |
+|---|---|---|---|
+| AB-1 | 回运积压阈值随实测路程收缩 (1000/3000 → 500~1000 动态) | 28,316 | **中性** (场景积压未过线, 语义更对, 撤) |
+| AB-2 | 无缝换班 (TTL < body×3 + 注册路程 → 目标房视同缺人, 继任提前发车) | 33,569 | **判负** (L3 也慢 789t) |
+| AC | RCL2 速开门 (跳过 scout 前置, 正邻线性距离直接派矿工) | 37,798 | **判负** (L3 微提前 49t, L4 崩 9,482t) |
+
+**AB-2 病理**: 替补提前发车 → 孵化槽被远程件提前占住 → RCL3~4 窗口本地
+upgrader/carrier 换代被挤。定向替补 task.priority-1 在 arbiter 恒赢本地,
+提前量直接放大挤占窗口。上游能这么做是因为它的孵化队列是一个优先级数组,
+继任排位与本地让路是同一套逻辑; 我们两套系统 (编制替补/任务替补) 无法
+在同一次改动里对齐让路语义。**若重启: 必须连 arbiter 优先级一起改**。
+
+**AC 病理 (最有信息量的败因)**: RCL2 期放外矿候选, harvest 任务提前在板,
+但外矿矿工 (800 预算 5W3M1C) 与本矿采集面抢同一孵化槽——RCL2 能量瓶颈期
+本矿 2 源的矿工还没满编, 外矿任务 priority 69 压过本矿替补, 本地采集面
+塌了, L2→L3 段变慢连带全段后移。上游无此病理是因为它 nextSpawn 是单点
+决策树: 本地 miner > hauler > 远程 miner 的顺序硬编码在分支顺序里, 外矿
+永远不会饿死本地。**我们任务板 priority 数值与上游分支顺序不等价**。
+
+**病根定位 (三轮融合 + 意图流取证)**:
+
+40k dump (--record-intents + --dump-memory):
+- 全程在源采集意图仅 1.4~2.2 /t (本地双源满配就该 2~3 + 外矿 1~2)
+- 外矿首 reserve 意图 @15.8k; 上游 RCL2@1083 即开 4 源
+- 源3 harvestSplit transit 56% (矿工过半时间在路上)
+- census 20 只但能量链细: energyAvailable 稳态 < 750
+
+三个层面各差一档: ①外矿开门时点 (上游 RCL2 vs 我们 RCL3+secured+scout
+双程) ②开门规模 (4 源 vs 1 房双源) ③矿工在源率 (驻点 vs 半生在途)。
+但两个「修法」(速开门/换班) 都因**孵化槽竞争语义**败——任务板 priority
+不等于上游的分支顺序, 单独动任何一环都会把本地采集面挤塌。
+
+**收敛判读**: 上游外矿链是一个整体 (sources() 排序 + nextSpawn 分支序 +
+驻点矿工 + 专职 hauler + pave 道路 + tow 换班互相咬合), 在 Nexus 任务板
+架构里逐件移植会反复踩「局部对齐、全局挤塌」。正确的融合路径只剩两条:
+(a) 把上游 nextSpawn 的**完整分支序**移植成 Nexus 的 spawnArbiter 闸序
+(大改, 风险高); (b) 接受 speedrunEntry 直通 bundle 冲榜, Nexus 主线外矿
+维持 Y-v2 水平继续渐进。倾向 (b), 见批次 AD 决策。
+
+## 批次 AD · 上游外矿链整套移植 (2026-10-26, 整套迭代制)
+
+承 AB/AC 的收敛判读——上游外矿链是整体, 逐件移植必踩「局部对齐、全局挤塌」。
+本批改为**整套移植 + 整套迭代**, 不再单刀 A/B:
+
+1. **专职 remoteMiner 单位** (code `remoteMiner`, 亲和 `["harvest"]`): 杀死 AC 病理
+   —— 外矿任务不再污染本矿 harvester 定编, 采集面两套编制互不侵占。
+2. **上游分支序移植** (`raceRemoteRequests`): 闸① 本矿 harvester 未满编 → 外矿
+   整段让位; 闸② 搬运未满编 → **只拦 hauler** 不拦 miner/reserver (整段 return
+   = 自锁死循环, 28k 实证); 逐任务顺序 miner → hauler → reserver, alive 口径
+   TTL > 3×body + walkLead, needCarry = ceil(dug×(2×dist+6)×slack/50)。
+3. **复合键 addRequest** (`rm:/rc:/rr:` 前缀): 单位键 map 会把 N 源请求折叠成 1,
+   rkey 区分远程请求身份。
+4. **无视野占位任务**: planAutoRemote 对无视野房发占位 harvest 任务 (无 targetId,
+   矿工到场自选空闲源) + 并行 scout; 视野到达即撤占位。占位任务不计
+   remoteDeficit (upgrader 地板保护, 升级 8/t → 3/t 实证)。
+5. **allocator 跨房硬排 (模式分档)**: 跨房 harvest 仅 remoteMiner 可认领, 但仅
+   rush/auto 开 (`remoteMinerExclusive` 经 AssignInput 传入, 同 affinityExclusive
+   模式)——manual 系 harvester 自回运外矿是 batch H 环承重设计, 硬排即断供。
+
+迭代修复链 (8 轮 sim 诊断): ① arbiter yield 门漏 remoteRequest purpose → 请求
+饿死; ② 容量长等待窗口冻结远程件发车 (remote: 前缀短窗); ③ haveCarry 按源细分
+漏计 (carryByRoom 按目标房聚合); ④ remoteMiner 误入 standingRoles 定编泄漏;
+⑤ 闸②整段 return 自锁; ⑥ scout 定编与占位任务死锁; ⑦ 单位键 map 折叠请求;
+⑧ 占位任务计入 deficit 压死 upgrader 地板。
+
+批次 Y-v2 在 demandSources/spawnDirector 的 edits 已随先前 checkout 丢失,
+其公式 (定向 hauler 大件直运) 已被 AD 的 needCarry 链覆盖, 本批起以 AD 为准。
+
+进度: L2@458 / L3@10,865 (基线 11,343), L4 40k 未达 (基线 28,316), 升级率
+3-5/t vs 基线 8/t——远程链已跑通但升级面失血。矩阵 4/9 绿。后 L3 升级编
+2-5 vs 基线 5-6, 人口 8k/20k 处塌陷 (10-16 只)。整套继续迭代, 不回退基线。
+
+### AD 第二轮修复 (2026-10-26, 20k dump 取证 → L4 首破)
+
+**修复 5** (allocator): remoteMiner 钉死跨房——rush 档 affinityExclusive 关,
+本地 upgrade(prio 30) 在 priority 序上先于远程 harvest(69), 站家口的 RM 被
+upgrade 先抓走 (20k 实证 4 只 RM 2 只在升级控制器, 7 正式远程任务全
+available)。`remoteMinerExclusive` 下 RM 只许 harvest, 与「跨房 harvest 只许
+RM」成对硬排。同批: `remoteMinerExclusive` 经 AssignInput 模式分档 (rush/auto
+开, manual 关——manual 的 harvester 自回运是 batch H 环承重设计)。
+
+**修复 6** (remoteSourcesOf): 注册表角落房双注册——neighborRooms 已含全部
+8 邻房又并 diagonalNeighbors, W4N7/W4N9/W6N7/W6N9 各注册两次, RCL2 预算
+4 槽实际只开 3 房。diagonalNeighbors 已无消费方, 删除。
+
+**修复 7** (planAutoRemote): 占位任务退役前置——原逻辑把 probe 撤销埋在
+byRoom 遍历内, 视野到达后 dist 修正把该房挤出预算时 probe 永不退役, 与正式
+任务并存分裂定编 (20k 实证 3 房双份)。
+
+**修复 8** (spawnDirector vacancy, 最重): 活体索引读 `units 注册表.taskId`,
+但该字段**无人同步** (claim 只写 creep.memory.taskId) → vacancy 恒空 → 同任务
+无限重发孵化请求 (6k 实证单位爆到 51 只, RM 全场 idle 老死; 生产 123/死亡 89
+@4400t)。改读 creep.memory.taskId (claim 的唯一写入口同源)。remoteBudget 的
+外务判定同源修复。
+
+修复 5/6/7 落地后首轮 40k: **L4@36,599 首破** (L2@458 / L3@9,750, 升级意图
+45,869 次), 但 L3→L4 段 26,849t vs 基线 ~17,000t, 中段升级率 3.8-4.7/t
+(基线 8/t)。修复 8 后 40k: **L4@32,956** (L3@11,171, 段 21,785t)。
+
+### AD 第三轮 (2026-10-26 深夜, 容量驱动预算)
+
+**修复 9** (planAutoRemote): REMOTE_BUDGET_CONFIG.byRcl 是对上游的**误读**——
+上游无 RCL 固定表, getActiveSources 是背包 DP: 剩余孵化部件容量为背包,
+外矿按 value/weight 装箱。我们的 [0,0,4,16] 让 RCL3 一夜铺 16 源任务面,
+挤爆孵化线重演 AC 病理。改为容量驱动: `remoteSpawnLeftoverOf` 剩余部件
+÷ 每源 ~30 部件当量开销 (矿工 9 件 × 寿命系数 + hauler 距离折算, 上游
+computeRemoteSourceSpawnUsage 同量级), 在岗远程件实扣。扩张节奏回归渐进。
+
+**40k 终态病理** (ad5-mem): 末期 (38k+) 孵化的全是 carrier/reserver,
+RM 一只不补——RM 死后 remoteSpawnLeftoverOf 为负 (8 carrier+worker+upgrader
+占满 localDemand), 远程请求全停, 外矿链永久死亡。容量预算下此病理应
+自愈 (carrier 需求随 RM 死而归零, leftover 回正)。
+
+### AD 第四轮 (reserver 挤占 + RM 降档孵化)
+
+**修复 10** (reserver 上限): 上游 claims=2 全局封顶; 我们按房发单无上限,
+reserver 部件小 (650) 且与 RM 同 priority 5, pool.find 恒先孵它——攒能期
+孵化槽被 reserver 独占, RM (270+) 恒饿 (40k 实证 reserver 6 / RM 0)。
+上限含孵化中 (请求池逐拍重建, 只算已落体会同窗并发超发), priority +1 让位
+矿工。holder 判定同步改读 creep.memory (修复 8 同源)。
+
+**修复 11** (RM 预算降档): 上游 minerEnergyCapacity = max(300, income>0 ?
+capacity : energyAvailable)——收入未起按当前存量孵小件。我们满容量预算
+在攒能期恒付不起, 队头 RM 孵不出时 pool.find 顺位孵 reserver/carrier,
+能量永远到不了 RM 门槛。RM 请求预算直绑 spawn 当前存量, 小件先出发占源
+(2W1M1C=270 起), 换代自然升档。4400 探针实证: RM 自 t3937 起正常密集孵化
+(此前 0 只)。
+
+**遗留观察** (闸 ① 开门时点): raceRemoteRequests 整段被 `staffed(harvester)
+< targets.harvester` 关到 ~3900t——低容量期 harvester 定编每源 3 只, 满编
+标准高推迟外矿开门。上游闸是 work 口径 (5W/源)。待第四轮成绩回归后再评估。
+
+### AD 第五轮 (standing/reserver 双轨)
+
+**修复 12** (reserver 双轨): `standingRoles` 含 reserver + demandSources 按
+跨房 reserve 任务数定编 = **每房 1 只**, 绕过 raceRemote 的 claims=2 上限,
+双轨并发孵化 (24k dump 实证 reserver 5 只存活 / RM 0 只, 孵化槽全被
+650-energy 小件吃光)。reserver 出列 standingRoles, 定编归零, 孵化全走
+raceRemote 段 (同 remoteMiner 先例, AD 首轮已验证该模式)。
+
+AD 四轮 (容量预算+reserver 上限+RM 降档) 成绩反复: ad6 32956 → ad9 L4 未达
+(126868/135700)。根因即修复 12 的双轨——上限逻辑本身正确但被 standing
+旁路。四轮的三个修复 (9/10/11) 保留, 第五轮堵旁路后应收敛。
+
+**修复 13** (RM 预算分档): 恒绑 avail 会永久小体 (2W=4/t, 上游收入起后
+5W=10/t)——drop 6658 实证挖了没运力/采集面火力不足。改上游原语义:
+income>0 (本矿采集面满编) 用满容量攒大件, 未满编期降档先占源。
+第五+13 轮 40k: **L4@30,960** (L3@10,399, 段 20,561t, 中段峰值 8.2/t
+接近基线)。五轮收敛轨迹: 36,599 → 32,956 → (37,774 反复) → 30,960。
+基线 28,316 差 2,645t; 上游直通参照 L4@6,364。
