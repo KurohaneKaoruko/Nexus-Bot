@@ -2,6 +2,118 @@
   "$schema": "./arch-allowlist.schema.json",
   "version": 1,
   "entries": {
+    "src/branch/race/speedrun/economy.ts::createConstructionSite": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 4
+    },
+    "src/branch/race/speedrun/economy.ts::moveTo": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/economy.ts::pickup": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/economy.ts::transfer": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/economy.ts::withdraw": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/layout.ts::moveTo": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/loop.ts::move": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 3
+    },
+    "src/branch/race/speedrun/loop.ts::moveTo": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 2
+    },
+    "src/branch/race/speedrun/roles.ts::build": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 4
+    },
+    "src/branch/race/speedrun/roles.ts::claimController": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/roles.ts::createConstructionSite": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/roles.ts::drop": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 3
+    },
+    "src/branch/race/speedrun/roles.ts::harvest": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 2
+    },
+    "src/branch/race/speedrun/roles.ts::moveTo": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 23
+    },
+    "src/branch/race/speedrun/roles.ts::pickup": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 6
+    },
+    "src/branch/race/speedrun/roles.ts::repair": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/roles.ts::reserveController": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 2
+    },
+    "src/branch/race/speedrun/roles.ts::transfer": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 12
+    },
+    "src/branch/race/speedrun/roles.ts::upgradeController": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 3
+    },
+    "src/branch/race/speedrun/roles.ts::withdraw": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 6
+    },
+    "src/branch/race/speedrun/spawning.ts::moveTo": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/spawning.ts::spawnCreep": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/spawning.ts::transfer": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 3
+    },
+    "src/branch/race/speedrun/towing.ts::move": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 4
+    },
+    "src/branch/race/speedrun/towing.ts::moveTo": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 2
+    },
+    "src/branch/race/speedrun/towing.ts::pull": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 2
+    },
+    "src/branch/race/speedrun/towing.ts::transfer": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
+    "src/branch/race/speedrun/traffic.ts::move": {
+      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+      "calls": 1
+    },
     "src/branch/stronghold/team/blitz.ts::createFlag": {
       "track": "编队域豁免 (波次旗生命周期管理, RoomPosition 原型重写)",
       "calls": 1

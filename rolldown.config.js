@@ -200,8 +200,13 @@ export default defineConfig(() => {
 	// 缺省 main；其余回退约定 src/main.ts / src/branch/<variant>/main.ts
 	const variant = process.env.VARIANT ?? config?.entry ?? 'main';
 	const branchPath = secret?.branches?.[variant]?.path;
-	const input = branchPath
+	const baseInput = branchPath
 		?? (variant === 'main' ? 'src/main.ts' : `src/branch/${variant}/main.ts`);
+	// SPEEDRUN_MODE=1: race 变体切冲级赛直通入口 (固定布局 bot, 与 Nexus 链物理隔离)
+	const speedrunEntry = baseInput.replace(/\/main\.ts$/, '/speedrunEntry.ts');
+	const input = process.env.SPEEDRUN_MODE === '1' && fs.existsSync(path.resolve(process.cwd(), speedrunEntry))
+		? speedrunEntry
+		: baseInput;
 	const entryAbs = path.resolve(process.cwd(), input);
 	if (!fs.existsSync(entryAbs)) {
 		throw new Error(`分支 ${variant} 的入口不存在: ${input}`);
@@ -236,8 +241,12 @@ export default defineConfig(() => {
 		checks: {
 			pluginTimings: false
 		},
+		// SPEEDRUN_PROFILE=1: 私服 GCL<6 账号也强制启用 PRIVATE_PROFILE (冲级赛直通构建专用)
 		transform: {
-			target: 'node8.9.3'
+			target: 'node8.9.3',
+			...(process.env.SPEEDRUN_MODE === '1'
+				? { define: { SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE === '1') } }
+				: {})
 		},
 		// @/ 别名统一指向 src/
 		resolve: {

@@ -20,22 +20,26 @@
 			"error",
 			{
 				"allow": [
+					"__K",
 					"__carryTrace",
 					"__dropped",
 					"__layoutPlannerCache",
 					"__moveWorkTileRuntimeIntent",
-					"_assign",
+					"_move",
+				"_assign",
 					"_atk_damage",
 					"_attackTargets",
 					"_attackable_creeps",
 					"_attackable_structures",
 					"_been_heal",
+					"_boxes",
 					"_break_damage",
 					"_deliverTarget",
 					"_fetchSrc",
 					"_fired_damage",
 					"_heal_need",
 					"_heal_power",
+					"_hubs",
 					"_idObjCache",
 					"_idObjCacheTime",
 					"_init",
@@ -78,13 +82,17 @@
 	},
 	"overrides": [
 		{
-			"files": ["rolldown.config.js"],
+			"files": [
+				"rolldown.config.js"
+			],
 			"rules": {
 				"eslint/no-underscore-dangle": "off"
 			}
 		},
 		{
-			"files": ["src/branch/compat.ts"],
+			"files": [
+				"src/branch/compat.ts"
+			],
 			"rules": {
 				"typescript/no-extraneous-class": "off"
 			}

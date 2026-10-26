@@ -13,6 +13,7 @@
 		"clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
 		"build": "npm run typecheck && npm run clean && rolldown -c",
 		"build:race": "VARIANT=race rolldown -c",
+		"build:race:speedrun": "SPEEDRUN_MODE=1 SPEEDRUN_PROFILE=1 VARIANT=race rolldown -c",
 		"build:season": "VARIANT=season rolldown -c",
 		"build:stronghold": "VARIANT=stronghold rolldown -c",
 		"lint": "oxlint",

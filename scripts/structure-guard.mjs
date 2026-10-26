@@ -79,7 +79,7 @@ const VOCAB_TRIPLE_CHECK = true;
  * - algorithm: 算法资产待复用 (无孵化源, 仅词表登记)
  */
 const UNIT_DRIVE_ATTRIBUTION = {
-	task: ['harvester', 'carrier', 'transporter', 'manager', 'upgrader', 'worker', 'miner', 'universal', 'rush-courier', 'defender', 'scout', 'claimer', 'reserver'],
+	task: ['harvester', 'carrier', 'transporter', 'manager', 'upgrader', 'worker', 'miner', 'universal', 'rush-courier', 'defender', 'scout', 'claimer', 'reserver', 'remoteMiner'],
 	courier: [],
 	team: ['team-attack', 'team-dismantle', 'team-heal', 'team-ranged'],
 	powercreep: ['pc-heal'],
@@ -139,11 +139,17 @@ function checkRetiredPoolSymbols(files) {
 
 // ── 通用: 源文件枚举与注释剥离 ─────────────────────────────
 
+/** 冲级赛直通模块: 上游单文件血统的物理隔离区 (@ts-nocheck 为终态而非债务,
+ *  见 src/branch/race/speedrunEntry.ts), 不参与 nocheck/any 计量 */
+const SPEEDRUN_DIR = path.join(SRC_DIR, 'branch', 'race', 'speedrun');
+
 function walkTs(dir, out = []) {
 	for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
 		const full = path.join(dir, e.name);
-		if (e.isDirectory()) walkTs(full, out);
-		else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(full);
+		if (e.isDirectory()) {
+			if (full === SPEEDRUN_DIR) continue;
+			walkTs(full, out);
+		} else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(full);
 	}
 	return out;
 }
