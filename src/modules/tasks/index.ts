@@ -81,12 +81,19 @@ export const Tasks: TickModule = {
 		const affinityExclusive = !Object.values(world.rooms).some((room) =>
 			roomModeProfileFor(ctx, room.roomName).courierEnabled,
 		);
+		// 外矿专职分档 (批次 AD): 全场任一房走 auto 外矿链 (专职 remoteMiner +
+		// hauler 接驳) 即开; 全部 manual 的 main 系关 (harvester 自回运外矿
+		// 是 batch H 环承重设计, 硬排即断其外矿供给)
+		const remoteMinerExclusive = Object.values(world.rooms).some((room) =>
+			roomModeProfileFor(ctx, room.roomName).remoteMining === "auto",
+		);
 		assignBatch({
 			now: ctx.tick,
 			tasks: board.list({ statuses: ["available"] }),
 			profiles,
 			world,
 			affinityExclusive,
+			remoteMinerExclusive,
 			currentTaskOf: (name) => Game.creeps[name]?.memory.taskId,
 			getTask: (id) => board.get(id),
 			claim: (id, name, now, leaseTicks) => {

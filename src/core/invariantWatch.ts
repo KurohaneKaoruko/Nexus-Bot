@@ -92,7 +92,9 @@ const checkMemoryBound = (warn: (msg: string) => void): void => {
 	const { memoryBudgetBytes, sampleEveryTicks } = INVARIANT_CONFIG;
 	if (Game.time % sampleEveryTicks !== 0) return;
 	// JSON.stringify 全量序列化有 CPU 成本, 限频采样; RawMemory 引擎串只在有 string 时用
-	const raw = typeof RawMemory !== "undefined" ? RawMemory.get() : "";
+	// (race 私服 RawMemory 可能缺 get 方法, 双重守卫降级到 JSON.stringify)
+	const raw =
+		typeof RawMemory !== "undefined" && typeof RawMemory.get === "function" ? RawMemory.get() : "";
 	const size = raw ? raw.length : JSON.stringify(Memory).length;
 	if (size > memoryBudgetBytes) {
 		note("memory-unbounded", `Memory ${Math.round(size / 1024)}KB 超 ${Math.round(memoryBudgetBytes / 1024)}KB 预算`, warn);

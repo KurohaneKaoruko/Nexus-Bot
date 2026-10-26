@@ -214,7 +214,10 @@ export const SPAWN_CONFIG = {
 	 *  六场景基线均在此值下校准; 关闭即恢复 legacy 独立供给, 仅作紧急回退通道。 */
 	legacyHarvestStandby: true,
 	/** 常驻编制岗位: 缺口判定与任务 available 状态解耦 (任务被租住/冷却期仍请求替补);
-	 *  carrier 入列——搬运任务随货源波动, 任务驱动的间歇请求会让编制在关键窗口空转 */
+	 *  carrier 入列——搬运任务随货源波动, 任务驱动的间歇请求会让编制在关键窗口空转。
+	 *  reserver 不入列 (批次 AD 四轮): standing 按任务数定编 = 每房 1 只,
+	 *  绕过 raceRemote 的上游 claims=2 全局上限, 双轨并发孵 5 只挤占 RM
+	 *  攒能窗口 (24k 实证 reserver 5 / RM 0); 孵化全归 spawnDirector raceRemote 段 */
 	standingRoles: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout"] as readonly string[],
 	/** 常驻编制缺口的请求排队等级 (race L9; 低于任务驱动, 只兜底) */
 	standingPriority: 9,
@@ -223,7 +226,7 @@ export const SPAWN_CONFIG = {
 	 *  能量入口, 必须先于采集补员 (旧体系 carrier 88 > harvester 55 的同语义);
 	 *  两者由采集让位闸 + carrier 上限闸实现 H/C 交替起步; upgrader L6 常态
 	 *  升级档 (main 档无 rush 提级时靠此兜底), scout L11 一次性小件。 */
-	standingPriorityByRole: { carrier: 3, upgrader: 4, worker: 6, harvester: 9, scout: 11 } as Readonly<Record<string, number>>,
+	standingPriorityByRole: { carrier: 3, upgrader: 4, worker: 6, harvester: 9, scout: 11, remoteMiner: 12, reserver: 12 } as Readonly<Record<string, number>>,
 	/** 冲级档缺编 upgrader 的孵化等级下限 (bugs/P1-19): rush 期缺编 upgrader
 	 *  与搬运同进 urgent 段, 攒能与立即通道交错建立火力。
 	 *  2 (race-speedrun 6.1 第四轮, 越过 carrier L3): 换代空窗取证——upgrader(4)
@@ -522,13 +525,24 @@ export const PRODUCTION_GATE_CONFIG = {
 	 * + worker: decay 维修紧急件走 critical L2 请求 (容器 decay 死 = 升级链
 	 * 断供数千 tick), 被闸挡死则维修窗口恒错过 (sim 实证 45k 零 worker)
 	 */
-	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender", "scout", "reserver", "worker"] as readonly string[],
+	unsecuredAllowedRoles: ["harvester", "upgrader", "universal", "defender", "scout", "reserver", "worker", "remoteMiner"] as readonly string[],
 } as const;
 
 /** 外矿预订线 (specs/race-remote「预订线」): 未预订源容量减半 */
 export const RESERVE_CONFIG = {
 	/** 预订续订线: 预订剩余刻数低于该值即重发 reserve 任务 (防裸奔减半期) */
 	refreshTicks: 2000,
+} as const;
+
+/**
+ * 外矿源预算表 (批次 AD, 上游 REMOTES 逐位口径): 按 RCL 允许同时开采的
+ * 远程源数。RCL1=0 / RCL2=4 / RCL3+ =16 (上游 K.remotes1=4, remotes2/3=16)。
+ * 上游 9 房场景 16 源 = 全图; 我们 8 邻+4 对角 20 源, 16 封顶同上游。
+ */
+export const REMOTE_BUDGET_CONFIG = {
+	/** @deprecated 批次 AD 三轮: 容量驱动预算取代 RCL 固定表 (上游无此表,
+	 *  getActiveSources 是背包 DP; RCL3 一夜 16 源挤爆孵化线, AC 病理复发) */
+	byRcl: [0, 0, 4, 16, 16, 16, 16, 16, 16] as readonly number[],
 } as const;
 
 /** 并行侦察 (race-speedrun 6.1): scout 并行编制上限——外矿预算 3 房时

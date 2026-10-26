@@ -102,7 +102,11 @@ export function profileOf(summary: CreepSummary): CapabilityProfile {
 }
 
 /** 硬性资格过滤: 不可执行的候选直接出局 */
-export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean {
+export function canExecute(
+	profile: CapabilityProfile,
+	task: NexusTask,
+	remoteMinerExclusive = false,
+): boolean {
 	if (profile.spawning) {
 		return false;
 	}
@@ -134,8 +138,37 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 			return false;
 		}
 	}
+	// 外矿矿工钉死外矿 (批次 AD): 本地 upgrade/fill_spawn 等短腿任务在 priority
+	// 序上先于远程 harvest, rush 档 affinityExclusive 关闭拦不住——站在孵化
+	// 口旁的 remoteMiner 被本地任务先抓走, 7 个正式远程任务全 available
+	// (20k 实证 4 只 remoteMiner 2 只在升级控制器)。反向对称于上面的硬排:
+	// 编制互不侵占才是整套语义。
+	if (
+		remoteMinerExclusive &&
+		profile.unitCode === UNIT_CODES.remoteMiner &&
+		task.kind !== "harvest"
+	) {
+		return false;
+	}
 	// 侦查是纯移动差事: 生产件 (work/carry) 不得抢占, 留给专职 scout
 	if (task.kind === "scout" && profile.work + profile.carry > 0) {
+		return false;
+	}
+	// 外矿采集是 remoteMiner 专职 (批次 AD): 远程 harvest 任务禁止本矿编制
+	// 跨界认领 (含 harvester——affinityExclusive 在 rush 关, 不硬排则本矿
+	// harvester 虹吸跨房: 本矿采集面虚编 + 自回运长途占坑, 30k 实证
+	// W6N8 被采集体 H-6B98 自回运占用, remoteMiner 全程 1 只)。
+	// 判据 = 任务房 ≠ 目标房 (跨房才排, 本矿 harvest 不受限)。
+	// 仅 rush/auto 开启: manual 系本矿 harvester 兼差外矿自回运是承重设计
+	// (batch H 环), 硬排即断其外矿供给。
+	if (
+		remoteMinerExclusive &&
+		task.kind === "harvest" &&
+		task.resourceType === undefined &&
+		task.targetPos?.roomName !== undefined &&
+		task.targetPos.roomName !== task.roomName &&
+		profile.unitCode !== UNIT_CODES.remoteMiner
+	) {
 		return false;
 	}
 	// 矿物合约 (带 resourceType 的 harvest): agentSystem 尚无矿物执行分支,
@@ -211,6 +244,9 @@ const UNIT_TASK_AFFINITY: Record<string, readonly string[]> = {
 	// 全员转建造; 无亲和时 build 恒无人认领, cc 不成 → 升级体长腿死循环)
 	[UNIT_CODES.worker]: ["build", "repair"],
 	[UNIT_CODES.harvester]: ["harvest", "build"],
+	// 外矿驻点矿工 (批次 AD): 只认采集 (跨房 harvest), 与本矿 harvester
+	// 编制彻底分离——AC 病理根因即远程任务污染 harvester 定编
+	[UNIT_CODES.remoteMiner]: ["harvest"],
 	[UNIT_CODES.reserver]: ["reserve"],
 	[UNIT_CODES.carrier]: ["fill_spawn", "carry"],
 	[UNIT_CODES.defender]: ["defend"],
@@ -343,6 +379,12 @@ export interface AssignInput {
 	 * (L3 18140→21684)。
 	 */
 	affinityExclusive?: boolean;
+	/**
+	 * 外矿专职开关 (批次 AD): 开 = 跨房 harvest 仅 remoteMiner 可认领。
+	 * rush/auto 开——防止本矿 harvester 虹吸跨房任务 (30k 实证 remoteMiner
+	 * 全程 1 只); manual 关——本矿 harvester 自回运外矿是 batch H 环承重设计。
+	 */
+	remoteMinerExclusive?: boolean;
 }
 
 /**
@@ -378,7 +420,7 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			if (taken.has(profile.creepName)) {
 				continue;
 			}
-			if (!canExecute(profile, task)) {
+			if (!canExecute(profile, task, input.remoteMinerExclusive)) {
 				continue;
 			}
 			if (

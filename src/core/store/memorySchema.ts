@@ -279,6 +279,14 @@ export interface EconomyMemory {
 	 * auto 档 (rush) 不读此表。
 	 */
 	remoteTargets?: string[];
+	/**
+	 * 远程源实测路程注册表 (批次 AD, 上游 sources() 逐位口径): 键
+	 * `${homeRoom}:${i}`, 值 = { room, i, dist, home } 有序数组——本房 +
+	 * 8 邻 + 对角 16 源, spawn→源矿位 PathFinder 实测, home 优先 dist 升序。
+	 * 首次注册后 Memory 缓存恒用 (上游同款, 零重复寻路)。
+	 * 消费方: 外矿预算表裁剪 (REMOTES[rcl])、搬运吞吐定编、换班提前量。
+	 */
+	remoteSources?: Array<{ k: string; room: string; i: number; dist: number; home: boolean; id?: string }>;
 	/** 终端发送簿记 (原 terminal 池 send 型): 人操 console upsert, terminalControl 消费 */
 	sends?: SendLedgerEntry[];
 	/** Boost 预订簿记 (原 boost 池): AssignBoostTask 系写入, lab 管理与 boostFunction 消费 */

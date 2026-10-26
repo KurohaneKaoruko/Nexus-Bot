@@ -121,6 +121,11 @@ export const UnitData = {
         level: 11,
         code: 'RSV',
     },
+    'remoteMiner': {
+        bodypart: [],
+        level: 11,
+        code: 'RM',
+    },
     'out-build': {
         bodypart: [],
         level: 12,

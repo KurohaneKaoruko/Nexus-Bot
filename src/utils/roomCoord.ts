@@ -52,3 +52,5 @@ export function orthogonalNeighbors(roomName: string): string[] {
 		roomNameFromWorld(coord.x - 1, coord.y),
 	];
 }
+
+

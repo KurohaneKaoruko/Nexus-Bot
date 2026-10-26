@@ -9,6 +9,7 @@ import {
 	buildRushHarvesterBody,
 	buildRushUpgraderBody,
 	buildRushWorkerBody,
+	buildStationaryRemoteMinerBody,
 } from "@/utils/rushBodies";
 import { RELAY_CONFIG } from "@/config/economy";
 
@@ -25,7 +26,7 @@ export type EconomyRole =
 	| "scout";
 /** 战斗角色 (Phase 3: 防守型 defender, 远程为主) */
 export type CombatRole = "defender" | "claimer" | "reserver";
-export type SpawnUnit = EconomyRole | CombatRole;
+export type SpawnUnit = EconomyRole | CombatRole | "remoteMiner";
 
 /** 地形编译提示 (spawnDirector 按房间地形画像填充): 慢地形 = 沼泽密度高且路网未达标 */
 export interface BodyHints {
@@ -148,12 +149,16 @@ export function buildBody(
 ): BodyPartConstant[] | null {
 	switch (unit) {
 		case "harvester":
+			// 外矿采集件 → 驻点矿工 (批次 AD, 上游 remoteMiner 逐位): W 拉满 +
+			// M=ceil(W/2) + C1, 恒驻源边 drop 采矿; 回运由专职 hauler 承接。
+			// 原自回运档 (needCarry 大 CARRY) 与驻点分工互斥——haul 链在位时
+			// 自回运是路上时间税 (AA 实证 56% transit)。
+			if (hints?.remoteHarvester === true) {
+				return buildStationaryRemoteMinerBody(budget);
+			}
 			return buildRushHarvesterBody(budget, {
 				speed: hints?.slowTerrain ? 1 : 0.5,
-				needCarry:
-					hints?.noCarrierOnSite === true ||
-					// 外矿采集件自回运: 无 CARRY 则满载判定永不成立, 驻源死循环
-					hints?.remoteHarvester === true,
+				needCarry: hints?.noCarrierOnSite === true,
 			});
 		case "upgrader":
 			return buildRushUpgraderBody(budget);
@@ -202,6 +207,10 @@ export function buildBody(
 		case "reserver":
 			// 外矿预订件 (对齐 Rosmarin race): [CLAIM,MOVE]×n, 预订功率随预算放大
 			return buildSegmented({ segment: ["claim", "move"], min: 1, max: 3 }, budget);
+		case "remoteMiner":
+			// 外矿驻点矿工 (批次 AD, 上游 remoteMiner 逐位): W 拉满 + M=ceil(W/2)
+			// (沼泽房 ceil(W/3) 由 slowTerrain hint 切档) + 收尾 1 CARRY
+			return buildStationaryRemoteMinerBody(budget, { slowTerrain: hints?.slowTerrain === true });
 		case "claimer":
 			// 扩张占领件: 单组 [CLAIM, MOVE], 600 成本最低门槛
 			return buildSegmented({ segment: ["claim", "move"], min: 1, max: 1 }, budget) ?? ["claim", "move"];

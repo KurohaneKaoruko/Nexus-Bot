@@ -95,8 +95,13 @@ export function arbitrateForSpawn(
 	// 建造紧急豁免: critical worker (priority 2, 容器 decay 维修/重建) 不随采集
 	// 让位出局——维修窗口错过 = 容器死亡 = 升级链断供数千 tick (sim 实证 cc 容器
 	// decay 死后 8.9k tick 断供, 损失 ~35k 进度), 比采集面晚饱和几百 tick 更贵
-	const criticalWorker = (r: { unit: string; priority: number }): boolean =>
+	const criticalWorker = (r: { unit: string; purpose: string; priority: number }): boolean =>
 		r.unit === "worker" && r.priority <= 2;
+	// 外矿请求放行 (批次 AD): raceRemote 请求层已做分支序闸 (本矿采集/搬运
+	// 定编未满 → 外矿请求根本不进池), 本让位窗口对其是重复加锁——本地替补
+	// 是常驻缺口 (excludeDying + replacementLead 语义), 双闸叠加 = 外矿恒
+	// 不孵化 (16k 实证 deny yield 4653 窗口, remoteMiner 全场 0 只)。放行。
+	const remoteRequest = (r: { purpose: string }): boolean => r.purpose.startsWith("remote:");
 	const rawPool = harvesterShort
 		? gated.filter(
 				(r) =>
@@ -104,6 +109,7 @@ export function arbitrateForSpawn(
 					r.unit === "defender" ||
 					r.unit === "scout" ||
 					criticalWorker(r) ||
+					remoteRequest(r) ||
 					// 升级体恒随行 (E18 实现修正, race-speedrun 6.1 第五轮): 原实现
 					// 只把 upgrader 从拒绝计数里排除, 并未加回仲裁池——采集让位窗口内
 					// 升级请求实际被丢弃, 与下方注释语义相反。RCL1 首 300t 恒让位,
@@ -146,8 +152,12 @@ export function arbitrateForSpawn(
 	const hints: BodyHints = {
 		slowTerrain: isSlowTerrain(terrainProfileFor(spawn.room.name, ctx.tick)),
 		// 接力期档 (specs/接力搬运): RCL < 等级门用微型接力件, 达门大件直运
-		relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl,
-		directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl,
+		relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl &&
+			// 外矿回运定向件豁免接力微型档 (批次 Y-v2): 200 容量/趟的路上时间税
+			// 吞光外矿净收益, 对齐上游 hauler maxCarry 16 大件直运口径
+			!requestStartsWith(pool, "remote:carry:"),
+		directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl ||
+			requestStartsWith(pool, "remote:carry:"),
 		remoteHarvester: requestStartsWith(pool, "remote:harvest:"),
 		noCarrierOnSite:
 			!Object.values(Game.creeps).some(
@@ -285,7 +295,11 @@ export function arbitrateForSpawn(
 				// 保覆盖, 否则 1 只小矿工 2/t 收入永填不满 550 池, 第二只永不出现,
 				// 采集面锁死 (sim 实证 legacy 退役后 31k 仅 4 爬存活); 铺满后的
 				// replacement 换代才永不降档——保体型演进, 避免小体 churn。
-				const waitLimit = request.purpose.startsWith("replacement:")
+				const waitLimit = request.purpose.startsWith("replacement:") ||
+						// 外矿请求短窗 (批次 AD): 换班提前量靠 alive() 的 TTL 门兜底,
+						// 长窗冻结会让替补在源 vacancy 上空转 (上游 succFirst=0 同款:
+						// 换班宁缺不拖, 下一个 spawn 决策再补)
+						request.purpose.startsWith("remote:")
 					? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.replacementWaitTicks)
 					: SPAWN_CONFIG.capacityWaitRoles.includes(request.unit)
 						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)

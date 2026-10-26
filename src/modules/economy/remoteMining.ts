@@ -19,10 +19,111 @@ function myUsername(): string | undefined {
 }
 
 /** 邻房名计算: 已抽公共 utils/roomCoord (bugs/P1-17), 此处仅再导出兼容本文件内引用 */
-import { neighborRooms, roomWorldCoord } from "@/utils/roomCoord";
+import { neighborRooms } from "@/utils/roomCoord";
 import { REMOTE_CARRY_CONFIG } from "@/config/economy";
 import { remoteSourceWeightOf } from "@/modules/economy/income";
 import { isProductionSecured } from "@/modules/economy/productionGate";
+import { remoteSpawnLeftoverOf } from "@/modules/spawning/remoteBudget";
+import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
+
+// ==================== 全图源注册 (批次 AD, 上游 sources() 逐位口径) ====================
+
+/** 注册表条目: 与上游 sources() 同构 */
+export interface RemoteSourceEntry {
+	k: string;
+	room: string;
+	i: number;
+	dist: number;
+	home: boolean;
+	/** 视野到位后回填的真实源 id (消费方按 source id 查实测路长) */
+	id?: string;
+}
+
+/**
+ * 全图源注册 (上游 sources() 逐位): 本房 + 4 正邻 + 4 对角 (上游 diag 判据:
+ * 与本房共享两条边才收, 即全部 4 对角), 每房 2 源 (SRC 固定布局假设由
+ * find 实测替代), spawn→源 PathFinder 实测路长, home 优先 / dist 升序。
+ * 关键差异 (AC 败因修正): PathFinder 对**不可见房**照常工作 (引擎地形全知),
+ * 无视野也能开矿——scout 只是视野加速器, 不是开门前置。
+ * 首次注册后 Memory 恒用 (上游同款缓存, 源位与地形不变)。
+ */
+export function remoteSourcesOf(ctx: TickContext, homeRoomName: string): RemoteSourceEntry[] {
+	const cached = ctx.memory.economy.remoteSources;
+	if (cached && cached.length > 0) return cached;
+	const homeRoom = Game.rooms[homeRoomName];
+	const origin = homeRoom?.find(FIND_MY_SPAWNS)[0]?.pos ?? undefined;
+	if (!origin) return [];
+	// neighborRooms 已含全部 8 邻房 (正交 + 对角), 勿再并 diagonalNeighbors
+	// ——角落房双注册会吃掉预算槽 (20k 实证 4 槽只开 3 房)
+	const rooms = [homeRoomName, ...neighborRooms(homeRoomName)];
+	const list: RemoteSourceEntry[] = [];
+	for (const roomName of rooms) {
+		const room = Game.rooms[roomName];
+		const sources = room ? room.find(FIND_SOURCES) : [];
+		// 无视野房: 引擎 find 不可用, 但源位可从地形推 (上游固定 SRC 布局,
+		// 我们无此假设)——退化为按房间级注册, dist 用 PathFinder 到房心的路径,
+		// 矿工到达获视野后由 ensureRemoteSourceIntel 修正为逐源
+		const anchors: Array<{ x: number; y: number }> = room
+			? sources.map((s) => ({ x: s.pos.x, y: s.pos.y }))
+			: [{ x: 25, y: 25 }];
+		anchors.forEach((a, i) => {
+			const r = PathFinder.search(origin, { pos: new RoomPosition(a.x, a.y, roomName), range: 1 }, { maxOps: 20000 });
+			list.push({ k: `${roomName}:${i}`, room: roomName, i, dist: r.path.length, home: roomName === homeRoomName });
+		});
+	}
+	list.sort((a, b) => (a.home === b.home ? a.dist - b.dist : a.home ? -1 : 1));
+	ctx.memory.economy.remoteSources = list;
+	return list;
+}
+
+/**
+ * 有视野后的逐源修正 (源位实测定型): 把 room:0/room:1 的锚点从房心换成
+ * 真实源位并重算 dist。矿工/reserver 首次进房时调用, 每条只修一次。
+ */
+export function ensureRemoteSourceIntel(ctx: TickContext, homeRoomName: string, remoteRoomName: string): void {
+	const cached = ctx.memory.economy.remoteSources;
+	if (!cached) return;
+	const room = Game.rooms[remoteRoomName];
+	if (!room) return;
+	const sources = room.find(FIND_SOURCES);
+	const origin = Game.rooms[homeRoomName]?.find(FIND_MY_SPAWNS)[0]?.pos;
+	if (!origin) return;
+	for (const entry of cached) {
+		if (entry.room !== remoteRoomName) continue;
+		const src = entry.id ? sources.find((s) => s.id === entry.id) : sources[entry.i];
+		if (!src) continue;
+		if (entry.id) continue; // 已绑定真实源位, 不重算
+		const r = PathFinder.search(origin, { pos: src.pos, range: 1 }, { maxOps: 20000 });
+		entry.dist = r.path.length;
+		entry.id = src.id;
+	}
+	cached.sort((a, b) => (a.home === b.home ? a.dist - b.dist : a.home ? -1 : 1));
+}
+
+/**
+ * 单源实测路长登记 (视野内源直接绑定 id + dist; 注册表未初始化时先建)。
+ * 消费方: 换班提前量与搬运定编的 walkLead。
+ */
+export function registerRemoteSourceDist(
+	ctx: TickContext,
+	homeRoomName: string,
+	source: Source,
+	roomName: string,
+): number {
+	const cached = ctx.memory.economy.remoteSources;
+	if (cached) {
+		const hit = cached.find((e) => e.id === source.id);
+		if (hit) return hit.dist;
+	}
+	const origin = Game.rooms[homeRoomName]?.find(FIND_MY_SPAWNS)[0]?.pos;
+	if (!origin) return 0;
+	const r = PathFinder.search(origin, { pos: source.pos, range: 1 }, { maxOps: 20000 });
+	if (cached) {
+		cached.push({ k: `${roomName}:${source.id}`, room: roomName, i: -1, dist: r.path.length, home: false, id: source.id });
+		cached.sort((a, b) => (a.home === b.home ? a.dist - b.dist : a.home ? -1 : 1));
+	}
+	return r.path.length;
+}
 
 /** 远程源旁容器 (可见房直查): 距源 ≤ containerRange 的第一个容器 */
 function remoteSourceContainer(
@@ -78,14 +179,17 @@ function upsertRemoteCarry(
 	}
 	// 无容器/容器未到发车线的矿工 drop: 堆量过线即回运——远程能量不回运
 	// 等于白挖 (堆按 ENERGY_DECAY 衰减), 这是外矿收入真正的实现段。
-	// 仅限己方预订在身的源: 未预订源容量减半 (1500) 产出细流, 派 carrier
-	// 跨房拉小堆的往返成本 > 货值 (boot 实证 L3 慢 1,374t)。
+	// 批次 AD (上游 hauler 口径): 未预订源照拉 (上游 5/t 照 haul, 预订翻倍
+	// 由 reserver 跟进); rush 档堆线降为 100 (驻点矿工 10/t, 500 线要攒 50t,
+	// 期间堆衰减)——manual 档维持 500 (boot 实证 L3 慢 1,374t 的细流教训)。
 	const reservedByMe =
 		myUsername() !== undefined &&
 		remoteRoom.controller?.reservation?.username === myUsername();
-	if (!reservedByMe) return;
+	const rushDrop = roomModeProfileFor(ctx, homeRoomName).remoteMining === "auto";
+	if (!reservedByMe && remoteRoom.controller?.reservation) return; // 他人预订不碰
+	const dropLine = rushDrop ? 100 : REMOTE_CARRY_CONFIG.dropMinAmount;
 	for (const drop of remoteRoom.find(FIND_DROPPED_RESOURCES, {
-		filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= REMOTE_CARRY_CONFIG.dropMinAmount,
+		filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= dropLine,
 	})) {
 		const key = `carry:${homeRoomName}:remote:drop:${drop.pos.x},${drop.pos.y}`;
 		expected.add(key);
@@ -136,19 +240,17 @@ export function planRemoteHarvest(
 ): void {
 	const profile = roomModeProfileFor(ctx, room.roomName);
 	if (profile.remoteMining === "off") return;
-	// 外矿开门条件 (对齐 Rosmarin race productionGate 语义, 2026-10-18 race 复盘):
-	// ① 采集面铺满 (isProductionSecured) —— 本矿收入稳住才放外矿, 掏空本地采集面
-	//    的老顾虑由该闸承接, 不再用 RCL3 一刀切 (sim 实证 L3@19049 → 外矿永不启动,
-	//    收入上限锁死 20/t, 升级速率 2.65/t);
-	// ② rush auto 档才低门放行; manual 档维持 RCL3 (显式登记房由用户自己把关)。
-	// 外矿采集件无 CARRY 的 drop 风险由外矿 carry 任务闭环承接 (upsertRemoteCarry),
-	// 不再依赖 harvester 体型档。
-	if (room.rcl < 3 && !(profile.remoteMining === "auto" && isProductionSecured(ctx, room))) {
-		return;
-	}
-
 	// 本轮实际存在的回运货源 (容器/掉落堆), 用于清掉消失货源的残留任务
 	const expectedCarryKeys = new Set<string>();
+
+	// 批次 AD (上游整体口径): RCL2 即开门, 无 RCL3/secured 门——上游
+	// REMOTES[rcl] RCL2=4 源; secured 门转由 spawnArbiter 分支序闸承接
+	// (外矿请求在本矿采集面饱和线后, 不再靠任务板前置门)。
+	if (profile.remoteMining === "auto" && room.rcl >= 2) {
+		planAutoRemote(ctx, room, board, expectedCarryKeys);
+		cancelStaleRemoteCarryTasks(ctx, board, room.roomName, expectedCarryKeys);
+		return;
+	}
 
 	if (profile.remoteMining === "manual") {
 		const targets = ctx.memory.economy.remoteTargets ?? [];
@@ -211,90 +313,131 @@ export function planRemoteHarvest(
 		cancelStaleRemoteCarryTasks(ctx, board, room.roomName, expectedCarryKeys);
 		return;
 	}
+}
 
-	// auto 档发展房选取 (race-speedrun 任务5.2): 价值密度排序 + 预算贪心。
-	// 密度 = 源数 / (1 + 线性房距)——近而多源的房先发展 (高密度 = 单位搬运腿
-	// 的收入高); 侦查期无源数据, 按邻房缺省密度 (双源对称地图) 参与排序。
-	// 固定顺序 → 密度排序消除了「列表头部恰好是远房/无源房」的浪费;
-	// 产出任务 (scout/harvest) 的房才消耗配额; 有主/无源的房跳过不占坑。
-	const budget = profile.remoteAutoMaxRooms ?? Number.POSITIVE_INFINITY;
-	const home = roomWorldCoord(room.roomName);
-	const candidates = neighborRooms(room.roomName)
-		.map((neighborName) => {
-			const neighbor = Game.rooms[neighborName];
-			const coord = roomWorldCoord(neighborName);
-			const distance =
-				home && coord
-					? Math.max(
-							Math.abs(home.x - coord.x),
-							Math.abs(home.y - coord.y),
-						)
-					: 1;
-			const sources = neighbor?.find(FIND_SOURCES).length ?? 2;
-			return { neighborName, neighbor, density: sources / (1 + distance) };
-		})
-		.sort((a, b) => b.density - a.density || (a.neighborName < b.neighborName ? -1 : 1));
-	let remaining = budget;
-	for (const { neighborName, neighbor } of candidates) {
-		if (remaining <= 0) break;
-		// 无视野邻房: 派侦查 (到达获视野后由采集任务自然接替)
-		if (!neighbor) {
-			board.upsert({
-				dedupeKey: `scout:${room.roomName}:${neighborName}`,
-				kind: "scout",
-				roomName: room.roomName,
-				targetPos: { x: 25, y: 25, roomName: neighborName },
-				priority: priorityFor("scout"),
-				requiredCapabilities: ["move"],
-			}, ctx.tick);
-			remaining -= 1;
-			continue;
-		}
-		if (neighbor.controller?.my) continue; // 己方房跳过
-		if (neighbor.controller?.owner) continue; // 有主之地不开矿
-		const sources = neighbor.find(FIND_SOURCES);
-		if (sources.length === 0) continue; // 无源房不占发展配额
-		remaining -= 1;
-		// 预订线 (对齐 Rosmarin race): 未预订外矿先订后采, 容量 1500→3000。
-		// 衰减到续订线以下即重发; 他人预订不抢 (reserveController 对他订无效)。
-		const reservation = neighbor.controller?.reservation;
-		const mine = myUsername() !== undefined && reservation?.username === myUsername();
-		if (
-			neighbor.controller &&
-			(!reservation || (mine && reservation.ticksToEnd < RESERVE_CONFIG.refreshTicks))
-		) {
-			board.upsert({
-				dedupeKey: `reserve:${room.roomName}:${neighborName}`,
-				kind: "reserve",
-				roomName: room.roomName,
-				targetId: neighbor.controller.id,
-				targetPos: {
-					x: neighbor.controller.pos.x,
-					y: neighbor.controller.pos.y,
-					roomName: neighborName,
-				},
-				priority: priorityFor("reserve"), // 预订是外矿收入翻倍的前置, 与侦查同档
-				requiredCapabilities: ["claim", "move"],
-			}, ctx.tick);
-		}
-		for (const source of sources) {
-			board.upsert({
-				dedupeKey: `harvest:${room.roomName}:remote:${source.id}`,
-				kind: "harvest",
-				roomName: room.roomName,
-				targetId: source.id,
-				targetPos: {
-					x: source.pos.x,
-					y: source.pos.y,
-					roomName: neighborName,
-				},
-				priority: priorityFor("harvest"), // 与本矿对齐: urgent 门 (70) 之下远程工恒无替补 (bugs (十二))
-				requiredCapabilities: ["work", "move"],
-			}, ctx.tick);
-			upsertRemoteCarry(ctx, board, room.roomName, neighbor, source, expectedCarryKeys);
+/**
+ * auto 档外矿主链 (批次 AD, 上游 getActiveSources 口径):
+ * - 全图注册表 remoteSourcesOf (16+ 源, home 优先 dist 升序);
+ * - 容量驱动预算: 剩余孵化部件容量 ÷ 每源开销 (上游背包容量同源);
+ * - 有视野房: 常规登记 (预订 + harvest + 回运 + 情报修正);
+ * - 无视野房: 直接登记注册表条目对应的**源位未知**任务——矿工带注册表
+ *   dist 出发, 到达获视野后 ensureRemoteSourceIntel 修正源位。
+ *   上游同款: 无视野不是开门前置 (引擎地形全知)。
+ */
+function planAutoRemote(
+	ctx: TickContext,
+	room: RoomObservation,
+	board: TaskBoard,
+	expected: Set<string>,
+): void {
+	const rcl = room.rcl;
+	if (rcl < 2) return;
+	const all = remoteSourcesOf(ctx, room.roomName);
+	// 容量驱动预算 (上游 getActiveSources 背包口径, 批次 AD 三轮): 剩余孵化
+	// 部件容量 ÷ 每源开销——本地编制先扣 (remoteSpawnLeftoverOf 同源), 余量
+	// 自然限制外矿扩张; RCL 固定表 ([.., 4, 16, ..]) 是对上游的误读, RCL3 一夜
+	// 16 源会挤爆孵化线重演 AC 病理。已在岗远程件从容量实扣 (非按任务数虚算)。
+	const leftover = remoteSpawnLeftoverOf(ctx, room.roomName);
+	// 已占坑: 在岗远程件部件实扣
+	let usedParts = 0;
+	for (const record of Object.values(ctx.memory.units)) {
+		if (record.homeRoom !== room.roomName) continue;
+		const creep = Game.creeps[record.name];
+		if (!creep) continue;
+		const code = unitCode(record.unitCode);
+		if (code !== UNIT_CODES.remoteMiner && code !== UNIT_CODES.reserver) continue;
+		const taskId = creep.memory.taskId;
+		const taskRoom = taskId !== undefined ? ctx.memory.tasks[taskId]?.targetPos?.roomName : undefined;
+		if (taskRoom === undefined || taskRoom === room.roomName) continue;
+		usedParts += creep.body.length;
+	}
+	// 每源开销 ~30 部件当量: 矿工 9 件 × 寿命系数 + hauler 距离折算
+	// (上游 computeRemoteSourceSpawnUsage: minerBody × 1500/(1500-dist) + dist×0.08)
+	const budget = Math.floor((leftover - usedParts) / 30);
+	if (budget <= 0) return;
+	// 预算裁剪: 本矿源恒保留 (home), 远程取最近 N 条 (上游 remotes slice 同款)
+	const remotes: RemoteSourceEntry[] = [];
+	for (const entry of all) {
+		if (entry.home) continue;
+		if (remotes.length >= budget) break;
+		remotes.push(entry);
+	}
+	// 按房分组登记 (预订每房一条)
+	const byRoom = new Map<string, RemoteSourceEntry[]>();
+	for (const entry of remotes) {
+		const list = byRoom.get(entry.room);
+		if (list) list.push(entry);
+		else byRoom.set(entry.room, [entry]);
+	}
+	// 占位任务退役前置: 有视野的房一律撤 probe (不限预算内)——视野到达后
+	// dist 修正可能把该房挤出预算, 遍历内撤销会漏, probe 与正式任务并存
+	// 分裂定编 (20k 实证 3 房双份任务)
+	for (const probe of board.list({ kinds: ["harvest"], roomName: room.roomName, statuses: ["available", "leased", "in_progress"] })) {
+		const probeRoom = probe.targetPos?.roomName;
+		if (probe.targetId === undefined && probeRoom !== undefined && Game.rooms[probeRoom]) {
+			board.cancel(probe.id, ctx.tick, "subject-gone");
 		}
 	}
-	cancelStaleRemoteCarryTasks(ctx, board, room.roomName, expectedCarryKeys);
+	for (const [neighborName, entries] of byRoom) {
+		const neighbor = Game.rooms[neighborName];
+		if (neighbor) {
+			// 有视野: 占位退役已前置统一处理, 这里只做情报修正 + 己方/有主跳过
+			ensureRemoteSourceIntel(ctx, room.roomName, neighborName);
+			if (neighbor.controller?.my || neighbor.controller?.owner) continue;
+			if (neighbor.find(FIND_SOURCES).length === 0) continue;
+			const reservation = neighbor.controller?.reservation;
+			const mine = myUsername() !== undefined && reservation?.username === myUsername();
+			if (
+				neighbor.controller &&
+				(!reservation || (mine && reservation.ticksToEnd < RESERVE_CONFIG.refreshTicks))
+			) {
+				board.upsert({
+					dedupeKey: `reserve:${room.roomName}:${neighborName}`,
+					kind: "reserve",
+					roomName: room.roomName,
+					targetId: neighbor.controller.id,
+					targetPos: { x: neighbor.controller.pos.x, y: neighbor.controller.pos.y, roomName: neighborName },
+					priority: priorityFor("reserve"),
+					requiredCapabilities: ["claim", "move"],
+				}, ctx.tick);
+			}
+			for (const source of neighbor.find(FIND_SOURCES)) {
+				registerRemoteSourceDist(ctx, room.roomName, source, neighborName);
+				board.upsert({
+					dedupeKey: `harvest:${room.roomName}:remote:${source.id}`,
+					kind: "harvest",
+					roomName: room.roomName,
+					targetId: source.id,
+					targetPos: { x: source.pos.x, y: source.pos.y, roomName: neighborName },
+					priority: priorityFor("harvest"),
+					requiredCapabilities: ["work", "move"],
+				}, ctx.tick);
+				upsertRemoteCarry(ctx, board, room.roomName, neighbor, source, expected);
+			}
+			continue;
+		}
+		// 无视野: 上游同款直接开矿 (引擎地形全知, 无视野不是前置)——发
+		// **无 targetId 占位采集任务** (矿工到房获视野后自认空闲源, 下一 tick
+		// 走有视野分支挂带 id 的正式任务), scout 并行加速视野; 注册表条目
+		// 已含实测 dist, 换班提前量不依赖视野。
+		board.upsert({
+			dedupeKey: `harvest:${room.roomName}:remote:${neighborName}:probe${entries[0]?.i ?? 0}`,
+			kind: "harvest",
+			roomName: room.roomName,
+			targetPos: { x: 25, y: 25, roomName: neighborName },
+			priority: priorityFor("harvest"),
+			requiredCapabilities: ["work", "move"],
+		}, ctx.tick);
+		expected.add(`harvest:${room.roomName}:remote:${neighborName}:probe${entries[0]?.i ?? 0}`);
+		board.upsert({
+			dedupeKey: `scout:${room.roomName}:${neighborName}`,
+			kind: "scout",
+			roomName: room.roomName,
+			targetPos: { x: 25, y: 25, roomName: neighborName },
+			priority: priorityFor("scout"),
+			requiredCapabilities: ["move"],
+		}, ctx.tick);
+	}
 }
 
 /** 活跃远程采集任务数 (定编口径: 本矿 harvester 编制 = 本矿源数 + 远程任务数)。

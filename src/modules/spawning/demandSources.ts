@@ -5,7 +5,7 @@
  * 本文件不做仲裁 (闸门/让位/预算等待归 spawnArbiter), 不触原生孵化 API。
  */
 import type { TickContext } from "@/core";
-import { roomModeFor } from "@/modules/strategy";
+import { roomModeFor, roomModeProfileFor } from "@/modules/strategy";
 import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import type { TaskBoard } from "@/modules/tasks";
@@ -161,7 +161,6 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 	let upgraderNeed = 0;
 	let carrierNeed = 0;
 	let pileBoost = 0;
-	let reserverNeed = 0;
 	const remoteHarvest = activeRemoteHarvestCount(ctx, board);
 	const remoteCarryBacklog = activeRemoteCarryBacklog(ctx, board);
 	const scoutNeed = activeScoutCount(ctx, board);
@@ -178,12 +177,21 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 		const pile = droppedPileEnergy(room);
 		pileBoost += (pile > 3000 ? 2 : pile > 1000 ? 1 : 0);
 	}
-	// 外矿预订件定编: 活跃跨房 reserve 任务数 (预订完成即收编)
-	reserverNeed = board
-		.list({ kinds: ["reserve"], statuses: ["available", "leased", "in_progress"] })
-		.filter((t) => t.targetPos?.roomName && t.targetPos.roomName !== t.roomName).length;
+	// 批次 AD (上游整体口径): rush 档本矿编制与外矿彻底分离——
+	// harvester 定编 = 本矿源数 (remoteHarvest 不并入, 外矿归 remoteMiner);
+	// carrier 定编不随外矿 backlog 加编 (外矿 haul 由公式化的 remoteMiner
+	// 配套 carrier 承接, 详见 spawnDirector raceRemote 段)。
+	// AC 病理根治: remoteHarvest 并入 harvester 定编会在 RCL2 撑大本矿目标,
+	// 分配器把本矿孵化体虹吸给远程任务, 本矿采集面塌方 (L4 37,798 实证)。
+	const rushMode = rooms.some((r) => roomModeProfileFor(ctx, r.roomName).remoteMining === "auto");
+	const localRemoteHarvest = rushMode ? 0 : remoteHarvest;
 	return {
-		harvester: Math.max(1, harvestStaffing + remoteHarvest),
+		harvester: Math.max(1, harvestStaffing + localRemoteHarvest),
+		// 外矿驻点矿工 (批次 AD): 不进 standing 常驻环 (standing prio 12 垫底
+		// 会与 raceRemote 的分支序请求双轨打架, 16k 实证 standing 12 恒驻池
+		// 而 raceRemote 请求被闸拦 → 全场 0 只)——孵化全归 spawnDirector
+		// raceRemoteRequests 分支序段。
+		remoteMiner: 0,
 		scout: scoutNeed,
 		// universal: 常驻 1 只兜底 (bootstrap 通道另有硬保障)
 		universal: 1,
@@ -200,8 +208,10 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 			carrierNeed +
 				pileBoost +
 				// 外矿回运积压加编 (与本矿 pile 同口径): 远程容器/掉落堆存量
-				// 是回运缺口信号, 不编则源头能量按衰减白白流失
-				(remoteCarryBacklog > 3000 ? 2 : remoteCarryBacklog > 1000 ? 1 : 0),
+				// 是回运缺口信号, 不编则源头能量按衰减白白流失。
+				// rush 档不加 (批次 AD): 外矿 haul 编制由 spawnDirector raceRemote
+				// 段按上游公式逐源定编 (CARRY 部件数直接配), 不进本矿 carrier 总数
+				(rushMode ? 0 : remoteCarryBacklog > 3000 ? 2 : remoteCarryBacklog > 1000 ? 1 : 0),
 		),
 		"rush-courier": 0,
 		// 特化单位: 结构到位才激活 (RCL 门控短路, 避免低 RCL 每帧遍历)
@@ -220,8 +230,10 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 		],
 		// 扩张占领件: 活跃 claim 任务时 1 只 (任务消失编制即收)
 		claimer: board.list({ kinds: ["claim"] }).some((t) => t.status !== "completed") ? 1 : 0,
-		// 外矿预订件: 活跃 reserve 任务数 (预订完成即收编)
-		reserver: reserverNeed,
+	// 外矿预订件定编已归零 (批次 AD 四轮): 孵化全走 spawnDirector raceRemote
+	// 段的上游 claims=2 全局上限; standing 按任务数定编会每房 1 只绕过上限,
+	// 双轨并发挤占 RM 孵化窗口 (24k 实证 reserver 5 / RM 0)
+	reserver: 0,
 	};
 }
 

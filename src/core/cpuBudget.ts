@@ -5,7 +5,7 @@
  */
 export type PriorityBand = "P0" | "P1" | "P2" | "P3";
 
-export type SkipReason = "budget" | "circuit" | "bootstrap-loop" | "critical-worker-wait";
+export type SkipReason = "budget" | "circuit" | "bootstrap-loop" | "critical-worker-wait" | "remote-budget";
 
 export interface CpuAccess {
 	getUsed(): number;

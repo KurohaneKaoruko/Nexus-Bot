@@ -1094,6 +1094,17 @@ function runRemoteHarvest(
 	const targetRoom = task.targetPos?.roomName;
 	if (!targetRoom) return;
 
+	// 驻点矿工档 (批次 AD, 上游 remoteMiner 口径): auto 档 (rush) 的远程矿工
+	// 恒驻源边 drop 采矿, 回运全交专职 hauler; manual 档 (main 系) 维持自回运。
+	const stationary =
+		roomModeProfileFor(ctx, task.roomName).remoteMining === "auto" &&
+		creep.unitCode === UNIT_CODES.remoteMiner;
+
+	if (stationary) {
+		runStationaryRemoteMiner(ctx, broker, creep, task, targetRoom);
+		return;
+	}
+
 	// 满载且在目标房: 优先卸源旁容器 (W1-2 carrier 链, 驻点化零往返);
 	// 无容器再走自回运兜底 (远程容器由本矿 carrier 跨房 carry 接力)
 	if (creep.carryEnergy > 0 && creep.freeCapacity === 0 && creep.roomName === targetRoom) {
@@ -1339,6 +1350,117 @@ function runRemoteHarvest(
 		pipeline: "move",
 		reason: "remote-room",
 		dedupeKey: `${creep.name}:move:${task.id}`,
+	});
+}
+
+/**
+ * 驻点远程矿工 (批次 AD, 上游 miner 行为逐位):
+ * - 贴源 harvest (恒驻, 无往返);
+ * - 满仓: 邻格 hauler (carry 型 creep) 在场 → transfer; 否则 drop 成堆
+ *   (上游 mxfer=0 口径: 矿工不等 hauler, 堆给 hauler pickup);
+ * - 容器: 仅 RCL ≥ minerBoxRcl (上游 9, 40k 窗口外) 才建——窗口内纯
+ *   drop 堆 + hauler, 零基建, 省下的 builder 工全在矿上。
+ */
+function runStationaryRemoteMiner(
+	ctx: TickContext,
+	broker: ActionBroker,
+	creep: CreepSummary,
+	task: NexusTask,
+	targetRoom: string,
+): void {
+	const liveRoom = Game.rooms[targetRoom];
+	// 占位任务 (无 targetId): 到房获视野后自认空闲源 (无 creep 贴身的),
+	// 注册表/任务由 ensureRemoteSourceIntel + 有视野分支下拍修正
+	const source = liveRoom
+		? ((Game.getObjectById(task.targetId ?? "") as Source | null) ??
+			liveRoom
+				.find(FIND_SOURCES)
+				.filter((s) => liveRoom.lookForAtArea(LOOK_CREEPS, s.pos.y - 1, s.pos.x - 1, s.pos.y + 1, s.pos.x + 1, true)
+					.filter((r) => r.creep && r.creep.my && r.creep.name !== creep.name && r.creep.memory.taskId === task.id)
+					.length === 0)[0] ?? null)
+		: null;
+	if (!source) {
+		broker.submit({
+			id: `${creep.name}-go-${ctx.tick}`,
+			tick: ctx.tick,
+			taskId: task.id,
+			actorName: creep.name,
+			kind: "move",
+			targetPos: { x: task.targetPos?.x ?? 25, y: task.targetPos?.y ?? 25, roomName: targetRoom },
+			priority: task.priority,
+			pipeline: "move",
+			reason: "remote-room",
+			dedupeKey: `${creep.name}:move:${task.id}`,
+		});
+		return;
+	}
+	const d = Math.max(Math.abs(creep.x - source.pos.x), Math.abs(creep.y - source.pos.y));
+	if (d > 1) {
+		broker.submit({
+			id: `${creep.name}-m-${ctx.tick}`,
+			tick: ctx.tick,
+			taskId: task.id,
+			actorName: creep.name,
+			kind: "move",
+			targetPos: { x: source.pos.x, y: source.pos.y, roomName: targetRoom },
+			priority: task.priority,
+			pipeline: "move",
+			reason: "remote-source",
+			dedupeKey: `${creep.name}:move:${task.id}`,
+		});
+		return;
+	}
+	// 满仓交接: 邻格 hauler 优先 (零损耗), 否则 drop (上游满仓即弃口径)
+	if (creep.freeCapacity === 0 && creep.carryEnergy > 0) {
+		const live = ctx.world.current;
+		const hauler = live
+			? Object.values(live.rooms[targetRoom]?.creeps ?? {}).find(
+					(c) =>
+						c.name !== creep.name &&
+						(c.unitCode === UNIT_CODES.carrier || c.unitCode === UNIT_CODES.universal) &&
+						c.freeCapacity > 0 &&
+						Math.max(Math.abs(c.x - creep.x), Math.abs(c.y - creep.y)) <= 1,
+				)
+			: undefined;
+		if (hauler) {
+			broker.submit({
+				id: `${creep.name}-rx-${ctx.tick}`,
+				tick: ctx.tick,
+				taskId: task.id,
+				actorName: creep.name,
+				kind: "transfer",
+				targetId: hauler.id,
+				resourceType: "energy",
+				priority: task.priority,
+				pipeline: "carry",
+				dedupeKey: `${creep.name}:carry:${task.id}`,
+			});
+			return;
+		}
+		broker.submit({
+			id: `${creep.name}-rd-${ctx.tick}`,
+			tick: ctx.tick,
+			taskId: task.id,
+			actorName: creep.name,
+			kind: "drop",
+			targetPos: { x: creep.x, y: creep.y, roomName: targetRoom },
+			resourceType: "energy",
+			priority: task.priority,
+			pipeline: "carry",
+			dedupeKey: `${creep.name}:drop:${task.id}`,
+		});
+		return;
+	}
+	broker.submit({
+		id: `${creep.name}-hv-${ctx.tick}`,
+		tick: ctx.tick,
+		taskId: task.id,
+		actorName: creep.name,
+		kind: "harvest",
+		targetId: source.id,
+		priority: task.priority,
+		pipeline: "work",
+		dedupeKey: `${creep.name}:work:${task.id}`,
 	});
 }
 

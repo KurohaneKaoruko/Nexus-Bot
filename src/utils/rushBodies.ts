@@ -129,6 +129,38 @@ export function buildRushHarvesterBody(
 }
 
 /**
+ * 驻点远程矿工体型 (批次 AD, 上游 remoteMiner 口径): W 拉满 (单矿再生上限封顶),
+ * M = ceil(W/2) 平地 (沼泽 ceil(W/3)), 收尾 1 CARRY 承接换源/自喂。
+ * 上游 body: W×w + C×1 + M×ceil(w/2); w = floor((cap-150)/100), 预算不足时 w 递减。
+ * 返回 null 表示预算 < W2M1C1 (250), 调用方跳过本轮。
+ */
+export function buildStationaryRemoteMinerBody(
+	budget: number,
+	options: { slowTerrain?: boolean } = {},
+): BodyPartConstant[] | null {
+	if (budget < BODYPART_COST[WORK] * 2 + BODYPART_COST[MOVE] + BODYPART_COST[CARRY]) {
+		return null;
+	}
+	let work = Math.min(
+		maxHarvestWork(),
+		Math.floor((budget - BODYPART_COST[CARRY] - BODYPART_COST[MOVE]) / BODYPART_COST[WORK]),
+	);
+	while (
+		work >= 2 &&
+		work * BODYPART_COST[WORK] + BODYPART_COST[MOVE] + BODYPART_COST[CARRY] > budget
+	) {
+		work -= 1;
+	}
+	const perMove = options.slowTerrain ? 3 : 2;
+	const move = Math.max(1, Math.ceil(work / perMove));
+	const body: BodyPartConstant[] = [];
+	appendParts(body, WORK, work);
+	appendParts(body, MOVE, move);
+	body.push(CARRY);
+	return body;
+}
+
+/**
  * upgrader 体型 (WORK 密度优先):
  * 以 maxWork (定编缺口) 为上限, 自高向低试装 WORK, 取能量容量装得下的最大 WORK 数。
  *

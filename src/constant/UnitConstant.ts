@@ -65,6 +65,7 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 
 	/* 外矿 */
 	reserver: "预定体",
+	remoteMiner: "外矿矿工",
 	"out-build": "外矿建造体",
 	"out-defend": "外矿防御体",
 	"out-2attack": "外矿双人突击体",
