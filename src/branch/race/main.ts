@@ -1,5 +1,6 @@
 /**
- * race 变体入口: 冲级服 (roomMode=rush 固定档, speedrun 榜口径)。
+ * race 变体入口: 冲级服 Nexus 主线 (roomMode=rush 固定档, speedrun 榜口径)。
+ * 构建开关 SPEEDRUN_MODE=1 时 rolldown 改用 ./speedrunEntry (冲级赛直通)。
  * 私服环境垫片保持首个 import (缺 Power 类/市场 API 时补桩降级)。
  */
 import "../compat";
@@ -24,6 +25,7 @@ import { EventBus } from "@/core/event";
 import { Nukes } from "@/modules/industry";
 import { InterShard } from "@/modules/intershard";
 import { Expansion } from "@/modules/external";
+import { Comms } from "@/modules/comms";
 import { FunnelEnd, InterShardEnd, ClearEnd, StatisticsEnd } from "@/core/endPhase";
 import { EventBusEnd } from "@/core/event";
 import { Visuals } from "@/modules/visuals";
@@ -70,6 +72,7 @@ nexus.use(
 	Nukes,
 	InterShard,
 	Expansion,
+	Comms,
 	EventBusEnd,
 	FunnelEnd,
 	InterShardEnd,

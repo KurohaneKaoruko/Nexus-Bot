@@ -20,6 +20,7 @@ import { EventBus } from "@/core/event";
 import { Nukes } from "@/modules/industry";
 import { InterShard } from "@/modules/intershard";
 import { Expansion } from "@/modules/external";
+import { Comms } from "@/modules/comms";
 import { FunnelEnd, InterShardEnd, ClearEnd, StatisticsEnd } from "@/core/endPhase";
 import { EventBusEnd } from "@/core/event";
 import { InvariantWatch } from "@/core/invariantWatch";
@@ -50,6 +51,7 @@ nexus.use(
 	Nukes,
 	InterShard,
 	Expansion,
+	Comms,
 	EventBusEnd,
 	FunnelEnd,
 	InterShardEnd,
