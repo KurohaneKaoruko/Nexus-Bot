@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { SPAWN, S26, S27, SIN, BAYS, EXIT, DXY, K, configure, jitterK, cost, shape } from "./layout";
+import { SPAWN, S26, S27, SIN, BAYS, EXIT, DXY, K, ANCHOR_OFF, configure, jitterK, cost, shape } from "./layout";
 import { plan, roads } from "./economy";
 import { unjam, shove } from "./traffic";
 import { towAssign, towDest } from "./towing";
@@ -22,13 +22,14 @@ export function loop() {
 	// bad landing room can never outlive that run (run 35 stuck ~38 runs silent this way)
 	if (spawn0) newRun(spawn0);
 	if (spawn0 && !Memory.roomOk) {
+		// 源位固定 (新旧世界源/地形逐位一致); ctrl/spawn 位置由 configure→reanchor 运行时适配,
+		// 这里只拦「源都对不上」或「重锚定也没救回来」的世界 (旋转朝向/关键落点压墙)
 		const ctrl = spawn0.room.controller;
 		Memory.roomOk =
 			spawn0.room.lookForAt(LOOK_SOURCES, 21, 13).length > 0 &&
 			spawn0.room.lookForAt(LOOK_SOURCES, 30, 29).length > 0 &&
 			!!ctrl &&
-			ctrl.pos.x === 17 &&
-			ctrl.pos.y === 25;
+			(ANCHOR_OFF.re || (ctrl.pos.x === 17 && ctrl.pos.y === 25));
 		if (!Memory.roomOk) return;
 	}
 	jitterK();
@@ -146,7 +147,15 @@ export function loop() {
 			global.WANT.find((w) => w.type === "hubFiller" && cost(w.body) <= room.energyAvailable);
 		if (f) return spawnIt(f);
 	}
-	if (!s || cost(s.body) > room.energyAvailable) return;
+	if (!s || cost(s.body) > room.energyAvailable) {
+		// 重锚定世界的死锁解法: 队头付不起时 (ext 慢导致 cap 低位), 顺扫可付候选保住经济。
+		// 标准世界不走此路径 (ext 快速建成, 队头总是可付), 基线逐位不动。
+		if (s && ANCHOR_OFF.re && global.WANT) {
+			const alt = global.WANT.find((w) => w !== s && cost(w.body) <= room.energyAvailable);
+			if (alt) return spawnIt(alt);
+		}
+		return;
+	}
 	spawnIt(s);
 }
 

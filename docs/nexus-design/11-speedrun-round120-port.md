@@ -33,6 +33,7 @@
 | upWorkAvailable/OnPost/Fed 遥测 | telemetry.ts |
 | loop configure() 首位调用 | loop.ts |
 | 标准房哨兵 (roomOk, 非标准房静默待机) | loop.ts (双仓库同步) |
+| 运行时重锚定 reanchor (世界重开地标重摆保活, 见 docs/bugs/world-reset-landmark-drift.md) | layout.ts |
 
 ## 修复的移植断链
 

@@ -212,7 +212,7 @@ const TYPES = {
 			// keepHome: a hauler that cannot finish the round trip stays home to die empty. A load dropped in a
 			// remote room decays at ceil(amount/1000) per tick and nothing walks back for it.
 			if (K.keepHome && !c.store.energy && c.ticksToLive < 2 * (c.memory.dist || 0) + 12)
-				return c.moveTo(pos(28, 34, home), { range: 2, reusePath: 10 });
+				return c.moveTo(pos(SPAWN.x + 11, SPAWN.y + 3, home), { range: 2, reusePath: 10 });
 			// The opening miner has no CARRY, so its helper cannot hand energy to it.
 			// Recover the helper's pile as well as the main miner's output.
 			if (K.recoverAlt && c.memory.room === home && c.room.name === home) {
@@ -290,7 +290,7 @@ const TYPES = {
 		if (K.chain) return laneUnload(c, room, home);
 		const bx = boxes(room).filter((b) => b.free > 0);
 		// boxes full: help the filler, or park out of the way so the filler can reach the boxes
-		if (!bx.length) return c.moveTo(pos(28, 34, home), { range: 2, reusePath: 10 });
+		if (!bx.length) return c.moveTo(pos(SPAWN.x + 11, SPAWN.y + 3, home), { range: 2, reusePath: 10 });
 		const here = bx.find((b) =>
 			b.c ? c.pos.getRangeTo(b.x, b.y) <= 1 : c.pos.isEqualTo(b.x, b.y),
 		);
@@ -437,7 +437,7 @@ function laneUnload(c, room, home) {
 				return c.moveTo(SPAWN.x, SPAWN.y + 1, { reusePath: 5 });
 		}
 	}
-	if (c.pos.y === LANE_Y && c.pos.x >= 14 && c.pos.x <= 20) {
+	if (c.pos.y === LANE_Y && c.pos.x >= BOX.x - 3 && c.pos.x <= BOX.x + 3) {
 		if (SIN && c.pos.isNearTo(SPAWN.x, SPAWN.y)) {
 			const sp = room
 				.lookForAt(LOOK_STRUCTURES, SPAWN.x, SPAWN.y)
@@ -460,7 +460,7 @@ function laneUnload(c, room, home) {
 					RESOURCE_ENERGY,
 				);
 			const lanePile1 = _.sum(
-				room.lookForAtArea(LOOK_RESOURCES, LANE_Y, 14, LANE_Y, 20, true),
+				room.lookForAtArea(LOOK_RESOURCES, LANE_Y, BOX.x - 3, LANE_Y, BOX.x + 3, true),
 				(r) => r.resource.amount,
 			);
 			if (lanePile1 < K.lanePileMax) return c.drop(RESOURCE_ENERGY);
@@ -478,7 +478,7 @@ function laneUnload(c, room, home) {
 				RESOURCE_ENERGY,
 			);
 		const lanePile = _.sum(
-			room.lookForAtArea(LOOK_RESOURCES, LANE_Y, 14, LANE_Y, 20, true),
+			room.lookForAtArea(LOOK_RESOURCES, LANE_Y, BOX.x - 3, LANE_Y, BOX.x + 3, true),
 			(r) => r.resource.amount,
 		);
 		if (lanePile < K.lanePileMax) return c.drop(RESOURCE_ENERGY);
@@ -530,7 +530,7 @@ function laneUnload(c, room, home) {
 			((renewMe || spawnShort) && Math.abs(p.x - SPAWN.x) <= 1 ? 3000 : 0),
 	);
 	if (t !== Infinity && t) return c.moveTo(t, { reusePath: 5 });
-	return c.moveTo(pos(17, LANE_Y + 2, home), { range: 1, reusePath: 5 });
+	return c.moveTo(pos(BOX.x, LANE_Y + 2, home), { range: 1, reusePath: 5 });
 }
 
 // Chained upgraders (ultimate-bot's relay): upgrade, then one carry action: pass what this tick doesn't burn

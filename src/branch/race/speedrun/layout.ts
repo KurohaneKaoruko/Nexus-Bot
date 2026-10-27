@@ -22,6 +22,12 @@ export const SRC = [
 	{ x: 30, y: 29, mx: 29, my: 28, ax: 30, ay: 28 },
 ];
 export const CTRL = { x: 17, y: 25 };
+// 重锚定: 服务器世界重开会重摆地标 (地形不变)。两个独立坐标系:
+//  - ctrl 系 (升级块/槽位/lane) 锚在控制器;
+//  - spawn 系 (hub 模板/泊位) 锚在 spawn。
+// 标准地标下两组偏移都是 (0,0), 几何与旧世界逐位一致 (基线不动);
+// 重摆世界按实际地标平移 (刚体平移, 内部相对几何不变)。旋转朝向不做 (走 roomOk 静默保底)。
+export const ANCHOR_OFF = { cx: 0, cy: 0, sx: 0, sy: 0, re: false };
 
 const K_SLOTS_LANE = globalThis.__K && "lane" in globalThis.__K ? globalThis.__K.lane : 1;
 // spawn27: the spawn lands inside the upgrade block at (17,27), so the upgraders around it and the haulers
@@ -65,13 +71,21 @@ export const RBAY = BAYS || S29B; // haulers due for renewal stop on a BAY tile 
 //    nearest box, haulers unload from (15|17|19, 28). Slots fill far side first.
 // K.ring overrides the RCL gate entirely (1 = ring at every RCL, the failed pure shape).
 export const RING = globalThis.__K && "ring" in globalThis.__K ? globalThis.__K.ring : 0;
-export const RING_BOXES = [TPL_CONTAINERS[3]]; // (17,27) — the legacy centre tile: no demolition on the switch
+// 升级块三箱 = ctrl 系几何 (ctrl(17,25) 相对偏移: 箱行 y=27 在 ctrl 下方 +2), 不再从
+// spawn 系模板直取——世界重摆后 ctrl 与 spawn 可能分道, 箱子必须钉在控制器旁 (range 3 内)
+const CTRL_BOX_OFF = [
+	[-2, 2],
+	[0, 2],
+	[2, 2],
+]; // (15,27)(17,27)(19,27)
+const mkBoxes = (cx, cy) => CTRL_BOX_OFF.map(([dx, dy]) => ({ x: cx + dx, y: cy + dy }));
+export const RING_BOXES = [mkBoxes(17, 25)[1]]; // (17,27) — the legacy centre tile: no demolition on the switch
 export const FULL_BOXES = S27
 	? [
 			{ x: 15, y: 27 },
 			{ x: 19, y: 27 },
 		]
-	: TPL_CONTAINERS.slice(2).map(([x, y]) => ({ x, y }));
+	: mkBoxes(17, 25);
 // per-tick shape state: RING_HOME mirrors RING for the current RCL, refreshed by shape()
 export const RING_HOME = { v: RING };
 export const shape = (rcl) => {
@@ -88,7 +102,7 @@ export const shape = (rcl) => {
 };
 export const BOXES = [...(RING_HOME.v ? RING_BOXES : FULL_BOXES)];
 export const BOX = { x: 17, y: 27 }; // centre of the block, for distances
-export const LANE_Y = 28; // the drive-through row under the upgrade block
+export let LANE_Y = 28; // the drive-through row under the upgrade block
 // ring: how many of the leading SLOTS are box-adjacent (the self-serve inner posts)
 // row 28 stays a drive-through lane: every tile on it touches a box (legacy) or the one box (ring), haulers never have to back out
 const RING_SLOTS = [
@@ -239,6 +253,130 @@ export const HUBS = [
 ];
 
 const SITE_ORDER = { extension: 0, container: 1 }; // build order
+
+// ---------- 重锚定 (世界重摆保活) ----------
+// 服务器世界重开会重摆地标 (地形逐位不变, ctrl/spawn 换位, 源不动)。探测实际地标,
+// 把 ctrl 系 (升级块/槽位/lane) 与 spawn 系 (hub/泊位) 各自平移到实际位置。仅做刚体
+// 平移——朝向旋转会破坏 lane 的横行语义 (LANE_Y 消费全是 y===LANE_Y 行判定), 不做,
+// 那类世界走 roomOk 静默保底。标准地标 (ctrl 17,25 / spawn 17,31) 下偏移全零,
+// 几何与旧世界逐位一致 (4×20k 基线不动)。
+const anchorDone = { v: false };
+function reanchor() {
+	if (anchorDone.v) return;
+	const spawnObj = Object.values(Game.spawns)[0];
+	const ctrlObj = spawnObj && spawnObj.room.controller;
+	if (!spawnObj || !ctrlObj) return; // 无 spawn/控制器: 等下一 tick (profileReady 已置位, 靠本标志重试)
+	anchorDone.v = true;
+	const cx = ctrlObj.pos.x - 17;
+	const cy = ctrlObj.pos.y - 25;
+	const sx = spawnObj.pos.x - 17;
+	const sy = spawnObj.pos.y - 31;
+	if (!cx && !cy && !sx && !sy) return; // 标准世界: 恒等
+	// 平移合法性: 箱体/lane (硬几何, 不可剔) 必须全平地; 槽位允许落墙 (下方按地形剔除)
+	const ter = spawnObj.room.getTerrain();
+	const plain = (x, y) => x >= 0 && x <= 49 && y >= 0 && y <= 49 && ter.get(x, y) === 0;
+	const ctrlPts = [
+		...CTRL_BOX_OFF.map(([dx, dy]) => [17 + cx + dx, 25 + cy + dy]),
+		...[14, 15, 16, 17, 18, 19, 20].map((x) => [x + cx, LANE_Y + cy]),
+	];
+	const spawnPts = [
+		[17 + sx, 30 + sy],
+		...HUBS[0].fill.map(([x, y]) => [x + sx, y + sy]),
+		...HUBS[0].ext.map(([x, y]) => [x + sx, y + sy]),
+	];
+	const badC = ctrlPts.filter(([x, y]) => !plain(x, y));
+	const badS = spawnPts.filter(([x, y]) => !plain(x, y));
+	if (badC.length || badS.length) return;
+	ANCHOR_OFF.cx = cx;
+	ANCHOR_OFF.cy = cy;
+	ANCHOR_OFF.sx = sx;
+	ANCHOR_OFF.sy = sy;
+	ANCHOR_OFF.re = true;
+	// ctrl 系: 控制器/升级块/槽位/lane 整体平移
+	CTRL.x += cx;
+	CTRL.y += cy;
+	BOX.x += cx;
+	BOX.y += cy;
+	LANE_Y += cy;
+	RING_BOXES.length = 0;
+	RING_BOXES.push({ x: 17 + cx, y: 27 + cy });
+	FULL_BOXES.length = 0;
+	FULL_BOXES.push(
+		...(S27 ? [{ x: 15 + cx, y: 27 + cy }, { x: 19 + cx, y: 27 + cy }] : mkBoxes(CTRL.x, CTRL.y)),
+	);
+	BOXES.length = 0;
+	BOXES.push(...(RING_HOME.v ? RING_BOXES : FULL_BOXES));
+	for (const s of RING_SLOTS) {
+		s[0] += cx;
+		s[1] += cy;
+	}
+	for (const s of FULL_SLOTS) {
+		s[0] += cx;
+		s[1] += cy;
+	}
+	// 槽位落墙剔除 (保持 lane-first 优先序)
+	const keepFull = FULL_SLOTS.filter(([x, y]) => plain(x, y));
+	FULL_SLOTS.length = 0;
+	FULL_SLOTS.push(...keepFull);
+	// 喂料侧重排: 基线里 hub1 在 lane 正南, hauler 进 lane 即卸在升级工脚边; 世界重摆后
+	// hub 可能偏向一侧, 就近丢下的堆只落在入口端——按距 hub 升序排槽位, 让 slot 0 站在
+	// 堆的落点上 (标准世界不走这里, lane-first 调优序不动)
+	const h0 = [17 + sx, 30 + sy];
+	const byHub = (a, b) =>
+		Math.max(Math.abs(a[0] - h0[0]), Math.abs(a[1] - h0[1])) -
+		Math.max(Math.abs(b[0] - h0[0]), Math.abs(b[1] - h0[1]));
+	FULL_SLOTS.sort(byHub);
+	RING_SLOTS.sort(byHub);
+	SLOTS.length = 0;
+	SLOTS.push(...(RING_HOME.v ? RING_SLOTS : FULL_SLOTS));
+	// spawn 系: spawn/泊位/hub 模板整体平移 (KEEP_CLEAR/EXIT 引用同一批数组, 自动跟随)
+	SPAWN.x += sx;
+	SPAWN.y += sy;
+	for (const b of BAY) {
+		b[0] += sx;
+		b[1] += sy;
+	}
+	for (const h of HUBS) {
+		h.c[0] += sx;
+		h.c[1] += sy;
+		for (const f of h.fill) {
+			f[0] += sx;
+			f[1] += sy;
+		}
+		for (const e of h.ext) {
+			e[0] += sx;
+			e[1] += sy;
+		}
+	}
+	// S29B/S26 出口是 ctrl 系行上的点, 按 ctrl 偏移重算; 基准档出口 = hub1 容器引用, 已随平移
+	if (S29B) {
+		EXIT[0] = 17 + cx;
+		EXIT[1] = 28 + cy;
+	} else if (S26) {
+		EXIT[0] = 17 + cx;
+		EXIT[1] = 27 + cy;
+	}
+	SPF_POS[0] += cx;
+	SPF_POS[1] += cy;
+	// K.parkX/parkY (默认 21,27) 是 ctrl 系散点; 实验覆盖值 (__K) 视作绝对坐标不动
+	if (!globalThis.__K || !("parkX" in globalThis.__K)) K.parkX += cx;
+	if (!globalThis.__K || !("parkY" in globalThis.__K)) K.parkY += cy;
+	// S27 档 SPAWN 落在升级块内 (ctrl 系), 其余档 SPAWN 是地标本身 (spawn 系)——上面已按 sx/sy 平移,
+	// S27 是默认关闭的实验旋钮且标准世界恒等, 不为它做双系映射
+	if (S27) {
+		SPAWN.x += cx - sx;
+		SPAWN.y += cy - sy;
+	}
+	// 诊断锚: 服务器端 eval 回读 Memory.anchor 即可确认平移量与槽位裁剪 (无 console 噪音)
+	Memory.anchor = {
+		ctrl: [ctrlObj.pos.x, ctrlObj.pos.y],
+		spawn: [spawnObj.pos.x, spawnObj.pos.y],
+		off: [cx, cy, sx, sy],
+		slots: SLOTS.length,
+		t: Game.time,
+	};
+}
+
 // hub containers go before everything: until one stands its extensions can't be refilled, the spawn
 // can't afford full-size bodies and idles (and hub 1's is the spawn's exit)
 export const siteOrder = (x) =>
@@ -416,6 +554,7 @@ export function configure() {
 			[19, 30],
 			[16, 30],
 		];
+	reanchor(); // 重锚定必须在一切字面量覆盖 (slot25/openEast) 之后: 平移是最终操作
 	profileReady.v = true;
 }
 // sim only: Memory.jitter nudges one threshold so a single layout yields several different games to average

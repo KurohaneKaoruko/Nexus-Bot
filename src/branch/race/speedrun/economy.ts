@@ -92,7 +92,10 @@ function boxes(room) {
 }
 const laneEnergy = (room) =>
 	K.chain
-		? _.sum(room.lookForAtArea(LOOK_RESOURCES, 28, 14, 28, 20, true), (r) => r.resource.amount)
+		? _.sum(
+				room.lookForAtArea(LOOK_RESOURCES, LANE_Y, BOX.x - 3, LANE_Y, BOX.x + 3, true),
+				(r) => r.resource.amount,
+			)
 		: 0;
 const boxEnergy = (room) => ({ energy: _.sum(boxes(room), "energy") + laneEnergy(room) });
 const hubBox = (room, h) =>
@@ -127,7 +130,7 @@ function roadPlan(home) {
 	if (Memory.roads) return Memory.roads;
 	const planned = {};
 	const out = [];
-	const from = pos(17, LANE_Y, home);
+	const from = pos(BOX.x, LANE_Y, home);
 	// K.paveReserved: the home sources and the reserved rooms' (10 e/t each); else the K.paved nearest
 	const all = sources(home);
 	const pick = K.paveReserved
