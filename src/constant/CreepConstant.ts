@@ -63,6 +63,12 @@ export const UnitData = {
         level: 11,
         code: 'S',
     },
+    /* 冲级专属 (race speedrun 直通模块的类型, 体型由 K 旋钮动态生成) */
+    'hauler': { bodypart: [], level: 6, code: 'HL' },
+    'tug': { bodypart: [], level: 9, code: 'TG' },
+    'paver': { bodypart: [], level: 9, code: 'PV' },
+    'spawnFiller': { bodypart: [], level: 5, code: 'SF' },
+    'hubFiller': { bodypart: [], level: 5, code: 'HF' },
     'logistic': {
         bodypart: [[CARRY, 3], [MOVE, 3]],
         level: 11,
@@ -221,7 +227,7 @@ export const UnitData = {
         code: 'PR',
     },
 
-    /* 跨分支共用角色：bodypart 与孵化由分支侧自行生成，此处仅提供命名 code */
+    /* 跨分支共用类型：bodypart 与孵化由分支侧自行生成，此处仅提供命名 code */
     'defender': { bodypart: [], level: 12, code: 'DF' }, // 房间防御
     'out-repair': { bodypart: [], level: 12, code: 'ORE' }, // 外矿基建维修
 } satisfies Record<string, UnitDefinition>;
@@ -232,7 +238,7 @@ export const isUnitId = (unit?: string): unit is UnitId =>
     !!unit && unit in UnitData;
 
 /**
- * 角色标识常量表（词表单一来源，派生自 UnitData 键）：
+ * 类型标识常量表（词表单一来源，派生自 UnitData 键）：
  * 功能代码引用 UNITS.x 而非字面量，改名/审查全走此表。
  * 值类型为键字面量（映射恒等），保证 UnitData[UNITS.x] 保留具体条目类型。
  */

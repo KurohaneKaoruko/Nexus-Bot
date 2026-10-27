@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { SRC, BOX, SLOTS, K, pos, L } from "./layout";
+import { SRC, BOX, SLOTS, RING_HOME, K, pos, L } from "./layout";
 /**
  * 拖拽体系: 少 MOVE 蠕虫由 hauler/tug 拉到岗 (pull), 房界单独穿行;
  * 头对换载 (swapLoad): 满载与空载相向而行时在途中交接货物, 各自原路返回。
@@ -8,16 +8,17 @@ import { SRC, BOX, SLOTS, K, pos, L } from "./layout";
 export const edgeP = (p) => p.x === 0 || p.x === 49 || p.y === 0 || p.y === 49;
 export const INWARD = (p) => (p.y === 0 ? BOTTOM : p.y === 49 ? TOP : p.x === 0 ? RIGHT : LEFT);
 function slotOf(c) {
-	if (c.memory.slot === undefined) {
+	if (c.memory.slot === undefined || c.memory.slotRing !== RING_HOME.v) {
+		c.memory.slotRing = RING_HOME.v;
 		const taken = new Set(
-			_.filter(Game.creeps, (o) => o.memory.r === "upgrader" && o !== c).map((o) => o.memory.slot),
+			_.filter(Game.creeps, (o) => o.memory.type === "upgrader" && o !== c).map((o) => o.memory.slot),
 		);
 		c.memory.slot = SLOTS.findIndex((_s, i) => !taken.has(i));
 	}
 	return SLOTS[c.memory.slot] || [BOX.x, BOX.y - 1];
 }
 function towDest(c, home) {
-	if (c.memory.r === "upgrader") {
+	if (c.memory.type === "upgrader") {
 		const [x, y] = slotOf(c);
 		return pos(x, y, home);
 	}
@@ -32,7 +33,7 @@ function towAssign(home) {
 		const tugs = _.filter(
 			Game.creeps,
 			(h) =>
-				h.memory.r === "tug" &&
+				h.memory.type === "tug" &&
 				!h.memory.towing &&
 				!h.spawning &&
 				h.room.name === c.room.name &&
@@ -42,12 +43,12 @@ function towAssign(home) {
 			? tugs
 			: c.room.find(FIND_MY_CREEPS, {
 					filter: (h) =>
-						h.memory.r === "hauler" &&
+						h.memory.type === "hauler" &&
 						!h.memory.towing &&
 						!h.memory.full &&
 						!h.spawning &&
 						h.ticksToLive > 150 &&
-						(c.memory.r === "upgrader" ||
+						(c.memory.type === "upgrader" ||
 							h.memory.k === c.memory.k ||
 							(K.towRoom && h.memory.room === c.memory.room) ||
 							(K.towHome && c.memory.room === home)),
@@ -129,7 +130,7 @@ function swapLoad(c, home) {
 	const mine = c.pos.getRangeTo(hx, hy);
 	const o = c.pos.findInRange(FIND_MY_CREEPS, 1, {
 		filter: (o) =>
-			o.memory.r === "hauler" &&
+			o.memory.type === "hauler" &&
 			!o.memory.full &&
 			!o.memory.swapped &&
 			o.store.energy === 0 &&

@@ -56,3 +56,48 @@
 - 16 组 jitter 全量: mean 1,069,140 / min 1,056,444 / max 1,077,010——
   与上游基线逐位一致
 - 服务器: round-120 血统的 run 34 双榜 #1 (20k 1,065,947 / 40k 2,272,219)
+
+## 主代码融合 (2026-10-27)
+
+三线融合, 冲级行为保持等价:
+
+### 布局: planner 静态模板库一等公民
+
+- `src/modules/planner/static/race.ts`: 冲级固定布局注册进主布局库
+  (锚点 hub1 容器 17,30; extension 22 项 = HUBS[0].ext(10) + HUBS[1].ext(12)
+  建序, container 5 = 双 hub + 升级块三箱, spawn(0,1))
+- speedrun/layout.ts 生产档 (BAYS 基准) 从模板派生 (TPL_EXT0/EXT1/
+  CONTAINERS/SPAWN); 实验变体 (S27/S26/S29/S29B/SIN/BAYS 关) 保留字面量——
+  它们是 __K 旋钮的 sim 实验面, 不入主布局库
+- openEast 重排仍由 configure() 运行时应用 (旋钮行为, 非模板数据)
+- 等价性: 派生坐标 vs 旧字面量四组逐位核对一致 (ext0/ext1/containers/
+  spawn); 2000t 状态哈希同值 `0xe677dd16…`——纯数据搬家零行为漂移
+
+### 命名: 主生成器统一
+
+- spawnIt 接入 `generateCreepName` (中文体名 代号-HEX, 如 `冲级搬运体 HL-72C3`)
+- UnitData 新登记冲级专属类型: hauler(HL 冲级搬运体)/tug(TG 拖拽体)/
+  paver(PV 铺路体)/spawnFiller(SF 孵化补给体)/hubFiller(HF 枢纽补给体);
+  miner/upgrader/builder/reserver/claimer 复用既有词条
+- 驱动面归因: task 段 (structure-guard ⑤)
+- 已知混沌效应: escapeAfter 用 `name.length` 取模脱困方向, 名字变长使
+  个别 jitter 分岔 (t688 首例), 属中性抖动——16 组分布验收
+
+### 称呼统一: unit/type 词汇表
+
+- speedrun 模块: `memory.r`→`memory.type`, `ROLES`→`TYPES`,
+  roles.ts→types.ts, spec `r:`→`type:`, 中文注释 角色→类型
+- 主代码: EconomyRole→EconomyUnit, CombatRole→CombatUnit,
+  isEconomyRole→isEconomyUnit, pauseRoles→pauseUnits,
+  aliveRoles→aliveUnits, inflightRoles→inflightUnits,
+  standingRoles→standingUnits, standingPriorityByRole→standingPriorityByUnit,
+  surviveSpawnPauseRoles→surviveSpawnPauseUnits, keyRoles→keyUnits,
+  REPLACEMENT_KEY_ROLES→REPLACEMENT_KEY_UNITS, roleFromCode→unitFromCode
+- 序列化面不动: Memory.R 遥测行键 / 引擎 API (Game.creeps 等) 保持原样
+
+### 20k 基线 (主代码融合后)
+
+- 融合完成时默认路径逐位复现旧基线 `[1067305,1071434,1075888,1076177]` (mean 1,072,701)
+- `dieMargin` 转正 30 后新基线 `[1071167,1080491,1074976,1079683]` (mean 1,076,579, +0.36%,
+  4 seed 全正); 相同时序 L5 12,181–12,317 (旧 12,235–12,328)
+- 其余调参旋钮默认全 0; 损耗机理与已排除项见 `docs/bugs/energy-loss-ledger.md`

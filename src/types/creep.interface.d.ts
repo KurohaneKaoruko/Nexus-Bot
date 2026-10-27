@@ -13,7 +13,7 @@ type CreepEnergySourceTarget = AnyStoreStructure | Resource<RESOURCE_ENERGY>;
  * 通用提取流程允许返回的 withdraw 目标集合。
  *
  * @remarks
- * carrier 等角色会复用这个返回值做兜底提取，
+ * carrier 等类型会复用这个返回值做兜底提取，
  * 因此除了建筑外还允许资源堆与废墟。
  */
 type CreepWithdrawTarget = AnyStoreStructure | Resource | Ruin;
@@ -109,7 +109,7 @@ interface CreepFindRepairTargetOptions {
  *
  * @remarks
  * 这里约定的是“这组辅助方法会读写的字段”，
- * 并不限制 `memory.cache` 根对象上存在其他角色专用字段。
+ * 并不限制 `memory.cache` 根对象上存在其他类型专用字段。
  */
 interface CreepFlatCache {
     /**
@@ -128,7 +128,7 @@ interface CreepFlatCache {
     resourceType?: ResourceConstant;
 
     /**
-     * 允许角色在同一层级追加自己的扁平字段。
+     * 允许类型在同一层级追加自己的扁平字段。
      */
     [key: string]: any;
 }
@@ -236,10 +236,10 @@ interface Creep {
     getCache(): CreepFlatCache;
 
     /**
-     * 获取角色私有状态命名空间（`cache.unit`）。
+     * 获取类型私有状态命名空间（`cache.unit`）。
      *
      * @remarks
-     * 角色私有字段统一读写这里；命名空间由 ensureMemoryCache 保证存在。
+     * 类型私有字段统一读写这里；命名空间由 ensureMemoryCache 保证存在。
      */
     getUnitCache(): Record<string, any>;
 
@@ -248,7 +248,7 @@ interface Creep {
      *
      * @remarks
      * 只会移除 `targetId`、`targetType` 与 `resourceType`，
-     * 不会触碰同层的其他角色自定义缓存键。
+     * 不会触碰同层的其他类型自定义缓存键。
      */
     clearTarget(): void;
 

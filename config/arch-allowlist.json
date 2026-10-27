@@ -1,359 +1,359 @@
 {
-  "$schema": "./arch-allowlist.schema.json",
-  "version": 1,
-  "entries": {
-    "src/branch/race/speedrun/economy.ts::createConstructionSite": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 4
-    },
-    "src/branch/race/speedrun/economy.ts::moveTo": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/economy.ts::pickup": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/economy.ts::transfer": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/economy.ts::withdraw": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/layout.ts::moveTo": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/loop.ts::move": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 3
-    },
-    "src/branch/race/speedrun/loop.ts::moveTo": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 2
-    },
-    "src/branch/race/speedrun/roles.ts::build": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 4
-    },
-    "src/branch/race/speedrun/roles.ts::claimController": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/roles.ts::createConstructionSite": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/roles.ts::drop": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 3
-    },
-    "src/branch/race/speedrun/roles.ts::harvest": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 2
-    },
-    "src/branch/race/speedrun/roles.ts::moveTo": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 23
-    },
-    "src/branch/race/speedrun/roles.ts::pickup": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 6
-    },
-    "src/branch/race/speedrun/roles.ts::repair": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/roles.ts::reserveController": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 2
-    },
-    "src/branch/race/speedrun/roles.ts::transfer": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 12
-    },
-    "src/branch/race/speedrun/roles.ts::upgradeController": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 3
-    },
-    "src/branch/race/speedrun/roles.ts::withdraw": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 6
-    },
-    "src/branch/race/speedrun/spawning.ts::moveTo": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/spawning.ts::spawnCreep": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/spawning.ts::transfer": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 3
-    },
-    "src/branch/race/speedrun/towing.ts::move": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 4
-    },
-    "src/branch/race/speedrun/towing.ts::moveTo": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 2
-    },
-    "src/branch/race/speedrun/towing.ts::pull": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 2
-    },
-    "src/branch/race/speedrun/towing.ts::transfer": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/race/speedrun/traffic.ts::move": {
-      "track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
-      "calls": 1
-    },
-    "src/branch/stronghold/team/blitz.ts::createFlag": {
-      "track": "编队域豁免 (波次旗生命周期管理, RoomPosition 原型重写)",
-      "calls": 1
-    },
-    "src/branch/stronghold/team/blitz.ts::remove": {
-      "track": "编队域豁免 (波次旗生命周期管理)",
-      "calls": 2
-    },
-    "src/console/base.ts::createFlag": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 1
-    },
-    "src/console/base.ts::remove": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 3
-    },
-    "src/console/function/layout.ts::build": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 2
-    },
-    "src/console/function/layout.ts::remove": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 4
-    },
-    "src/console/function/market.ts::createOrder": {
-      "track": "人操豁免",
-      "calls": 2
-    },
-    "src/console/function/market.ts::deal": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 7
-    },
-    "src/console/function/room.ts::build": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 2
-    },
-    "src/console/function/room.ts::remove": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 1
-    },
-    "src/console/help.ts::build": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 4
-    },
-    "src/console/help.ts::deal": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 2
-    },
-    "src/console/help.ts::remove": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 10
-    },
-    "src/console/help.ts::send": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 2
-    },
-    "src/console/index.ts::build": {
-      "track": "人操豁免 (console 永久豁免, 登记不收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::activateSafeMode": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::attack": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 3
-    },
-    "src/modules/agents/actionBroker.ts::build": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::cancelOrder": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::changeOrderPrice": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::claimController": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::createConstructionSite": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::createFlag": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::createOrder": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::deal": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::destroy": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::drop": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::enableRoom": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::extendOrder": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::harvest": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::heal": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 3
-    },
-    "src/modules/agents/actionBroker.ts::move": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::moveTo": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 2
-    },
-    "src/modules/agents/actionBroker.ts::pickup": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::processPower": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::produce": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::rangedAttack": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 2
-    },
-    "src/modules/agents/actionBroker.ts::rangedHeal": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::remove": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 2
-    },
-    "src/modules/agents/actionBroker.ts::renew": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::repair": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 2
-    },
-    "src/modules/agents/actionBroker.ts::reserveController": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::runReaction": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::send": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::spawnCreep": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::suicide": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::transfer": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::upgradeController": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::usePower": {
-      "track": "P8 broker 执行层 (命令管线执行器)",
-      "calls": 1
-    },
-    "src/modules/agents/actionBroker.ts::withdraw": {
-      "track": "P2 command-boundary (agentSystem 直连收编)",
-      "calls": 1
-    },
-    "src/modules/industry/console/lab.ts::remove": {
-      "track": "P7 industry-adapter",
-      "calls": 4
-    },
-    "src/modules/industry/console/nuker.ts::createFlag": {
-      "track": "P7 industry-adapter",
-      "calls": 1
-    },
-    "src/modules/industry/console/nuker.ts::remove": {
-      "track": "P7 industry-adapter",
-      "calls": 3
-    },
-    "src/modules/industry/console/terminal.ts::send": {
-      "track": "P7 industry-adapter",
-      "calls": 2
-    },
-    "src/modules/movement/index.ts::pull": {
-      "track": "P4 movement-adapter (移动执行层, 永久豁免主体)",
-      "calls": 1
-    },
-    "src/modules/spawning/spawnDirector.ts::spawnCreep": {
-      "track": "P8 spawn-arbiter",
-      "calls": 1
-    },
-    "src/modules/teams/core/TeamClass.ts::createFlag": {
-      "track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
-      "calls": 1
-    },
-    "src/modules/teams/runtime/TeamController.ts::createFlag": {
-      "track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
-      "calls": 1
-    },
-    "src/modules/teams/runtime/TeamSpawner.ts::createFlag": {
-      "track": "编队域豁免 (建队指挥旗, RoomPosition 原型重写)",
-      "calls": 1
-    },
-    "src/proto/Flag/function/warSpawn.ts::remove": {
-      "track": "人操豁免 (warSpawn 旗标战争孵化, 域7定性保留)",
-      "calls": 6,
-      "plannedRemoval": false
-    }
-  }
+	"$schema": "./arch-allowlist.schema.json",
+	"version": 1,
+	"entries": {
+		"src/branch/race/speedrun/economy.ts::createConstructionSite": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 4
+		},
+		"src/branch/race/speedrun/economy.ts::moveTo": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/economy.ts::pickup": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/economy.ts::transfer": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/economy.ts::withdraw": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/layout.ts::moveTo": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/loop.ts::move": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 3
+		},
+		"src/branch/race/speedrun/loop.ts::moveTo": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 2
+		},
+		"src/branch/race/speedrun/spawning.ts::moveTo": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/spawning.ts::spawnCreep": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/spawning.ts::transfer": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 3
+		},
+		"src/branch/race/speedrun/towing.ts::move": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 4
+		},
+		"src/branch/race/speedrun/towing.ts::moveTo": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 2
+		},
+		"src/branch/race/speedrun/towing.ts::pull": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 2
+		},
+		"src/branch/race/speedrun/towing.ts::transfer": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/traffic.ts::move": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/stronghold/team/blitz.ts::createFlag": {
+			"track": "编队域豁免 (波次旗生命周期管理, RoomPosition 原型重写)",
+			"calls": 1
+		},
+		"src/branch/stronghold/team/blitz.ts::remove": {
+			"track": "编队域豁免 (波次旗生命周期管理)",
+			"calls": 2
+		},
+		"src/console/base.ts::createFlag": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 1
+		},
+		"src/console/base.ts::remove": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 3
+		},
+		"src/console/function/layout.ts::build": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 2
+		},
+		"src/console/function/layout.ts::remove": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 4
+		},
+		"src/console/function/market.ts::createOrder": {
+			"track": "人操豁免",
+			"calls": 2
+		},
+		"src/console/function/market.ts::deal": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 7
+		},
+		"src/console/function/room.ts::build": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 2
+		},
+		"src/console/function/room.ts::remove": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 1
+		},
+		"src/console/help.ts::build": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 4
+		},
+		"src/console/help.ts::deal": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 2
+		},
+		"src/console/help.ts::remove": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 10
+		},
+		"src/console/help.ts::send": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 2
+		},
+		"src/console/index.ts::build": {
+			"track": "人操豁免 (console 永久豁免, 登记不收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::activateSafeMode": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::attack": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 3
+		},
+		"src/modules/agents/actionBroker.ts::build": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::cancelOrder": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::changeOrderPrice": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::claimController": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::createConstructionSite": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::createFlag": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::createOrder": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::deal": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::destroy": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::drop": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::enableRoom": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::extendOrder": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::harvest": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::heal": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 3
+		},
+		"src/modules/agents/actionBroker.ts::move": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::moveTo": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 2
+		},
+		"src/modules/agents/actionBroker.ts::pickup": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::processPower": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::produce": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::rangedAttack": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 2
+		},
+		"src/modules/agents/actionBroker.ts::rangedHeal": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::remove": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 2
+		},
+		"src/modules/agents/actionBroker.ts::renew": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::repair": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 2
+		},
+		"src/modules/agents/actionBroker.ts::reserveController": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::runReaction": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::send": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::spawnCreep": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::suicide": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::transfer": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::upgradeController": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::usePower": {
+			"track": "P8 broker 执行层 (命令管线执行器)",
+			"calls": 1
+		},
+		"src/modules/agents/actionBroker.ts::withdraw": {
+			"track": "P2 command-boundary (agentSystem 直连收编)",
+			"calls": 1
+		},
+		"src/modules/industry/console/lab.ts::remove": {
+			"track": "P7 industry-adapter",
+			"calls": 4
+		},
+		"src/modules/industry/console/nuker.ts::createFlag": {
+			"track": "P7 industry-adapter",
+			"calls": 1
+		},
+		"src/modules/industry/console/nuker.ts::remove": {
+			"track": "P7 industry-adapter",
+			"calls": 3
+		},
+		"src/modules/industry/console/terminal.ts::send": {
+			"track": "P7 industry-adapter",
+			"calls": 2
+		},
+		"src/modules/movement/index.ts::pull": {
+			"track": "P4 movement-adapter (移动执行层, 永久豁免主体)",
+			"calls": 1
+		},
+		"src/modules/spawning/spawnDirector.ts::spawnCreep": {
+			"track": "P8 spawn-arbiter",
+			"calls": 1
+		},
+		"src/modules/teams/core/TeamClass.ts::createFlag": {
+			"track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
+			"calls": 1
+		},
+		"src/modules/teams/runtime/TeamController.ts::createFlag": {
+			"track": "编队域豁免 (指挥旗自愈, RoomPosition 原型重写)",
+			"calls": 1
+		},
+		"src/modules/teams/runtime/TeamSpawner.ts::createFlag": {
+			"track": "编队域豁免 (建队指挥旗, RoomPosition 原型重写)",
+			"calls": 1
+		},
+		"src/proto/Flag/function/warSpawn.ts::remove": {
+			"track": "人操豁免 (warSpawn 旗标战争孵化, 域7定性保留)",
+			"calls": 6,
+			"plannedRemoval": false
+		},
+		"src/branch/race/speedrun/types.ts::build": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 4
+		},
+		"src/branch/race/speedrun/types.ts::claimController": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/types.ts::createConstructionSite": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/types.ts::drop": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 3
+		},
+		"src/branch/race/speedrun/types.ts::harvest": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 2
+		},
+		"src/branch/race/speedrun/types.ts::moveTo": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 23
+		},
+		"src/branch/race/speedrun/types.ts::pickup": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 6
+		},
+		"src/branch/race/speedrun/types.ts::repair": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 1
+		},
+		"src/branch/race/speedrun/types.ts::reserveController": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 2
+		},
+		"src/branch/race/speedrun/types.ts::transfer": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 12
+		},
+		"src/branch/race/speedrun/types.ts::upgradeController": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 3
+		},
+		"src/branch/race/speedrun/types.ts::withdraw": {
+			"track": "冲级赛直通豁免 (上游单文件血统, 与 Nexus 命令管线物理隔离, 见 speedrunEntry 注释)",
+			"calls": 6
+		}
+	}
 }

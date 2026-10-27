@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { SRC, BOX, BOXES, CTRL, SPAWN, SLOTS, KEEP_CLEAR, HUBS, K, NOW, pos } from "./layout";
+import { SRC, BOX, BOXES, FULL_BOXES, RING_BOXES, CTRL, SPAWN, SLOTS, LANE_Y, KEEP_CLEAR, HUBS, K, NOW, pos } from "./layout";
 /**
  * 房间经济查询与建造: 源清单 (本房+邻房+对角, PathFinder 距离排序)、
  * 升级块箱体/巷道堆/hub 容器读写口、余量口径 (spare)、
@@ -47,8 +47,17 @@ function plan(room) {
 		if (i === 0 || want > HUBS[0].ext.length)
 			room.createConstructionSite(h.c[0], h.c[1], STRUCTURE_CONTAINER);
 	});
+	// boxEarly: build the full legacy triple from the start even while the ring shape runs
+	// below K.ringTo — the shape switch then carries no build cost at the RCL boundary
+	// box4: keep only the centre box below that RCL (legacy shape unchanged) — defers the
+	// two wing boxes' 10k build into the richer RCL4 economy
+	const boxSet = K.boxEarly
+		? FULL_BOXES
+		: K.box4 && rcl < K.box4
+			? RING_BOXES
+			: FULL_BOXES;
 	if (rcl >= K.boxRcl)
-		for (const b of BOXES) room.createConstructionSite(b.x, b.y, STRUCTURE_CONTAINER);
+		for (const b of boxSet) room.createConstructionSite(b.x, b.y, STRUCTURE_CONTAINER);
 }
 
 // ---------- roles ----------

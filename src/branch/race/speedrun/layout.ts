@@ -1,11 +1,21 @@
 // @ts-nocheck
 /**
  * 冲级服固定布局常量与旋钮 (race 分支专用)。
- * 坐标写死: spawn (17,31) / controller (17,25) / 双源 (21,13)(30,29), 矿工驻点 (22,14)(29,28)。
- * K 表为孵化时序/身体规格旋钮, 可经 globalThis.__K 整体覆盖 (sim 调参口径)。
+ * 生产档建筑坐标源自 planner 静态模板 @/modules/planner/static/race
+ * (锚点 hub1 容器 17,30); 地标 (源/控制器/spawn) 与实验变体 (S27/S26/S29/BAYS 关)
+ * 保留本文件字面量。K 表为孵化时序/身体规格旋钮, 可经 globalThis.__K 整体覆盖 (sim 调参口径)。
  */
+import raceTemplate from "@/modules/planner/static/race";
 
 // ---------- 布局 (原始坐标) ----------
+
+// 模板锚点 = hub1 容器 (17,30); 派生还原绝对坐标
+const ANCHOR = { x: 17, y: 30 };
+const at = (p) => [ANCHOR.x + p.x, ANCHOR.y + p.y];
+const TPL_EXT0 = raceTemplate.buildings.extension.slice(0, 10).map(at); // hub1 建序 (BAYS 基准档)
+const TPL_EXT1 = raceTemplate.buildings.extension.slice(10).map(at); // hub2 建序 (恒定)
+const TPL_CONTAINERS = raceTemplate.buildings.container.map(at); // [hub1, hub2, 升级块三箱]
+const TPL_SPAWN = at(raceTemplate.buildings.spawn[0]); // 基准档 spawn (17,31)
 
 export const SRC = [
 	{ x: 21, y: 13, mx: 22, my: 14, ax: 22, ay: 13 }, // source, miner tile (energy piles up under the miner), second miner tile
@@ -45,21 +55,58 @@ export const BAY = S29B
 		];
 export const RBAY = BAYS || S29B; // haulers due for renewal stop on a BAY tile next to the spawn
 
-// upgrade block, rows 26..28 (all in range 3 of the controller): three containers on row 27, upgraders on
-// every other tile, haulers unload from (15|17|19, 28) coming up from row 29. Slots fill far side first.
-export const BOXES = S27
+// upgrade block, rows 26..28 (all in range 3 of the controller). Shapes:
+//  - hybrid ring (K.ringTo > 0): below that RCL one container on the centre tile (17,27);
+//    upgraders cluster around it and relay energy (main-code style controller buffer);
+//    at K.ringTo the left/right boxes complete the legacy triple and the slots switch back.
+//    The centre box already stands, so the switch needs no demolition. ring:0 keeps legacy
+//    from tick 0.
+//  - legacy: three containers on row 27, upgraders on every other tile self-serve from the
+//    nearest box, haulers unload from (15|17|19, 28). Slots fill far side first.
+// K.ring overrides the RCL gate entirely (1 = ring at every RCL, the failed pure shape).
+export const RING = globalThis.__K && "ring" in globalThis.__K ? globalThis.__K.ring : 0;
+export const RING_BOXES = [TPL_CONTAINERS[3]]; // (17,27) — the legacy centre tile: no demolition on the switch
+export const FULL_BOXES = S27
 	? [
 			{ x: 15, y: 27 },
 			{ x: 19, y: 27 },
 		]
-	: [
-			{ x: 15, y: 27 },
-			{ x: 17, y: 27 },
-			{ x: 19, y: 27 },
-		];
+	: TPL_CONTAINERS.slice(2).map(([x, y]) => ({ x, y }));
+// per-tick shape state: RING_HOME mirrors RING for the current RCL, refreshed by shape()
+export const RING_HOME = { v: RING };
+export const shape = (rcl) => {
+	const ring = RING || (K.ringTo > 0 && rcl < K.ringTo);
+	if (RING_HOME.v !== ring) {
+		RING_HOME.v = ring;
+		BOXES.length = 0;
+		SLOTS.length = 0;
+		BOXES.push(...(ring ? RING_BOXES : FULL_BOXES));
+		SLOTS.push(...(ring ? RING_SLOTS : FULL_SLOTS));
+		// boxes() caches per-room box snapshots keyed to the shape — drop them on the flip
+		for (const rn in Game.rooms) delete Game.rooms[rn]._boxes;
+	}
+};
+export const BOXES = [...(RING_HOME.v ? RING_BOXES : FULL_BOXES)];
 export const BOX = { x: 17, y: 27 }; // centre of the block, for distances
-// row 28 stays a drive-through lane: every tile on it touches a box, haulers never have to back out
-export const SLOTS = K_SLOTS_LANE
+export const LANE_Y = 28; // the drive-through row under the upgrade block
+// ring: how many of the leading SLOTS are box-adjacent (the self-serve inner posts)
+// row 28 stays a drive-through lane: every tile on it touches a box (legacy) or the one box (ring), haulers never have to back out
+const RING_SLOTS = [
+	[16, 27],
+	[18, 27],
+	[17, 26],
+	[16, 26],
+	[18, 26],
+	[15, 27],
+	[19, 27],
+	[15, 26],
+	[19, 26],
+	[14, 27],
+	[20, 27],
+	[14, 26],
+	[20, 26],
+]; // ring: box neighbours first, then the freed legacy box tiles and the outer ring relay outward
+const FULL_SLOTS = K_SLOTS_LANE
 	? S26
 		? [
 				[16, 27],
@@ -102,6 +149,7 @@ export const SLOTS = K_SLOTS_LANE
 			[14, 28],
 			[20, 28],
 		];
+export const SLOTS = [...(RING_HOME.v ? RING_SLOTS : FULL_SLOTS)];
 
 export const SPAWN = S27
 	? { x: 17, y: 27 }
@@ -109,7 +157,7 @@ export const SPAWN = S27
 		? { x: 17, y: 26 }
 		: S29
 			? { x: 17, y: 29 }
-			: { x: 17, y: 31 };
+			: { x: TPL_SPAWN[0], y: TPL_SPAWN[1] };
 export const HUBS = [
 	S29B
 		? {
@@ -152,23 +200,12 @@ export const HUBS = [
 				}
 			: BAYS
 				? {
-						c: [17, 30],
+						c: TPL_CONTAINERS[0],
 						fill: [
 							[16, 31],
 							[18, 31],
 						],
-						ext: [
-							[15, 31],
-							[16, 32],
-							[18, 32],
-							[19, 31],
-							[17, 32],
-							[15, 30],
-							[19, 30],
-							[15, 32],
-							[19, 32],
-							[16, 30],
-						],
+						ext: TPL_EXT0,
 					}
 				: {
 						c: [17, 30],
@@ -192,25 +229,12 @@ export const HUBS = [
 						],
 					},
 	{
-		c: [23, 30],
+		c: TPL_CONTAINERS[1],
 		fill: [
 			[22, 31],
 			[24, 31],
 		],
-		ext: [
-			[21, 31],
-			[22, 32],
-			[24, 32],
-			[25, 31],
-			[23, 31],
-			[21, 30],
-			[22, 30],
-			[24, 30],
-			[25, 30],
-			[21, 32],
-			[23, 32],
-			[25, 32],
-		],
+		ext: TPL_EXT1,
 	},
 ];
 
@@ -256,6 +280,10 @@ const K_DEFAULT = {
 	reserveN: 2,
 	mxfer: 0,
 	hcap: 25,
+	dieMargin: 30,
+	pileNear: 0,
+	slot25: 0,
+	keepHome: 0,
 	hwait: 1,
 	bfeed: 0,
 	upKeep: 1000,
@@ -263,6 +291,13 @@ const K_DEFAULT = {
 	parkY: 27,
 	fillClaim: 1,
 	swap: 0,
+	ringTo: 0,
+	boxEarly: 0,
+	box4: 0,
+	extBoost: 0,
+	upMul: 0,
+	haulMax: 0,
+	extHold: 0,
 	minerExtra5: 0,
 	chain: 1,
 	lanePileMax: 3000,
@@ -346,9 +381,28 @@ export const profileReady = { v: false };
 // SPEEDRUN_PROFILE 由构建期 define 注入: 私服 GCL<6 账号强制启用 PRIVATE_PROFILE。
 declare const SPEEDRUN_PROFILE: boolean | undefined;
 const bakedProfile = typeof SPEEDRUN_PROFILE !== "undefined" && !!SPEEDRUN_PROFILE;
+// SPEEDRUN_KNOBS 由构建期 define 注入 (rolldown transform), 烧死实验旋钮且不触碰
+// globalThis.__K — PRIVATE_PROFILE 的自动选择不受影响 (bugs/ring 测试陷阱教训)。
+declare const SPEEDRUN_KNOBS: Record<string, number> | undefined;
+const bakedKnobs =
+	typeof SPEEDRUN_KNOBS !== "undefined" && SPEEDRUN_KNOBS ? SPEEDRUN_KNOBS : undefined;
 export function configure() {
 	if (profileReady.v) return;
 	if (bakedProfile || (!globalThis.__K && Game.gcl.level >= 6)) Object.assign(K, PRIVATE_PROFILE);
+	// knobs merge last: an experiment may override a profile value (extMax4 etc.)
+	if (bakedKnobs) Object.assign(K, bakedKnobs);
+	// slot25: the four free controller-row tiles (14|15|19|20,25) sit in range 3 and touch the row-26 posts,
+	// so the relay chain can feed four more upgraders without raising the cap
+	if (K.slot25 && SLOTS.length < 15) {
+		const extra = [
+			[14, 25],
+			[15, 25],
+			[19, 25],
+			[20, 25],
+		];
+		SLOTS.push(...extra);
+		FULL_SLOTS.push(...extra);
+	}
 	if (K.openEast && BAYS && !SIN)
 		HUBS[0].ext = [
 			[15, 31],

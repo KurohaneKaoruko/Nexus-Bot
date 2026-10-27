@@ -897,7 +897,7 @@ interface StatsMemory {
     energyAverageSellPrice?: number;
 
     /**
-     * 各角色 creep 数量统计
+     * 各类型 unit 数量统计
      * @description key 为 unit
      */
     creeps?: Record<string, number>;

@@ -1,14 +1,14 @@
 // @ts-nocheck
-import { SPAWN, S26, S27, SIN, BAYS, EXIT, DXY, K, configure, jitterK, cost } from "./layout";
+import { SPAWN, S26, S27, SIN, BAYS, EXIT, DXY, K, configure, jitterK, cost, shape } from "./layout";
 import { plan, roads } from "./economy";
 import { unjam, shove } from "./traffic";
 import { towAssign, towDest } from "./towing";
-import { ROLES } from "./roles";
+import { TYPES } from "./types";
 import { nextSpawn, newRun, spawnIt, renewLow, renew } from "./spawning";
 import { record, debug } from "./telemetry";
 /**
  * 每 tick 主循环: 记忆清理 → 布局放站/道路 → 控制点遥测 → 拖拽分派 →
- * 角色分派 (tow 等待/出口保持/让位) → unjam/shove → 孵化段
+ * 类型分派 (tow 等待/出口保持/让位) → unjam/shove → 孵化段
  * (续能优先级 → fillerJump → nextSpawn → spawnIt)。
  */
 
@@ -33,6 +33,8 @@ export function loop() {
 	const spawn = Object.values(Game.spawns)[0];
 	if (!spawn) return;
 	const room = spawn.room;
+	// hybrid shape (K.ringTo): ring below the gate RCL, legacy triple after — refresh BOXES/SLOTS
+	shape(room.controller.level);
 	newRun(spawn);
 	global.HOME = room.name;
 	if (Game.time % 25 === 0) plan(room);
@@ -44,7 +46,7 @@ export function loop() {
 	Memory.upRate = 0.98 * (Memory.upRate || 0) + 0.02 * (cum - (Memory.upCum || cum));
 	Memory.upCum = cum;
 	if (K.towUp || K.towMiner) towAssign(room.name);
-	const by = _.groupBy(Game.creeps, (c) => c.memory.r);
+	const by = _.groupBy(Game.creeps, (c) => c.memory.type);
 	global.BUILDERS = (by.builder || []).length;
 	for (const name in Game.creeps) {
 		const c = Game.creeps[name];
@@ -92,7 +94,7 @@ export function loop() {
 			c.move(free || TOP);
 			continue;
 		}
-		ROLES[c.memory.r](c, room.name);
+		TYPES[c.memory.type](c, room.name);
 	}
 	if (K.jamTicks) unjam();
 	if (K.shove) shove();
@@ -131,15 +133,15 @@ export function loop() {
 	if (K.renew && (K.renewPass || S26) && SIN && renewLow(spawn)) return;
 	const renewOk =
 		K.renewPass === 2
-			? !(s && ["miner", "reserver", "hubFiller"].includes(s.r)) // renew instead of a hauler/upgrader
+			? !(s && ["miner", "reserver", "hubFiller"].includes(s.type)) // renew instead of a hauler/upgrader
 			: K.renewPass
 				? !(s && cost(s.body) <= room.energyAvailable) // only in ticks the spawn would idle
-				: !global.URGENT && !(s && ["miner", "reserver", "hubFiller"].includes(s.r));
+				: !global.URGENT && !(s && ["miner", "reserver", "hubFiller"].includes(s.type));
 	if (K.renew && (SIN || BAYS) && renewOk && renew(spawn, room)) return;
-	if (K.fillerJump && s && s.r !== "hubFiller" && cost(s.body) > room.energyAvailable) {
+	if (K.fillerJump && s && s.type !== "hubFiller" && cost(s.body) > room.energyAvailable) {
 		const f =
 			global.WANT &&
-			global.WANT.find((w) => w.r === "hubFiller" && cost(w.body) <= room.energyAvailable);
+			global.WANT.find((w) => w.type === "hubFiller" && cost(w.body) <= room.energyAvailable);
 		if (f) return spawnIt(f);
 	}
 	if (!s || cost(s.body) > room.energyAvailable) return;

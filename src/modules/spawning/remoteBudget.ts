@@ -4,7 +4,7 @@
  * 维持一只 B 件爬恰耗 B 单位/窗口。
  *
  * leftover = capacity − localDemand − remoteUsed:
- * - localDemand = 非采集本地角色在编部件 + 本地源计划编成;
+ * - localDemand = 非采集本地类型在编部件 + 本地源计划编成;
  *   本地 harvester 在编不计入 (编成由定编目标代表, race 同款);
  * - remoteUsed = 本矿注册、目标在跨房的单位部件 (在编 + 孵化中);
  * - leftover 为负 = 本地缺口, 外矿全停; 主房成长后余量自动放大外矿规模。
@@ -60,7 +60,7 @@ export function remoteSpawnLeftoverOf(ctx: TickContext, roomName: string): numbe
 			remoteUsed += parts;
 			continue;
 		}
-		// 采集在编不计入 (编成由定编目标代表); 其余本地角色全计
+		// 采集在编不计入 (编成由定编目标代表); 其余本地类型全计
 		if (record.unitCode === UNIT_CODES.harvester) continue;
 		localDemand += parts;
 	}

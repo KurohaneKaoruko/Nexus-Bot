@@ -79,7 +79,7 @@ const VOCAB_TRIPLE_CHECK = true;
  * - algorithm: 算法资产待复用 (无孵化源, 仅词表登记)
  */
 const UNIT_DRIVE_ATTRIBUTION = {
-	task: ['harvester', 'carrier', 'transporter', 'manager', 'upgrader', 'worker', 'miner', 'universal', 'rush-courier', 'defender', 'scout', 'claimer', 'reserver', 'remoteMiner'],
+	task: ['harvester', 'carrier', 'transporter', 'manager', 'upgrader', 'worker', 'miner', 'universal', 'rush-courier', 'defender', 'scout', 'claimer', 'reserver', 'remoteMiner', 'hauler', 'tug', 'paver', 'spawnFiller', 'hubFiller'],
 	courier: [],
 	team: ['team-attack', 'team-dismantle', 'team-heal', 'team-ranged'],
 	powercreep: ['pc-heal'],

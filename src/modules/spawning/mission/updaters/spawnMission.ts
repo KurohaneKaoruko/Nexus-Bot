@@ -15,12 +15,12 @@ export default class SpawnMission extends Room {
      */
     /**
      * spawn 更新入口
-     * @description 按角色规则检查缺口并生成对应孵化任务
+     * @description 按类型规则检查缺口并生成对应孵化任务
      * @returns true 表示已执行检查，false 表示不满足条件（例如无 spawn）
      */
 
 
-    /** 单角色孵化判定与发单：rush 体型现算 / 缺口门 / 降级 L5 与加急分层 */
+    /** 单类型孵化判定与发单：rush 体型现算 / 缺口门 / 降级 L5 与加急分层 */
 
 
     /**
@@ -28,7 +28,7 @@ export default class SpawnMission extends Room {
      * @param name - 孵化任务标识（常用 UnitData[unit].code）
      * @param body - 身体配置（数组或压缩字符串）
      * @param level - 任务优先级；<0 时使用默认等级
-     * @param unit - creep 角色
+     * @param unit - unit 类型
      * @param memory - creep memory（会克隆并写入 unit）
      * @param upbody - 是否启用升级 body（可选）
      * @returns OK 表示入队成功，-1 表示失败

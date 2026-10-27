@@ -8,8 +8,10 @@ import {
 	BOXES,
 	BOX,
 	SLOTS,
+	LANE_Y,
 	BAY,
 	RBAY,
+	RING_HOME,
 	HUBS,
 	K,
 	pos,
@@ -20,16 +22,16 @@ import {
 	siteOrder,
 } from "./layout";
 import { boxes, hubBox, hubBoxes, takeBox, spare, fill } from "./economy";
-import { tow } from "./towing";
+import { tow, swapLoad } from "./towing";
 import { bayUnload, bayStop } from "./spawning";
 /**
- * 角色实现: spawnFiller/paver/hauler/hubFiller/miner/upgrader/builder/reserver/tug。
+ * 类型实现: spawnFiller/paver/hauler/hubFiller/miner/upgrader/builder/reserver/tug。
  * 泊位续能 (bay/bayStop/bayUnload): 续能划算的 hauler 停进 spawn 旁泊位卸货等 renew。
  * 巷道卸货 (laneUnload): row 28 直接卸进相邻箱体或丢堆给 row 27 升级工。
  * 链式升级 (chainUpgrader): 升级后把烧不完的余量传给相邻更饿的升级工。
  */
 
-const ROLES = {
+const TYPES = {
 	spawnFiller(c, home) {
 		const room = Game.rooms[home];
 		const sp = room
@@ -127,7 +129,7 @@ const ROLES = {
 			if (c.harvest(src) === OK) L("harvest", Math.min(2 * c.getActiveBodyparts(WORK), src.energy));
 			const main = c.room
 				.lookForAt(LOOK_CREEPS, s.mx, s.my)
-				.find((o) => o.my && o.memory.r === "miner");
+				.find((o) => o.my && o.memory.type === "miner");
 			if (c.store.energy >= 30) {
 				if (main) c.transfer(main, RESOURCE_ENERGY);
 				else c.drop(RESOURCE_ENERGY);
@@ -162,7 +164,7 @@ const ROLES = {
 			// the fullest waiting hauler first, so it leaves soonest
 			const h = _.max(
 				c.pos.findInRange(FIND_MY_CREEPS, 1, {
-					filter: (o) => o.memory.r === "hauler" && !o.memory.full && o.store.getFreeCapacity() > 0,
+					filter: (o) => o.memory.type === "hauler" && !o.memory.full && o.store.getFreeCapacity() > 0,
 				}),
 				(o) => o.store.energy,
 			);
@@ -181,7 +183,9 @@ const ROLES = {
 		if (K.swap && c.memory.full && c.store.energy && !c.memory.swapped && swapLoad(c, home)) return;
 		if (c.store.energy === 0 && c.memory.swapped !== Game.time) c.memory.full = false;
 		if (c.store.getFreeCapacity() === 0) c.memory.full = true;
-		if (c.ticksToLive < (c.memory.dist || 0) + 5 && c.store.energy) c.memory.full = true;
+		// dieMargin: a dying hauler must reach home before it dies, or its load drops in a remote room and decays
+		if (c.ticksToLive < (c.memory.dist || 0) + K.dieMargin && c.store.energy)
+			c.memory.full = true;
 		// parked in a bay waiting for renewal: stay (empty or not) until renewed or K.bayWait runs out
 		if (
 			RBAY &&
@@ -205,6 +209,10 @@ const ROLES = {
 		if (!c.memory.full) {
 			const s = SRC[c.memory.i];
 			let p = pos(s.mx, s.my, c.memory.room);
+			// keepHome: a hauler that cannot finish the round trip stays home to die empty. A load dropped in a
+			// remote room decays at ceil(amount/1000) per tick and nothing walks back for it.
+			if (K.keepHome && !c.store.energy && c.ticksToLive < 2 * (c.memory.dist || 0) + 12)
+				return c.moveTo(pos(28, 34, home), { range: 2, reusePath: 10 });
 			// The opening miner has no CARRY, so its helper cannot hand energy to it.
 			// Recover the helper's pile as well as the main miner's output.
 			if (K.recoverAlt && c.memory.room === home && c.room.name === home) {
@@ -223,6 +231,13 @@ const ROLES = {
 				.lookForAt(LOOK_RESOURCES, p)
 				.find((r) => r.resourceType === RESOURCE_ENERGY);
 			if (pile) return c.pickup(pile);
+			// pileNear: a load dropped beside the post (a dying hauler, the alt miner) is still a pickup away
+			if (K.pileNear) {
+				const near = c.pos.findInRange(FIND_DROPPED_RESOURCES, 1, {
+					filter: (r) => r.resourceType === RESOURCE_ENERGY,
+				})[0];
+				if (near) return c.pickup(near);
+			}
 			const box = c.room
 				.lookForAt(LOOK_STRUCTURES, p)
 				.find((x) => x.structureType === STRUCTURE_CONTAINER);
@@ -287,9 +302,12 @@ const ROLES = {
 	upgrader(c, home) {
 		if (K.chain) return chainUpgrader(c, home);
 		const room = Game.rooms[home];
-		if (c.memory.slot === undefined) {
+		if (c.memory.slot === undefined || c.memory.slotRing !== RING_HOME.v) {
+			c.memory.slotRing = RING_HOME.v;
 			const taken = new Set(
-				_.filter(Game.creeps, (o) => o.memory.r === "upgrader").map((o) => o.memory.slot),
+				_.filter(Game.creeps, (o) => o.memory.type === "upgrader" && o !== c).map(
+					(o) => o.memory.slot,
+				),
 			);
 			c.memory.slot = SLOTS.findIndex((_s, i) => !taken.has(i));
 		}
@@ -427,6 +445,27 @@ function laneUnload(c, room, home) {
 			if (sp && sp.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
 				return c.transfer(sp, RESOURCE_ENERGY);
 		}
+		// ring: the box is the buffer (main-code cc semantics) — a full load lands in it in one
+		// tick and the hauler leaves; the passing happens upgrader-to-upgrader (K.chain relay)
+		if (RING_HOME.v) {
+			const box1 = c.pos.findInRange(FIND_STRUCTURES, 1, {
+				filter: (s) =>
+					s.structureType === STRUCTURE_CONTAINER &&
+					BOXES.some((b) => s.pos.isEqualTo(b.x, b.y)) &&
+					s.store.getFreeCapacity() > 0,
+			});
+			if (box1.length)
+				return c.transfer(
+					_.min(box1, (s) => s.store.energy),
+					RESOURCE_ENERGY,
+				);
+			const lanePile1 = _.sum(
+				room.lookForAtArea(LOOK_RESOURCES, LANE_Y, 14, LANE_Y, 20, true),
+				(r) => r.resource.amount,
+			);
+			if (lanePile1 < K.lanePileMax) return c.drop(RESOURCE_ENERGY);
+			return c.moveTo(pos(K.parkX, K.parkY + 4, home), { range: 2, reusePath: 10 });
+		}
 		const box = c.pos.findInRange(FIND_STRUCTURES, 1, {
 			filter: (s) =>
 				s.structureType === STRUCTURE_CONTAINER &&
@@ -450,7 +489,7 @@ function laneUnload(c, room, home) {
 	// a tile is worth what its boxes lack; before the boxes stand, what the row-27 upgraders next to it lack
 	const ups = _.filter(
 		Game.creeps,
-		(o) => o.memory.r === "upgrader" && o.room.name === home && o.pos.y === LANE_Y - 1,
+		(o) => o.memory.type === "upgrader" && o.room.name === home && o.pos.y === LANE_Y - 1,
 	);
 	const need = (x) => {
 		const near = bx.filter((b) => (b.c || !S27) && Math.abs(b.x - x) <= 1);
@@ -462,6 +501,16 @@ function laneUnload(c, room, home) {
 	const free = [];
 	for (let x = 14; x <= 20; x++)
 		if (!room.lookForAt(LOOK_CREEPS, x, LANE_Y).length) free.push(pos(x, LANE_Y, home));
+	// ring: head for a tile that touches the box while it has room (full-rate unload), else the nearest
+	if (RING_HOME.v && c.pos.y !== LANE_Y) {
+		const box = bx[0];
+		if (box && box.free > 0) {
+			const lane = free.filter((p) => Math.abs(p.x - BOX.x) <= 1);
+			if (lane.length) return c.moveTo(_.min(lane, (p) => 30 * c.pos.getRangeTo(p)), { reusePath: 5 });
+		}
+		if (free.length)
+			return c.moveTo(_.min(free, (p) => 30 * c.pos.getRangeTo(p)), { reusePath: 5 });
+	}
 	const renewMe =
 		SIN && K.renew && !K.renewPass && c.ticksToLive < 1500 - Math.floor(600 / c.body.length) - 50;
 	// spawn27: the spawn's own store is refilled only from the lane tiles under it: go there while it is short
@@ -487,12 +536,16 @@ function laneUnload(c, room, home) {
 // Chained upgraders (ultimate-bot's relay): upgrade, then one carry action: pass what this tick doesn't burn
 // to the neighbour upgrader that is shortest (furthest from the lane first), else top up from an adjacent
 // box or lane pile. Neighbours form a chain from the lane inwards; nobody walks for energy.
-const LANE_Y = 28;
 function chainUpgrader(c, home) {
 	const room = Game.rooms[home];
-	if (c.memory.slot === undefined) {
+	// hybrid (K.ringTo): the slot table swaps with the shape — indices from the old shape
+	// would park creeps on the wrong tiles, so re-pick once per shape change
+	if (c.memory.slot === undefined || c.memory.slotRing !== RING_HOME.v) {
+		c.memory.slotRing = RING_HOME.v;
 		const taken = new Set(
-			_.filter(Game.creeps, (o) => o.memory.r === "upgrader").map((o) => o.memory.slot),
+			_.filter(Game.creeps, (o) => o.memory.type === "upgrader" && o !== c).map(
+				(o) => o.memory.slot,
+			),
 		);
 		c.memory.slot = SLOTS.findIndex((_s, i) => !taken.has(i));
 	}
@@ -513,14 +566,19 @@ function chainUpgrader(c, home) {
 			);
 	}
 	if (surplus > 0) {
+		// ring: relay outwards from the box (chebyshev distance to the box grows along the chain);
+		// legacy: relay inwards off the lane (y shrinks). Both keep the flow one-way.
+		const dist = RING_HOME.v
+			? (p) => Math.max(Math.abs(p.pos.x - BOX.x), Math.abs(p.pos.y - BOX.y))
+			: (p) => LANE_Y - p.pos.y;
 		const near = c.pos.findInRange(FIND_MY_CREEPS, 1, {
 			filter: (o) =>
-				o.memory.r === "upgrader" &&
+				o.memory.type === "upgrader" &&
 				o.store.energy < 2 * o.getActiveBodyparts(WORK) &&
-				o.pos.y < c.pos.y + 1,
+				(RING_HOME.v || o.pos.y < c.pos.y + 1),
 		});
-		const to = _.max(near, (o) => o.store.getFreeCapacity() * 10 + (LANE_Y - o.pos.y));
-		if (to !== -Infinity && LANE_Y - to.pos.y >= LANE_Y - c.pos.y) {
+		const to = _.max(near, (o) => o.store.getFreeCapacity() * 10 + dist(o));
+		if (to !== -Infinity && dist(to) >= dist(c)) {
 			const result = c.transfer(to, RESOURCE_ENERGY, Math.min(surplus, to.store.getFreeCapacity()));
 			// Transfer and withdraw are separate intents. Refill available CARRY space
 			// this tick as well, so relaying energy need not leave the upgrader empty.
@@ -546,10 +604,17 @@ function chainUpgrader(c, home) {
 			BOXES.some((b) => s.pos.isEqualTo(b.x, b.y)),
 	})[0];
 	if (box) return c.withdraw(box, RESOURCE_ENERGY);
+	// ring: a loaded hauler on the lane hands its load over directly (creep-to-creep feed)
+	if (RING_HOME.v) {
+		const feed = c.pos.findInRange(FIND_MY_CREEPS, 1, {
+			filter: (o) => o.memory.type === "hauler" && o.store.energy > 0,
+		})[0];
+		if (feed && feed.transfer(c, RESOURCE_ENERGY) === OK) return;
+	}
 	const pile = c.pos.findInRange(FIND_DROPPED_RESOURCES, 1, {
 		filter: (r) => r.resourceType === RESOURCE_ENERGY,
 	})[0];
 	if (pile) c.pickup(pile);
 }
 
-export { ROLES };
+export { TYPES };

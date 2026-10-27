@@ -60,7 +60,7 @@ export function arbitrateForSpawn(
 ): ArbitrationResult | undefined {
 	const { staffed, idleSince, downgradeActive, onDeny } = deps;
 	// 产出就绪闸 (specs/production-readiness-gate): 本房采集面未铺满时,
-	// ① 起步序列闸——只受理采集面/生存角色; ② 搬运开局闸——在岗搬运体
+	// ① 起步序列闸——只受理采集面/生存类型; ② 搬运开局闸——在岗搬运体
 	// 不得超过采集面规模 (防「3 搬运 : 1 矿工」倒挂吃光孵化槽)
 	// 开局序列实验记录 (race-speedrun 任务5.1, 2026-10-18): rush 档收紧
 	// (首采集体前 carrier 恒不放行) 实测 L3 12977→13824 回退——ext 填充
@@ -83,7 +83,7 @@ export function arbitrateForSpawn(
 		}
 		return allowed;
 	});
-	// 采集让位 (源饱和口径): harvester 饱和定编未满足时, 非生存角色暂停孵化——
+	// 采集让位 (源饱和口径): harvester 饱和定编未满足时, 非生存类型暂停孵化——
 	// 能量集中攒给采集面。阻塞线取【饱和定编】harvesterTargetTotal (低容量期
 	// 每源多只小体) 而非基础编制 sources.length——后者在双源房 @2 只即退出让位,
 	// 采集面锁死 2W 小体 (sim 实证采集 5/t vs 旧体系 17/t, 差 3.5×)。
@@ -180,7 +180,7 @@ export function arbitrateForSpawn(
 			? Math.max(available, SPAWN_CONFIG.harvesterStarterBudget)
 			: fallback;
 	// 归零立即复产的地板 (bugs/P1-19 断供环): 在岗低于地板即视为「职能断供」,
-	// 攒能等待对该角色的请求失效 (立即按现有能量小体复产)。carrier 地板 = 让位
+	// 攒能等待对该类型的请求失效 (立即按现有能量小体复产)。carrier 地板 = 让位
 	// 搬运保底数——spawn 的能量流入全靠拉能, 单只往返速率撑不起孵化+换代并发,
 	// 攒能大件在涓流期永远攒不齐 (sim 实锤 carrier 恒 1 断供 1500t)。
 	const bootstrapFloorOf = (unit: string): number =>
@@ -189,7 +189,7 @@ export function arbitrateForSpawn(
 		(r) =>
 			r.priority <= SPAWN_CONFIG.immediatePriority &&
 			(!SPAWN_CONFIG.capacityWaitRoles.includes(r.unit) ||
-				// 归零角色立即小体复产 (自举通道): 攒能等待的前提是职能在岗——
+				// 归零类型立即小体复产 (自举通道): 攒能等待的前提是职能在岗——
 				// 全灭后等待只会让能量链死锁 (50k 普查 harvester 0 存活实锤;
 				// carrier 全灭则 spawn 永远等不到拉能, bugs/P1-19 断供环)
 				staffed(r.unit) <= bootstrapFloorOf(r.unit) ||
@@ -287,7 +287,7 @@ export function arbitrateForSpawn(
 		if (request) {
 			const desired = buildBody(request.unit, request.budget ?? bodyBudget(request.unit, capacity), hints);
 			if (desired && bodyCost(desired) > available) {
-				// 期望体型未攒够: 等待 (超时后退回按存量降档); 攒能角色用短窗——
+				// 期望体型未攒够: 等待 (超时后退回按存量降档); 攒能类型用短窗——
 				// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测);
 				// 替补用途的等待另受换代窗口钳制 (提前量量级), 老单位死前必出新人。
 				// 无收入期等的是 WORK 底线而非大体型, 长窗只会拖长断采 → 同样走短窗。

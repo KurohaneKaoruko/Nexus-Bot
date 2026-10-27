@@ -38,7 +38,7 @@ function record(room, by, spawn, s) {
 	L("control", cum - (Memory.cumR === undefined ? cum : Memory.cumR));
 	Memory.cumR = cum;
 	if (!spawn.spawning)
-		L(!s ? "idle_none" : cost(s.body) > room.energyAvailable ? "idle_poor_" + s.r : "go_" + s.r, 1);
+		L(!s ? "idle_none" : cost(s.body) > room.energyAvailable ? "idle_poor_" + s.type : "go_" + s.type, 1);
 	else if (spawn.spawning.remainingTime === 0) L("blocked", 1); // done but no free tile to step onto
 	const el = Game.time - Memory.boot.t;
 	if (el % 100 !== 99) return;
@@ -52,9 +52,20 @@ function record(room, by, spawn, s) {
 			_.filter(by[r], (x) => x.room.name === room.name).length,
 		];
 	const pile = (rs) => _.sum(rs, (r) => _.sum(r.find(FIND_DROPPED_RESOURCES), "amount"));
+	// where the away-from-home energy actually lies: per room totals and the bigger piles by tile
+	const away = _.filter(Game.rooms, (r) => r.name !== room.name);
+	const pr = {};
+	const pp = [];
+	for (const r of away)
+		for (const p of r.find(FIND_DROPPED_RESOURCES)) {
+			pr[r.name] = (pr[r.name] || 0) + p.amount;
+			if (p.amount >= 150) pp.push(`${r.name}:${p.pos.x},${p.pos.y}=${p.amount}`);
+		}
 	const R = (Memory.R = Memory.R || []);
 	R.push({
 		t: el + 1,
+		pr,
+		pp,
 		rcl: c.level,
 		cum,
 		e: room.energyAvailable,

@@ -34,8 +34,8 @@ import { maxThreatScore, threatTierOf } from "@/modules/defense";
 declare const CREEP_LIFE_TIME: number;
 declare const CREEP_SPAWN_TIME: number;
 
-/** 代号 → 角色名 (名称解析出的 unitCode 是代号, 需还原为角色名) */
-export function roleFromCode(code: string): SpawnUnit | undefined {
+/** 代号 → 类型名 (名称解析出的 unitCode 是代号, 需还原为类型名) */
+export function unitFromCode(code: string): SpawnUnit | undefined {
 	const entry = Object.entries(UNIT_CODES).find(([, candidate]) => candidate === code);
 	if (!entry) {
 		return undefined;
@@ -44,7 +44,7 @@ export function roleFromCode(code: string): SpawnUnit | undefined {
 	return isSpawnUnit(unitName) ? unitName : undefined;
 }
 
-/** 任务类型 → 生产角色 */
+/** 任务类型 → 生产类型 */
 export function unitForTaskKind(kind: string): SpawnUnit | undefined {
 	switch (kind) {
 		case "harvest":
@@ -74,18 +74,18 @@ export interface SpawnRequest {
 	unit: SpawnUnit;
 	priority: number;
 	purpose: string;
-	/** 快递等按请求给定预算编译的角色 (缺省走容量/存量定档) */
+	/** 快递等按请求给定预算编译的类型 (缺省走容量/存量定档) */
 	budget?: number;
 	/** 定向任务绑定 (外矿替补): 孵化成功即写入新体 memory.taskId,
 	 * 分配器沿既有租约路径接管, 不依赖「本地槽满后的盈余溢出」 */
 	taskId?: string | undefined;
 }
 
-/** 存活/在途角色计数 (staffed 的分母来源) */
+/** 存活/在途类型计数 (staffed 的分母来源) */
 export interface StaffingCount {
-	aliveRoles: Map<string, number>;
+	aliveUnits: Map<string, number>;
 	aliveTotal: number;
-	inflightRoles: Map<string, number>;
+	inflightUnits: Map<string, number>;
 	staffed: (unit: string) => number;
 }
 
@@ -93,7 +93,7 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 	// 活体计数走 units 注册表而非视野快照: 侦察体/远程件出视野后仍在岗,
 	// 视野口径数不到会无限补孵 (实服 20 只侦察体事故)。注册表由
 	// spawnDirector 死亡回收逐 tick 对账, 与 Game.creeps 保持同步。
-	// 键口径: 注册表存角色名 (spawnDirector 写入 request.unit), staffed
+	// 键口径: 注册表存类型名 (spawnDirector 写入 request.unit), staffed
 	// 查询用代号——经 unitCode() 归一, 与视野口径 (CreepSummary.unitCode
 	// 为代号) 键空间对齐。
 	//
@@ -105,31 +105,31 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 	// 让编制长期虚低、孵化线空转 (remote-mine 10→9→8 三轮回退实锤)。
 	// 出视野的远程件拿不到 Game.creeps 条目, 保持计入 (保守口径)。
 	const excludeDying = anyRoomRush(ctx);
-	const aliveRoles = new Map<string, number>();
+	const aliveUnits = new Map<string, number>();
 	let aliveTotal = 0;
 	for (const record of Object.values(ctx.memory.units)) {
 		const code = unitCode(record.unitCode);
 		if (excludeDying && dyingCreep(record.name)) {
 			continue;
 		}
-		aliveRoles.set(code, (aliveRoles.get(code) ?? 0) + 1);
+		aliveUnits.set(code, (aliveUnits.get(code) ?? 0) + 1);
 		aliveTotal += 1;
 	}
-	const inflightRoles = new Map<string, number>();
+	const inflightUnits = new Map<string, number>();
 	for (const spawn of spawns) {
 		const name = spawn.spawning?.name;
 		const unit = name ? ctx.memory.units[name]?.unitCode : undefined;
 		if (unit) {
 			const code = unitCode(unit);
-			inflightRoles.set(code, (inflightRoles.get(code) ?? 0) + 1);
+			inflightUnits.set(code, (inflightUnits.get(code) ?? 0) + 1);
 		}
 	}
 	return {
-		aliveRoles,
+		aliveUnits,
 		aliveTotal,
-		inflightRoles,
+		inflightUnits,
 		staffed: (unit: string): number =>
-			(aliveRoles.get(unitCode(unit)) ?? 0) + (inflightRoles.get(unit) ?? 0),
+			(aliveUnits.get(unitCode(unit)) ?? 0) + (inflightUnits.get(unit) ?? 0),
 	};
 }
 
@@ -146,7 +146,7 @@ export function dyingCreep(name: string): boolean {
 }
 
 /**
- * 各角色的目标编制基线 (specs/workforce-staffing 吞吐定编):
+ * 各类型的目标编制基线 (specs/workforce-staffing 吞吐定编):
  * - upgrader: WORK 口径目标 (采集收入×档位倍率, 水位收缩/盈余/pile 取 max, 受饥饿
  *   负反馈与人口硬上限钳制) 按当前孵化体型折只——取代固定只数/produced EMA 口径;
  * - carrier: 运力下界 Σ(2×实测路程×速率)×冗余÷单件运力 (实测缺失回退每源 1 只);
@@ -310,7 +310,7 @@ export function effectiveTarget(ctx: TickContext, unit: SpawnUnit, targets: Reco
 /**
  * 替补提前量 (docs/nexus-design/07 §7.5): 生产时间 + 实测路程 P95 + 安全余量, 按单位名确定性抖动 ±jitterRatio
  * (bugs/P2-8: 同龄单位同拍进入替补窗口会成对孵化, 抖动使其错峰)。
- * @param cohortSize 该角色当前定编数 (错峰窗口按批规模放大: 大件批 13 只 × 72t
+ * @param cohortSize 该类型当前定编数 (错峰窗口按批规模放大: 大件批 13 只 × 72t
  *  生产周期 = 936t 孵化时长, 窗口小于它时整代替补触发点挤在孵化时长内, 死亡
  *  后空窗 = 窗口 − 孵化时长, 在岗数阶梯下滑 = 潮; 40k 实证 t28.5-29.9k 全代
  *  重孵, 末段段速 4384→1433 崩)

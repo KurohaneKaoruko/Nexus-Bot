@@ -2,7 +2,7 @@
  * Creep 命名约定: `中文体名 代号-短十六进制串`, 如 采集体 H-3F2A。
  * 体名与代号来自 UnitConstant; 纯函数, 随机源与占用查询可注入, 便于测试与确定性复现。
  * 唯一命名入口: 所有孵化路径 (spawnDirector / legacy 孵化池 / directSpawn) 共用本生成器,
- * 保证 `代号-HEX` 的第二段恒为代号——感知侧 `unitCodeFromName` 依赖该形态解析角色。
+ * 保证 `代号-HEX` 的第二段恒为代号——感知侧 `unitCodeFromName` 依赖该形态解析类型。
  */
 import { unitBodyName, unitCode } from "@/constant/UnitConstant";
 
@@ -22,7 +22,7 @@ export function generateCreepName(unit: string, source: CreepNameSource): string
 	const code = unitCode(unit);
 	let name = "";
 	for (let attempt = 0; attempt < NAME_RETRY_LIMIT; attempt += 1) {
-		// 2 字节短十六进制串: 65536 空间对单角色足够, 碰撞时重试
+		// 2 字节短十六进制串: 65536 空间对单类型足够, 碰撞时重试
 		const hex = Math.floor(source.random() * 0x10000)
 			.toString(16)
 			.toUpperCase()

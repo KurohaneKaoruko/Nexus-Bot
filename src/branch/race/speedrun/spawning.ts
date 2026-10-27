@@ -9,6 +9,7 @@ import {
 	BAYS,
 	BAY,
 	BOXES,
+	RING_HOME,
 	SLOTS,
 	HUBS,
 	K,
@@ -21,6 +22,7 @@ import {
 	SPF_POS,
 } from "./layout";
 import { sources, hubBox, boxEnergy, resRooms } from "./economy";
+import { generateCreepName } from "@/utils/naming";
 /**
  * 孵化调度: 身体规格 (repeat/remoteMiner/haulerSpec)、定编口径 (reservedRate/resRooms)、
  * LP 计划路径 (planTime/planAt/planSpawn/dueAt/replaySpawn, K.usePlan 控制)、
@@ -58,11 +60,14 @@ const fillerBody = (hi) => [
 // (and paving has begun) one WORK rides along to build the sites it passes
 
 function haulerSpec(s, cap, n) {
+	// haulMax: cap the CARRY per hauler — a bigger body fills slower at a hand-off miner, so a high cap must
+	// not turn the fleet into a few slow haulers (the carry need is the same either way)
+	if (K.haulMax) n = Math.min(n, K.haulMax);
 	const paved = Memory.roadDone && Memory.roadDone[s.k];
 	if (paved) {
 		const pairs = Math.max(1, Math.min(16, Math.floor(cap / 150), Math.ceil(n / 2)));
 		return {
-			r: "hauler",
+			type: "hauler",
 			body: [...Array(2 * pairs).fill(CARRY), ...Array(pairs).fill(MOVE)],
 			k: s.k,
 			i: s.i,
@@ -79,7 +84,7 @@ function haulerSpec(s, cap, n) {
 	if (paving && cap >= 300) {
 		const nc = Math.max(1, Math.min(n, 23, Math.floor((cap - 150) / 100)));
 		return {
-			r: "hauler",
+			type: "hauler",
 			body: [WORK, ...Array(nc).fill(CARRY), ...Array(nc + 1).fill(MOVE)],
 			k: s.k,
 			i: s.i,
@@ -89,7 +94,7 @@ function haulerSpec(s, cap, n) {
 		};
 	}
 	return {
-		r: "hauler",
+		type: "hauler",
 		body: repeat([CARRY, MOVE], 100, cap, n),
 		k: s.k,
 		i: s.i,
@@ -130,7 +135,7 @@ function planSpawn(room, by) {
 	if (!(by.hauler || []).length) {
 		if (!(by.miner || []).length)
 			return {
-				r: "miner",
+				type: "miner",
 				body: [WORK, WORK, MOVE],
 				i: homeSrcs[0].i,
 				k: homeSrcs[0].k,
@@ -138,7 +143,7 @@ function planSpawn(room, by) {
 				dist: homeSrcs[0].dist,
 			};
 		return {
-			r: "hauler",
+			type: "hauler",
 			body: repeat([CARRY, MOVE], 100, Math.max(room.energyAvailable, 100), 25),
 			i: homeSrcs[0].i,
 			k: homeSrcs[0].k,
@@ -153,7 +158,7 @@ function planSpawn(room, by) {
 		for (let f = 0; f < 2; f++)
 			if (!workingAt("hubFiller", (c) => c.memory.h === hi && c.memory.f === f, 15).length)
 				return {
-					r: "hubFiller",
+					type: "hubFiller",
 					body: fillerBody(hi),
 					h: hi,
 					f,
@@ -165,7 +170,7 @@ function planSpawn(room, by) {
 	// every job's shortfall relative to its plan; ties go to the earlier role in ORDER (haulers first)
 	const consider = (spec, want, have, step) => {
 		if (want - have >= step)
-			cands.push({ spec, gap: (want - have) / Math.max(want, step), order: PLAN_ORDER[spec.r] });
+			cands.push({ spec, gap: (want - have) / Math.max(want, step), order: PLAN_ORDER[spec.type] });
 	};
 	for (const s of srcs) {
 		const p = planAt(T);
@@ -179,7 +184,7 @@ function planSpawn(room, by) {
 		const wantW = planAt(T + leadM).W[s.k] || 0;
 		if (wantW >= 1 && !workingAt("miner", (c) => c.memory.k === s.k, leadM).length)
 			cands.push({
-				spec: { r: "miner", body: minerBody, k: s.k, i: s.i, room: s.room, dist: s.dist },
+				spec: { type: "miner", body: minerBody, k: s.k, i: s.i, room: s.room, dist: s.dist },
 				gap: 1,
 				order: 1,
 			});
@@ -190,10 +195,18 @@ function planSpawn(room, by) {
 			workingAt("hauler", (c) => c.memory.k === s.k, 45),
 			(c) => c.getActiveBodyparts(CARRY),
 		);
-		const n = Math.max(1, Math.min(25, Math.floor(cap / 100), Math.round(wantC - haveC)));
+		const n = Math.max(
+			1,
+			Math.min(
+				25,
+				Math.floor(cap / 100),
+				K.haulMax || 25,
+				Math.round(wantC - haveC),
+			),
+		);
 		consider(
 			{
-				r: "hauler",
+				type: "hauler",
 				body: repeat([CARRY, MOVE], 100, cap, n),
 				k: s.k,
 				i: s.i,
@@ -214,7 +227,7 @@ function planSpawn(room, by) {
 		)
 			cands.push({
 				spec: {
-					r: "reserver",
+					type: "reserver",
 					body: repeat([CLAIM, MOVE], 650, cap, K.claims),
 					room: s.room,
 					dist: s.dist,
@@ -223,17 +236,26 @@ function planSpawn(room, by) {
 				order: 2,
 			});
 	}
-	const upW = Math.min(30, Math.floor((cap - 100) / 100));
+	// ring: the relay block feeds on 100-CARRY handoffs — two CARRY double the pass/pickup
+	// bandwidth, paid for with one WORK so the body always fits the spawn budget
+	const upW = Math.min(30, Math.floor((cap - (RING_HOME.v ? 150 : 100)) / 100));
+	const upCarry = RING_HOME.v ? 2 : 1;
 	const haveU = _.sum(
 		workingAt("upgrader", () => true, 30),
 		(c) => c.getActiveBodyparts(WORK),
 	);
-	const upgrader = { r: "upgrader", body: [...Array(upW).fill(WORK), CARRY, MOVE] };
+	const upgrader = {
+		type: "upgrader",
+		body: [...Array(upW).fill(WORK), ...Array(upCarry).fill(CARRY), MOVE],
+	};
 	// the plan's trickle of early upgrading (RCL2 gates the extensions) is less than one creep: still send one
-	if (planAt(T + 30).U > 0 && !(by.upgrader || []).length)
+	// upMul: scale the plan's WORK target — a high cap makes each upgrader carry more WORK than the plan, and
+	// the plan gate would otherwise stop refills long before the slots are full
+	const upTarget = planAt(T + 30).U * (K.upMul || 1);
+	if (upTarget > 0 && !(by.upgrader || []).length)
 		cands.push({ spec: upgrader, gap: 1, order: 1.2 });
 	else if ((by.upgrader || []).length < SLOTS.length)
-		consider(upgrader, planAt(T + 30).U, haveU, Math.max(1, upW / 2));
+		consider(upgrader, upTarget, haveU, Math.max(1, upW / 2));
 	// builders: the plan's WORK, but never less than the open sites need (the plan's early building is optimistic,
 	// and extensions 6-7 gate the reservers)
 	const sites = room.find(FIND_MY_CONSTRUCTION_SITES);
@@ -243,13 +265,13 @@ function planSpawn(room, by) {
 		(c) => c.getActiveBodyparts(WORK),
 	);
 	const nb = Math.max(1, Math.min(5, Math.floor(cap / 200)));
-	const builder = { r: "builder", body: repeat([WORK, CARRY, MOVE], 200, cap, nb) };
+	const builder = { type: "builder", body: repeat([WORK, CARRY, MOVE], 200, cap, nb) };
 	// behind the plan's extensions (the 7th gates the reservers): enough WORK to catch up within K.buildWithin ticks
 	const exts = room.find(FIND_MY_STRUCTURES, {
 		filter: (x) => x.structureType === STRUCTURE_EXTENSION,
 	}).length;
 	const catchUp =
-		exts < Math.floor(planAt(T).ext + 0.01)
+		exts < Math.max(Math.floor(planAt(T).ext + 0.01), K.extBoost)
 			? Math.min(K.buildMaxW, Math.ceil(left / (1.25 * K.buildWithin)))
 			: 0;
 	if (left) consider(builder, Math.max(planAt(T + 20).Bw, catchUp), haveB, 1);
@@ -276,7 +298,7 @@ function replaySpawn(room, by) {
 	if (!(by.hauler || []).length) {
 		if (!(by.miner || []).length)
 			return {
-				r: "miner",
+				type: "miner",
 				body: [WORK, WORK, MOVE],
 				i: homeSrcs[0].i,
 				k: homeSrcs[0].k,
@@ -284,7 +306,7 @@ function replaySpawn(room, by) {
 				dist: homeSrcs[0].dist,
 			};
 		return {
-			r: "hauler",
+			type: "hauler",
 			body: repeat([CARRY, MOVE], 100, Math.max(room.energyAvailable, 100), 25),
 			i: homeSrcs[0].i,
 			k: homeSrcs[0].k,
@@ -303,7 +325,7 @@ function replaySpawn(room, by) {
 				)
 			)
 				return {
-					r: "hubFiller",
+					type: "hubFiller",
 					body: fillerBody(hi),
 					h: hi,
 					f,
@@ -343,7 +365,7 @@ function replaySpawn(room, by) {
 				: remoteMiner(Math.max(w, Math.ceil(rate / 2)), cap);
 			cands.push({
 				late: t - first,
-				spec: { r: "miner", body, k: s.k, i: s.i, room: s.room, dist: s.dist },
+				spec: { type: "miner", body, k: s.k, i: s.i, room: s.room, dist: s.dist },
 			});
 		}
 		// haulers: the schedule's CARRY for this source, as big as the capacity allows
@@ -356,7 +378,7 @@ function replaySpawn(room, by) {
 			cands.push({
 				late: lh,
 				spec: {
-					r: "hauler",
+					type: "hauler",
 					body: repeat([CARRY, MOVE], 100, cap, n),
 					k: s.k,
 					i: s.i,
@@ -372,23 +394,29 @@ function replaySpawn(room, by) {
 			if (lk !== null)
 				cands.push({
 					late: lk,
-					spec: { r: "reserver", body: [CLAIM, MOVE], room: s.room, dist: s.dist, cat: kc, n: 1 },
+					spec: { type: "reserver", body: [CLAIM, MOVE], room: s.room, dist: s.dist, cat: kc, n: 1 },
 				});
 		}
 	}
-	const upW = Math.max(1, Math.min(30, Math.floor((cap - 100) / 100)));
+	const upW = Math.max(1, Math.min(30, Math.floor((cap - (RING_HOME.v ? 150 : 100)) / 100)));
+	const upCarry = RING_HOME.v ? 2 : 1;
 	const lu = late("U", upW);
 	if (lu !== null && (by.upgrader || []).length < SLOTS.length)
 		cands.push({
 			late: lu,
-			spec: { r: "upgrader", body: [...Array(upW).fill(WORK), CARRY, MOVE], cat: "U", n: upW },
+			spec: {
+				type: "upgrader",
+				body: [...Array(upW).fill(WORK), ...Array(upCarry).fill(CARRY), MOVE],
+				cat: "U",
+				n: upW,
+			},
 		});
 	const nb = Math.max(1, Math.min(5, Math.floor(cap / 200)));
 	const lb = late("B", nb);
 	if (lb !== null && room.find(FIND_MY_CONSTRUCTION_SITES).length)
 		cands.push({
 			late: lb,
-			spec: { r: "builder", body: repeat([WORK, CARRY, MOVE], 200, cap, nb), cat: "B", n: nb },
+			spec: { type: "builder", body: repeat([WORK, CARRY, MOVE], 200, cap, nb), cat: "B", n: nb },
 		});
 	if (!cands.length) return null;
 	return _.max(cands, "late").spec;
@@ -446,10 +474,10 @@ function renew(spawn, room) {
 				o.ticksToLive < 1500 - Math.floor(600 / o.body.length) &&
 				!o.getActiveBodyparts(CLAIM) &&
 				room.controller.level >= K.renewRcl &&
-				(o.memory.r === "hubFiller" ||
-					o.memory.r === "spawnFiller" ||
-					(o.memory.r === "upgrader" && o.getActiveBodyparts(WORK) >= Math.min(upW, K.renewUpW)) ||
-					(o.memory.r === "hauler" && bodyCost(o) >= K.renewHaul * cap)),
+				(o.memory.type === "hubFiller" ||
+					o.memory.type === "spawnFiller" ||
+					(o.memory.type === "upgrader" && o.getActiveBodyparts(WORK) >= Math.min(upW, K.renewUpW)) ||
+					(o.memory.type === "hauler" && bodyCost(o) >= K.renewHaul * cap)),
 		}),
 		"ticksToLive",
 	);
@@ -465,7 +493,7 @@ function renewLow(spawn) {
 		spawn.pos.findInRange(FIND_MY_CREEPS, 1, {
 			filter: (o) =>
 				!o.spawning &&
-				o.memory.r === "upgrader" &&
+				o.memory.type === "upgrader" &&
 				o.ticksToLive < K.upRenewAt &&
 				o.getActiveBodyparts(WORK) >= Math.min(upW, K.renewUpW) &&
 				spawn.room.controller.level >= K.renewRcl,
@@ -498,7 +526,7 @@ function nextSpawn(room, by) {
 			? K.towWait + (c.memory.dist || 0)
 			: (c.memory.dist || 0) * (K.walkLead ? pace(c) : 1);
 	// successors are queued early by K.minerLead more ticks (the spawn queue delays them): no vacant source
-	const pre = (c) => (c.memory.r === "miner" ? K.minerLead : 0);
+	const pre = (c) => (c.memory.type === "miner" ? K.minerLead : 0);
 	const alive = (role, f) =>
 		(by[role] || []).filter(
 			(c) => (!f || f(c)) && (c.spawning || c.ticksToLive > c.body.length * 3 + walk(c) + pre(c)),
@@ -511,7 +539,7 @@ function nextSpawn(room, by) {
 	if (!(by.hauler || []).length) {
 		if (!(by.miner || []).length)
 			return {
-				r: "miner",
+				type: "miner",
 				body: [WORK, WORK, MOVE],
 				i: homeSrcs[0].i,
 				k: homeSrcs[0].k,
@@ -519,7 +547,7 @@ function nextSpawn(room, by) {
 				dist: homeSrcs[0].dist,
 			};
 		return {
-			r: "hauler",
+			type: "hauler",
 			body: repeat([CARRY, MOVE], 100, Math.max(room.energyAvailable, 100), 25),
 			i: homeSrcs[0].i,
 			k: homeSrcs[0].k,
@@ -543,7 +571,7 @@ function nextSpawn(room, by) {
 			const target = targets.find(
 				(rn) => !Game.rooms[rn]?.controller?.owner && !pending.some((c) => c.memory.room === rn),
 			);
-			if (target) return { r: "claimer", body: [CLAIM, MOVE], room: target };
+			if (target) return { type: "claimer", body: [CLAIM, MOVE], room: target };
 		}
 	}
 	const work = (s) => {
@@ -582,7 +610,7 @@ function nextSpawn(room, by) {
 			const near = !K.urgentNear || s.home || s.dist <= K.urgentNear;
 			const urgent = K.succFirst && established && near && cover < K.succFirst;
 			out.push({
-				r: "miner",
+				type: "miner",
 				body: minerBody,
 				k: s.k,
 				i: s.i,
@@ -637,7 +665,7 @@ function nextSpawn(room, by) {
 				!alive("miner", (c) => c.memory.k === s.k && c.memory.alt).length
 			)
 				out.push({
-					r: "miner",
+					type: "miner",
 					alt: 1,
 					body: [
 						...Array(Math.min(Math.ceil(rate / 2) - mainW, Math.floor((cap - 100) / 100))).fill(
@@ -673,7 +701,7 @@ function nextSpawn(room, by) {
 				(!ctrl || !ctrl.reservation || ctrl.reservation.ticksToEnd < K.reserveBuffer)
 			)
 				out.push({
-					r: "reserver",
+					type: "reserver",
 					body: repeat([CLAIM, MOVE], 650, cap, K.claims),
 					room: s.room,
 					dist: s.dist,
@@ -686,7 +714,7 @@ function nextSpawn(room, by) {
 		S26 &&
 		(() => {
 			const taken = new Set(
-				_.filter(Game.creeps, (o) => o.memory.r === "upgrader").map((o) => o.memory.slot),
+				_.filter(Game.creeps, (o) => o.memory.type === "upgrader").map((o) => o.memory.slot),
 			);
 			const i = SLOTS.findIndex(
 				([x, y], j) =>
@@ -695,7 +723,7 @@ function nextSpawn(room, by) {
 			return i < 0
 				? null
 				: {
-						r: "upgrader",
+						type: "upgrader",
 						body: [...Array(Math.min(30, Math.floor((cap - 50) / 100))).fill(WORK), CARRY],
 						slot: i,
 						dir: [room.getPositionAt(SPAWN.x, SPAWN.y).getDirectionTo(SLOTS[i][0], SLOTS[i][1])],
@@ -705,13 +733,13 @@ function nextSpawn(room, by) {
 		? inPlace
 		: K.towUp
 			? {
-					r: "upgrader",
+					type: "upgrader",
 					body: [...Array(Math.min(30, Math.floor((cap - 50) / 100))).fill(WORK), CARRY],
 					tow: 1,
 					dir: [TOP_LEFT, TOP_RIGHT],
 				}
 			: {
-					r: "upgrader",
+					type: "upgrader",
 					body: [...Array(Math.min(30, Math.floor((cap - 100) / 100))).fill(WORK), CARRY, MOVE],
 				};
 	const want = [];
@@ -720,7 +748,7 @@ function nextSpawn(room, by) {
 	want.push(...work(homeSrcs[1]));
 	if (S26 && !(by.spawnFiller || []).length)
 		want.unshift({
-			r: "spawnFiller",
+			type: "spawnFiller",
 			body: [CARRY, CARRY, CARRY, CARRY],
 			dir: [room.getPositionAt(SPAWN.x, SPAWN.y).getDirectionTo(SPF_POS[0], SPF_POS[1])],
 		});
@@ -732,7 +760,7 @@ function nextSpawn(room, by) {
 			if (s && alive("paver", (c) => c.memory.k === r.k).length < K.pavers) {
 				const n = Math.max(1, Math.min(K.paverW, Math.floor(cap / 250)));
 				want.push({
-					r: "paver",
+					type: "paver",
 					body: [...Array(n).fill(WORK), ...Array(n).fill(CARRY), ...Array(n * 2).fill(MOVE)].slice(
 						0,
 						50,
@@ -745,13 +773,13 @@ function nextSpawn(room, by) {
 			}
 		}
 	if (K.towMiner && rcl >= 2 && alive("tug").length < K.tugs)
-		want.push({ r: "tug", body: Array(K.tugMove).fill(MOVE) });
+		want.push({ type: "tug", body: Array(K.tugMove).fill(MOVE) });
 	HUBS.forEach((h, hi) => {
 		if (!hubBox(room, h)) return;
 		for (let f = 0; f < 2; f++)
 			if (!alive("hubFiller", (c) => c.memory.h === hi && c.memory.f === f).length)
 				want.push({
-					r: "hubFiller",
+					type: "hubFiller",
 					body: fillerBody(hi),
 					h: hi,
 					f,
@@ -766,27 +794,39 @@ function nextSpawn(room, by) {
 		alive("builder").length <
 			Math.min(rcl <= 2 ? K.builders2 : K.builders, Math.ceil(left / K.buildPer))
 	)
-		want.push({ r: "builder", body: repeat([WORK, CARRY, MOVE], 200, cap, 5) });
+		want.push({ type: "builder", body: repeat([WORK, CARRY, MOVE], 200, cap, 5) });
 	// energy is piling up at the controller: more upgraders beat more income
 	// ...but only while the upgraders we have are fed (control/tick keeps up with their WORK)
+	// ring: the relay block feeds upgraders through 100-CARRY handoffs, so its top duty is
+	// ~75%, not the ~95% of a self-serve box side; hold it to its own shape's ceiling
 	const fed =
-		(Memory.upRate || 0) >= K.fed * _.sum(by.upgrader || [], (c) => c.getActiveBodyparts(WORK));
+		(Memory.upRate || 0) >=
+		(RING_HOME.v ? 0.62 : K.fed) * _.sum(by.upgrader || [], (c) => c.getActiveBodyparts(WORK));
 	// the planning model's steady state carries ~65 upgrader WORK; more than the energy feeds steals spawn time from haulers
+	// ring: one 2000-cap box plus the lane pile holds what three boxes did, keep the legacy threshold
 	const upWork = _.sum(by.upgrader || [], (c) => c.getActiveBodyparts(WORK));
+	// extHold: while extension sites stand, keep the upgrade WORK at the old level so the surplus pays for
+	// the extensions; the extra WORK resumes once they are up (a mid-build raise splits the energy and
+	// delays every level threshold)
+	const extLeft = _.sum(sites, (x) =>
+		x.structureType === STRUCTURE_EXTENSION ? x.progressTotal - x.progress : 0,
+	);
+	const upCap = K.extHold && extLeft > 0 ? K.extHold : K.upMaxW;
 	if (
-		boxEnergy(room).energy > (rcl <= 2 ? K.upPerBox2 : K.upPerBox) * BOXES.length &&
+		boxEnergy(room).energy >
+			(rcl <= 2 ? K.upPerBox2 : K.upPerBox) * (RING_HOME.v ? 3 : BOXES.length) &&
 		fed &&
-		upWork < K.upMaxW &&
+		upWork < upCap &&
 		(by.upgrader || []).length < SLOTS.length
 	)
 		want.push(upgrader);
 	for (const s of remotes) want.push(...work(s));
 	global.WANT = want;
-	global.URGENT = want.some((w) => w.r === "miner" || w.r === "reserver" || w.r === "hubFiller");
+	global.URGENT = want.some((w) => w.type === "miner" || w.type === "reserver" || w.type === "hubFiller");
 	// a source without its miner loses its whole output: successors go before any hauler or upgrader
 	if (K.minerFirst) {
 		const rank = (w) =>
-			w.r === "hubFiller" ? 0 : w.r === "miner" ? 1 : w.r === "reserver" ? 2 : 3;
+			w.type === "hubFiller" ? 0 : w.type === "miner" ? 1 : w.type === "reserver" ? 2 : 3;
 		return _.sortBy(want, rank)[0] || null;
 	}
 	if (K.succFirst) {
@@ -795,13 +835,13 @@ function nextSpawn(room, by) {
 	}
 	// fair hauling: among hauler requests the source with the smallest share of its need goes first
 	if (K.fair) {
-		const i = want.findIndex((w) => w.r === "hauler");
+		const i = want.findIndex((w) => w.type === "hauler");
 		if (i >= 0) {
 			const best = _.min(
-				want.filter((w) => w.r === "hauler"),
+				want.filter((w) => w.type === "hauler"),
 				"ratio",
 			);
-			const firstNonHauler = want.findIndex((w) => w.r !== "hauler" && w.r !== "miner");
+			const firstNonHauler = want.findIndex((w) => w.type !== "hauler" && w.type !== "miner");
 			if (firstNonHauler < 0 || firstNonHauler > i) want.splice(i, 0, best);
 		}
 	}
@@ -830,8 +870,10 @@ function spawnIt(s) {
 				spawn,
 			]
 		: undefined;
+	// 主代码统一命名 (中文体名 代号-HEX): 感知侧 unitCodeFromName 可解析回类型
+	const name = generateCreepName(s.type, { random: Math.random, exists: (x) => x in Game.creeps });
 	if (
-		spawn.spawnCreep(body, `${s.r}${Game.time}`, {
+		spawn.spawnCreep(body, name, {
 			memory: mem,
 			energyStructures,
 			directions:
@@ -849,7 +891,7 @@ function spawnIt(s) {
 									: [TOP]),
 		}) === OK
 	) {
-		L(`spawn_${s.r}`, cost(body));
+		L(`spawn_${s.type}`, cost(body));
 		if (cat) (Memory.sp = Memory.sp || {})[cat] = (Memory.sp[cat] || 0) + n;
 	}
 }

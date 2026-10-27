@@ -20,7 +20,7 @@ Creep.prototype.moveTo = function (a, b, c) {
 			opts.reusePath = 0;
 		}
 	}
-	if (this.memory.r !== "hubFiller" && !opts.costCallback)
+	if (this.memory.type !== "hubFiller" && !opts.costCallback)
 		opts.costCallback = (rn, m) => {
 			if (rn === global.HOME)
 				for (const [x, y] of KEEP_CLEAR) if (!this.pos.isEqualTo(x, y)) m.set(x, y, 255);
@@ -119,7 +119,7 @@ function shove() {
 		if (x < 1 || x > 48 || y < 1 || y > 48) continue;
 		const b = a.room.lookForAt(LOOK_CREEPS, x, y)[0];
 		if (!b || !b.my || b.spawning || mv[b.name] !== undefined || b.fatigue) continue;
-		if (b.memory.r !== "hauler" && b.memory.r !== "builder") continue;
+		if (b.memory.type !== "hauler" && b.memory.type !== "builder") continue;
 		mv[b.name] = BACK[mv[name]];
 		rawMove.call(b, BACK[mv[name]]);
 	}

@@ -136,7 +136,7 @@ export const REPLACEMENT_CONFIG = {
 	/** 路程样本窗口上限 (每 unit:room 保留的样本数) */
 	travelSampleWindow: 8,
 	/** 允许短暂在编重叠的关键岗位 */
-	keyRoles: ["harvester"] as readonly string[],
+	keyUnits: ["harvester"] as readonly string[],
 	/** 替补提前量抖动幅度 (±比例): 同批单位错峰换代, 避免同拍抖动 (bugs/P2-8) */
 	jitterRatio: 0.1,
 	/** 同龄批错峰离散窗口系数 (race-speedrun D2): 替补触发点按单位名哈希均匀分布于
@@ -144,7 +144,7 @@ export const REPLACEMENT_CONFIG = {
 	 *  同批整代 (同 tick 出生) 仍同拍到期引发死亡潮 (sim t13k 人口 22→13 实锤);
 	 *  加性窗口把同批 N 只的替补请求摊到整个孵化周期, 出生序列天然错峰 */
 	disperseWindowFactor: 1.5,
-	/** 错峰窗口的角色批规模 (race-speedrun D2): 窗口 = 批规模 × 生产周期。
+	/** 错峰窗口的类型批规模 (race-speedrun D2): 窗口 = 批规模 × 生产周期。
 	 *  校准记录 (2026-10-18, speedrun 45k 三轮): cohort 10 (窗口 585-2250t)
 	 *  升级量 157k→91k (-42%)——重叠孵化期过长, 每编制位恒驻一老一新,
 	 *  孵化能量被重叠单位吃掉; cohort 2.5 (窗口 ~225t) 潮逐波衰减 (12→9→4)
@@ -170,9 +170,9 @@ export const SPAWN_CONFIG = {
 	 *  永动机的根因 (speedrun 247 只/31k 全 2-3 部件, 40k 零个 5+ 部件)——
 	 *  priority ≥ 70 是排队语义, 绑死「跳过攒能」使 spawn 永不攒大钱。
 	 *  断粮死锁已由 harvester staffed==0 自举通道兜底 (本函数 urgent 条件内),
-	 *  生产角色回攒能表: desired 按 capacity 定档, 不足等 120t (短窗), 超时降档。 */
+	 *  生产类型回攒能表: desired 按 capacity 定档, 不足等 120t (短窗), 超时降档。 */
 	/**
-	 * 攒能角色表。harvester 的等待语义特殊: 采集面饱和的唯一杠杆是 WORK 供给——
+	 * 攒能类型表。harvester 的等待语义特殊: 采集面饱和的唯一杠杆是 WORK 供给——
 	 * RCL2 (550) 起 5W1M 即达单源饱和线 (ceil(3000/300/2)=5)。攒能等待不设
 	 * 超时降档 (孵化持单等能量, 攒够饱和体型才生产)——超时降档会把体型锁在
 	 * 小体档, sim 实证 56% 能量烧在换血 (405 产 376 亡)。无收入自举仍走
@@ -183,7 +183,7 @@ export const SPAWN_CONFIG = {
 	 *  全靠 carrier 回收——carrier 低于该数时让位门放行搬运自举, 否则攒能的钱
 	 *  永远到不了 spawn, 让位死锁 (sim 实证采集面锁死 2/t 单只换代循环) */
 	yieldCarrierFloor: 1,
-	/** 攒能角色的短等待窗: 匹配 replacement 提前量, 换代断采 <8% 工作期 (50k 实测) */
+	/** 攒能类型的短等待窗: 匹配 replacement 提前量, 换代断采 <8% 工作期 (50k 实测) */
 	capacityWaitTicksShort: 120,
 	/** 替补用途请求的等待上限: 换代提前量 (生产+路程+余量) 量级 ~80t, 原 400t 等待
 	 *  远超窗口 → 老单位死亡新人未出 (双重断采 300t+) → 收入跌 → 攒能更慢 → 降档 W1;
@@ -218,15 +218,15 @@ export const SPAWN_CONFIG = {
 	 *  reserver 不入列 (批次 AD 四轮): standing 按任务数定编 = 每房 1 只,
 	 *  绕过 raceRemote 的上游 claims=2 全局上限, 双轨并发孵 5 只挤占 RM
 	 *  攒能窗口 (24k 实证 reserver 5 / RM 0); 孵化全归 spawnDirector raceRemote 段 */
-	standingRoles: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout"] as readonly string[],
+	standingUnits: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout"] as readonly string[],
 	/** 常驻编制缺口的请求排队等级 (race L9; 低于任务驱动, 只兜底) */
 	standingPriority: 9,
-	/** 按角色的常驻排队等级覆盖 (小者优先, race 语义 + 本矿供能约束):
+	/** 按类型的常驻排队等级覆盖 (小者优先, race 语义 + 本矿供能约束):
 	 *  carrier L3 / harvester L4——本矿矿工 drop 采矿, 搬运是 spawn 的唯一
 	 *  能量入口, 必须先于采集补员 (旧体系 carrier 88 > harvester 55 的同语义);
 	 *  两者由采集让位闸 + carrier 上限闸实现 H/C 交替起步; upgrader L6 常态
 	 *  升级档 (main 档无 rush 提级时靠此兜底), scout L11 一次性小件。 */
-	standingPriorityByRole: { carrier: 3, upgrader: 4, worker: 6, harvester: 9, scout: 11, remoteMiner: 12, reserver: 12 } as Readonly<Record<string, number>>,
+	standingPriorityByUnit: { carrier: 3, upgrader: 4, worker: 6, harvester: 9, scout: 11, remoteMiner: 12, reserver: 12 } as Readonly<Record<string, number>>,
 	/** 冲级档缺编 upgrader 的孵化等级下限 (bugs/P1-19): rush 期缺编 upgrader
 	 *  与搬运同进 urgent 段, 攒能与立即通道交错建立火力。
 	 *  2 (race-speedrun 6.1 第四轮, 越过 carrier L3): 换代空窗取证——upgrader(4)
@@ -519,7 +519,7 @@ export const PIXEL_CONFIG = {
 /** 产出就绪闸 (specs/production-readiness-gate): 未就绪房间的孵化面约束 */
 export const PRODUCTION_GATE_CONFIG = {
 	/**
-	 * 未就绪时仍放行的角色: 采集面 (采集体/升级体/万金油) + 生存防御 + 侦查件
+	 * 未就绪时仍放行的类型: 采集面 (采集体/升级体/万金油) + 生存防御 + 侦查件
 	 * (scout 是 1 MOVE 廉价件, 是外矿链路第一环——被此闸卡死则 auto 档
 	 * remoteMining 永远无法点亮邻房, sim 实证 scout 任务恒 available 无人孵化)
 	 * + worker: decay 维修紧急件走 critical L2 请求 (容器 decay 死 = 升级链
@@ -577,7 +577,7 @@ export const REMOTE_CARRY_CONFIG = {
 
 /** 升级体体型参数 (specs/workforce-staffing「升级定编 WORK 口径目标」):
  * 升级火力对齐采集收入, 体型按能量容量取**装得下的最大 WORK**。
- * 升级体常驻控制器工位就近取能, 移动占比极低, 故 MOVE 配给远低于移动型角色,
+ * 升级体常驻控制器工位就近取能, 移动占比极低, 故 MOVE 配给远低于移动型类型,
  * 使同预算下 WORK 密度最大化 (每 WORK 摊到的 MOVE/CARRY 越少, 能量越集中在 WORK)。
  */
 export const UPGRADER_BODY_CONFIG = {

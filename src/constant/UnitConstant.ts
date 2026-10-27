@@ -1,6 +1,6 @@
 /**
- * 角色代号表与中文体名表 (UnitData 的派生视图)。
- * 代号/体名均从 `UnitData` 单源派生, 新增角色无需在本表登记。
+ * 类型代号表与中文体名表 (UnitData 的派生视图)。
+ * 代号/体名均从 `UnitData` 单源派生, 新增类型无需在本表登记。
  * 名称格式 `中文体名 代号-HEX`, 如 采集体 H-3F2A。
  */
 import { UnitData, type UnitId } from "@/constant/CreepConstant";
@@ -8,8 +8,8 @@ import { UnitData, type UnitId } from "@/constant/CreepConstant";
 export type { UnitId };
 
 /**
- * 角色代号 (`UnitData[].code`, 缺省回退角色名大写)。
- * 派生而非手抄: 两表并存时新增角色必漏, 回退形态会污染 creep 名与感知侧解析。
+ * 类型代号 (`UnitData[].code`, 缺省回退类型名大写)。
+ * 派生而非手抄: 两表并存时新增类型必漏, 回退形态会污染 creep 名与感知侧解析。
  */
 export const UNIT_CODES: Readonly<Record<UnitId, string>> = Object.freeze(
 	Object.fromEntries(
@@ -17,7 +17,7 @@ export const UNIT_CODES: Readonly<Record<UnitId, string>> = Object.freeze(
 	) as Record<UnitId, string>,
 );
 
-/** 取角色代号 */
+/** 取类型代号 */
 export function unitCode(unit: string): string {
 	return UNIT_CODES[unit as UnitId] ?? unit.toUpperCase();
 }
@@ -43,6 +43,13 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	logistic: "长途运输体",
 	cleaner: "清理体",
 	dismantle: "拆除体",
+
+	/* 冲级专属 (race speedrun 直通模块) */
+	hauler: "冲级搬运体",
+	tug: "拖拽体",
+	paver: "铺路体",
+	spawnFiller: "孵化补给体",
+	hubFiller: "枢纽补给体",
 
 	/* 占领房间 */
 	claimer: "占领体",
@@ -91,7 +98,7 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	"power-ranged": "智械远程体",
 };
 
-/** 取角色中文体名; 未收录角色回退为角色代号 */
+/** 取类型中文体名; 未收录类型回退为类型代号 */
 export function unitBodyName(unit: string): string {
 	return UNIT_BODY_NAMES[unit as UnitId] ?? unitCode(unit);
 }

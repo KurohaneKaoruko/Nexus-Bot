@@ -242,11 +242,19 @@ export default defineConfig(() => {
 			pluginTimings: false
 		},
 		// SPEEDRUN_PROFILE=1: 私服 GCL<6 账号也强制启用 PRIVATE_PROFILE (冲级赛直通构建专用)
+		// SPEEDRUN_KNOBS='{"swap":1,...}': 构建期烧死实验旋钮 (不触碰 __K, 不影响 PRIVATE_PROFILE)
 		transform: {
 			target: 'node8.9.3',
 			...(process.env.SPEEDRUN_MODE === '1'
-				? { define: { SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE === '1') } }
-				: {})
+				? {
+						define: {
+							SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE === '1'),
+							...(process.env.SPEEDRUN_KNOBS
+								? { SPEEDRUN_KNOBS: process.env.SPEEDRUN_KNOBS }
+								: {}),
+						},
+					}
+				: {}),
 		},
 		// @/ 别名统一指向 src/
 		resolve: {

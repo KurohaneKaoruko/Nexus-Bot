@@ -112,4 +112,4 @@ const createEmptyMissionPoolMemory = (): MissionPoolMemory => ({
 
 
 
-// spawn 任务角色计数缓存 (原 room 实例缓存改模块级)
+// spawn 任务类型计数缓存 (原 room 实例缓存改模块级)

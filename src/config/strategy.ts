@@ -43,7 +43,7 @@ export interface StrategyConfig {
 	/** 节流期 upgrade/build 既有任务的降权幅度 */
 	suppressPenalty: number;
 	/** survive 姿态暂停新排的非关键岗位 (缺口与替补均停) */
-	surviveSpawnPauseRoles: readonly string[];
+	surviveSpawnPauseUnits: readonly string[];
 }
 
 export const STRATEGY_CONFIG: StrategyConfig = {
@@ -74,7 +74,7 @@ export const STRATEGY_CONFIG: StrategyConfig = {
 	},
 	/** 节流期 upgrade/build 既有任务的降级幅度 (等级数, 正数 = 排后) */
 	suppressPenalty: 3,
-	surviveSpawnPauseRoles: ["upgrader", "worker"],
+	surviveSpawnPauseUnits: ["upgrader", "worker"],
 };
 
 /** 库存阈值绝对值: 系数 × sourceCount × Source 理论产能 */

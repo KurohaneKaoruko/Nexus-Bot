@@ -5,7 +5,7 @@
  *
  * owner 候选注册在模块加载时完成一次 (静态名册):
  * - nexus-agent: 任务驱动路径 (agentSystem);
- * - legacy-exec: 原型角色 exec() 自驱路径;
+ * - legacy-exec: 原型类型 exec() 自驱路径;
  * - teams-direct: Teams 直操路径。
  * 优先级: nexus 最高 (拦截档下任务驱动路径不被 legacy 夺走)。
  */

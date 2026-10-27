@@ -106,9 +106,9 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	const trickleEconomy = !Object.values(world.rooms).some((room) =>
 		room.stores.some((store) => store.structureType === "storage"),
 	);
-	const pauseRoles =
+	const pauseUnits =
 		directiveFor(ctx).posture === "survive"
-			? STRATEGY_CONFIG.surviveSpawnPauseRoles.filter(
+			? STRATEGY_CONFIG.surviveSpawnPauseUnits.filter(
 					// upgrader 仅在【非涓流且非降级紧急】时才随 survive 暂停:
 					// 涓流期 (无 storage) 豁免见上; 降级紧急豁免 (bugs/P1-10)。
 					(unit) =>
@@ -130,7 +130,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		rkey?: string,
 		budget?: number,
 	): void => {
-		if (pauseRoles.includes(unit)) {
+		if (pauseUnits.includes(unit)) {
 			return;
 		}
 		const key = rkey ?? unit;
@@ -184,7 +184,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	} else {
 		// 常驻编制缺口 (bugs/P1-5): harvester/upgrader/carrier 的岗位与任务 available 状态解耦——
 		// 任务被租住或处于失败冷却期时缺口仍可见, 否则岗位长期空转;
-		// carrier 可按角色覆盖优先级 (物流骨干不被任务驱动请求永久压队)
+		// carrier 可按类型覆盖优先级 (物流骨干不被任务驱动请求永久压队)
 		const anyRush = anyRoomRush(ctx);
 		const spawnRoomCreeps = Object.values(world.rooms)[0]?.creeps ?? [];
 		const spawnRoomObs = Object.values(world.rooms)[0];
@@ -209,7 +209,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			if (!targets) {
 				return;
 			}
-			for (const unitName of SPAWN_CONFIG.standingRoles) {
+			for (const unitName of SPAWN_CONFIG.standingUnits) {
 				// 水位门: cc 存量低于升级抽水缓冲时暂停升级体孵化, 孵化槽让位物流。
 				// rush 档豁免 (冲级火力是主要目的): 涓流期 cc 频繁低于门槛会反复停孵
 				// 升级体, 升级链人力不足 → cc 更空 → 死循环 (sim 实锤 upgrade 6 任务
@@ -248,7 +248,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					}
 				}
 				const basePriority =
-					SPAWN_CONFIG.standingPriorityByRole[unitName] ?? SPAWN_CONFIG.standingPriority;
+					SPAWN_CONFIG.standingPriorityByUnit[unitName] ?? SPAWN_CONFIG.standingPriority;
 				// 冲级档孵化提级传导 (bugs/P1-19): rush 期 upgradeBias 在任务层提前,
 				// 孵化层 upgrader 请求若恒 6 会被 fill_spawn 1 恒压队。
 				// 分档 (race-speedrun 6.1 第六轮 A/B):
@@ -332,7 +332,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			}
 			for (const room of Object.values(world.rooms)) {
 				for (const creep of room.creeps) {
-					const unit = roleFromCodeOf(creep.unitCode);
+					const unit = unitFromCodeOf(creep.unitCode);
 					if (!unit) {
 						continue;
 					}
@@ -346,15 +346,15 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 					) {
 						continue;
 					}
-					const overlapping = REPLACEMENT_KEY_ROLES.includes(unit)
+					const overlapping = REPLACEMENT_KEY_UNITS.includes(unit)
 						? staffed(unit) <= target
 						: staffed(unit) < target;
 					if (overlapping) {
-						// 替补等级跟随被替角色常驻档: 换代是编制维持的一部分,
+						// 替补等级跟随被替类型常驻档: 换代是编制维持的一部分,
 						// 恒殿后 L11 会被涓流期孵化槽饿死——同龄批次集中到期时
 						// 死亡速率 > 孵化速率, 人口崩塌 (sim t12k 22→7 实锤)
-						const roleLevel =
-							SPAWN_CONFIG.standingPriorityByRole[unit] ?? SPAWN_CONFIG.standingPriority;
+						const unitLevel =
+							SPAWN_CONFIG.standingPriorityByUnit[unit] ?? SPAWN_CONFIG.standingPriority;
 						// 冲级档升级替补越位 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
 						// 只作用于替补请求——缺编建立期维持 standing 序 (carrier 先于 upgrader,
 						// 能量通道先建, boot 绿门不漂移); 换代期升级体抢在 carrier churn 前
@@ -362,8 +362,8 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 						addRequest(
 							unit,
 							anyRush && unit === "upgrader"
-								? Math.min(roleLevel, SPAWN_CONFIG.rushUpgradeSpawnPriority)
-								: roleLevel,
+								? Math.min(unitLevel, SPAWN_CONFIG.rushUpgradeSpawnPriority)
+								: unitLevel,
 							`replacement:${unit}`,
 						);
 					}
@@ -388,7 +388,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	});
 
 	// 孵化链路遥测 (任务 6.4): 队列深度峰值 + 拒绝计数 + 等待时长 EMA, 按窗口节流落盘。
-	// pendingSince 记角色请求首次入池 tick, 被孵化或出池时结算 EMA 并清账——键集有界。
+	// pendingSince 记类型请求首次入池 tick, 被孵化或出池时结算 EMA 并清账——键集有界。
 	const telemetry = (spawnState.telemetry ??= {
 		tick: 0,
 		queueDepthPeak: 0,
@@ -417,7 +417,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	if (ctx.tick < 6000 && ctx.tick % 100 === 0) {
 		ctx.logger?.warn?.(
 			"probe-pool",
-			`t${ctx.tick} pause=[${pauseRoles.join(",")}] upgraderTarget=${targetsProbe} pool=[${ordered.map((r) => `${r.unit}:${r.priority}:${r.purpose.slice(0, 12)}`).join(",")}] avail=${Object.values(Game.spawns)[0]?.room.energyAvailable}`,
+			`t${ctx.tick} pause=[${pauseUnits.join(",")}] upgraderTarget=${targetsProbe} pool=[${ordered.map((r) => `${r.unit}:${r.priority}:${r.purpose.slice(0, 12)}`).join(",")}] avail=${Object.values(Game.spawns)[0]?.room.energyAvailable}`,
 		);
 	}
 	for (const spawn of spawns) {
@@ -474,7 +474,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				lastTaskChange: ctx.tick,
 			};
 			// worker 出生史累计标记 (workerBuildCriticalOf 豁免口径, 死亡不清)。
-			// request.unit 是角色名 (SpawnUnit), 与 UNIT_CODES 代号 ("W") 比较
+			// request.unit 是类型名 (SpawnUnit), 与 UNIT_CODES 代号 ("W") 比较
 			// 恒 false 会导致标记永不落盘 (c16 实锤 economy.workerEverBorn 缺失)
 			if (request.unit === "worker") {
 				ctx.memory.economy.workerEverBorn = true;
@@ -499,9 +499,9 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	}
 }
 
-/** 代号 → 角色名 (demandSources 单源再导出, 替补窗口扫描用) */
-function roleFromCodeOf(code: string) {
-	return roleFromCode(code);
+/** 代号 → 类型名 (demandSources 单源再导出, 替补窗口扫描用) */
+function unitFromCodeOf(code: string) {
+	return unitFromCode(code);
 }
 
 /**
@@ -539,7 +539,7 @@ function ccBelowSpawnGate(ctx: TickContext): boolean {
 	return anyBelow;
 }
 
-import { roleFromCode, workerBuildCriticalOf } from "@/modules/spawning/demandSources";
+import { unitFromCode, workerBuildCriticalOf } from "@/modules/spawning/demandSources";
 import { unitCode } from "@/constant/UnitConstant";
 import { roomWorldCoord } from "@/utils/roomCoord";
 import { REMOTE_CARRY_CONFIG } from "@/config/economy";
@@ -547,7 +547,7 @@ import { hasRemoteSpawnBudget } from "@/modules/spawning/remoteBudget";
 import { REPLACEMENT_CONFIG } from "@/config/economy";
 import { rushBodyWork } from "@/utils/rushBodies";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
-const REPLACEMENT_KEY_ROLES = REPLACEMENT_CONFIG.keyRoles;
+const REPLACEMENT_KEY_UNITS = REPLACEMENT_CONFIG.keyUnits;
 
 // ==================== 直接孵化 (编队/扩张/援助/控制台) ====================
 
@@ -555,11 +555,11 @@ const REPLACEMENT_KEY_ROLES = REPLACEMENT_CONFIG.keyRoles;
 export interface DirectSpawnRequest {
 	/** emergency=急救/控制台 (pc 陪护); direct=编队/扩张计划件 */
 	mode: "emergency" | "direct";
-	/** 角色 id (UnitData 词表或 SpawnUnit 词表) */
+	/** 类型 id (UnitData 词表或 SpawnUnit 词表) */
 	unit: string;
 	/** 写入 creep memory 的业务字段 (unit/cache 由命令层补齐) */
 	memory: Record<string, unknown>;
-	/** 显式体型 (编队压缩体); 缺省按角色定义源解析 */
+	/** 显式体型 (编队压缩体); 缺省按类型定义源解析 */
 	body?: BodyPartConstant[];
 	/** 体名覆盖 (如标注归属 pc), 缺省取 UnitConstant 体名词表 */
 	bodyNameOverride?: string;
@@ -592,8 +592,8 @@ export function directSpawn(room: Room, request: DirectSpawnRequest): number {
 	}
 	if (!bodyFinal?.length) return ERR_NOT_ENOUGH_RESOURCES;
 	const mem = { ...memory, unit, cache: {} } as CreepMemory;
-	// 命名入参必须是角色 id: 传代号会让 unitBodyName 回退成代号本身, 拼出 `H H-1A2B` 双段前缀。
-	// 体名覆盖只替换首段, 代号段恒由生成器产出——感知侧 unitCodeFromName 依赖该形态解析角色。
+	// 命名入参必须是类型 id: 传代号会让 unitBodyName 回退成代号本身, 拼出 `H H-1A2B` 双段前缀。
+	// 体名覆盖只替换首段, 代号段恒由生成器产出——感知侧 unitCodeFromName 依赖该形态解析类型。
 	const name = generateCreepName(unit, {
 		random: Math.random,
 		exists: (n) => n in Game.creeps,

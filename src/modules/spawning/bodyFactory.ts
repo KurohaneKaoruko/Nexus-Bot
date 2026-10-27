@@ -1,6 +1,6 @@
 /**
  * BodyFactory (docs/nexus-design/07 §7.3 + specs/adaptive-body-factory):
- * 预算现算体型——经济角色消费 utils/rushBodies 生成器 (成本恒 ≤ 预算, WORK 封顶, 收尾 WORK),
+ * 预算现算体型——经济类型消费 utils/rushBodies 生成器 (成本恒 ≤ 预算, WORK 封顶, 收尾 WORK),
  * 地形档 (hints.slowTerrain) 调整 move 配比: harvester 提 speed、carrier 换 [C,M] 慢地形组;
  * defender/universal 保持段模板 (开局万能体的最低成本闭环); 快递体纯 CARRY 现算。
  * 攒能定档/应急定档语义在 spawnDirector, 本模块只按给定预算编译。
@@ -13,7 +13,7 @@ import {
 } from "@/utils/rushBodies";
 import { RELAY_CONFIG } from "@/config/economy";
 
-export type EconomyRole =
+export type EconomyUnit =
 	| "universal"
 	| "harvester"
 	| "upgrader"
@@ -24,9 +24,9 @@ export type EconomyRole =
 	| "miner"
 	| "rush-courier"
 	| "scout";
-/** 战斗角色 (Phase 3: 防守型 defender, 远程为主) */
-export type CombatRole = "defender" | "claimer" | "reserver";
-export type SpawnUnit = EconomyRole | CombatRole | "remoteMiner";
+/** 战斗类型 (Phase 3: 防守型 defender, 远程为主) */
+export type CombatUnit = "defender" | "claimer" | "reserver";
+export type SpawnUnit = EconomyUnit | CombatUnit | "remoteMiner";
 
 /** 地形编译提示 (spawnDirector 按房间地形画像填充): 慢地形 = 沼泽密度高且路网未达标 */
 export interface BodyHints {
@@ -86,13 +86,13 @@ const ECONOMY_ROLES: ReadonlySet<string> = new Set([
 	"transporter",
 	"miner",
 	"rush-courier",
-	// scout 必须在集合内 (bugs/P1-18): standingPriorityByRole.scout=96 的覆盖
+	// scout 必须在集合内 (bugs/P1-18): standingPriorityByUnit.scout=96 的覆盖
 	// 依赖 standing 循环的 isSpawnUnit 门——缺席使 scout 只能从任务路径拿
 	// priority=55, 孵化槽被 70+ 请求长期占据, 外矿视野 25k+ tick 点不亮
 	"scout",
 ]);
 
-export function isEconomyRole(unit: string): unit is EconomyRole {
+export function isEconomyUnit(unit: string): unit is EconomyUnit {
 	return ECONOMY_ROLES.has(unit);
 }
 
@@ -219,7 +219,7 @@ export function buildBody(
 	}
 }
 
-/** 角色的典型生产时间上界 (替补窗口估算用: 满配体型) */
+/** 类型的典型生产时间上界 (替补窗口估算用: 满配体型) */
 export function typicalSpawnTime(unit: SpawnUnit): number {
 	return spawnTimeOf(buildBody(unit, Number.MAX_SAFE_INTEGER) ?? []);
 }
