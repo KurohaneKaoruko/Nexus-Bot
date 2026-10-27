@@ -852,7 +852,8 @@ function nextSpawn(room, by) {
 // another bot's keys) would otherwise steer this one. Creep memory and the sim's own keys stay.
 function newRun(spawn) {
 	if (Memory.boot && Memory.boot.id === spawn.id) return;
-	const keep = _.pick(Memory, ["creeps", "jitter", "debug"]);
+	// Nexus 子树是主代码内核的校准产物 (布局记录等), 与冲级 run 生命周期无关, 保留
+	const keep = _.pick(Memory, ["creeps", "jitter", "debug", "Nexus"]);
 	for (const k of Object.keys(Memory)) delete Memory[k];
 	Object.assign(Memory, keep, { boot: { id: spawn.id, t: Game.time } });
 }

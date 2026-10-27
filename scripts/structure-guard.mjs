@@ -140,7 +140,7 @@ function checkRetiredPoolSymbols(files) {
 // ── 通用: 源文件枚举与注释剥离 ─────────────────────────────
 
 /** 冲级赛直通模块: 上游单文件血统的物理隔离区 (@ts-nocheck 为终态而非债务,
- *  见 src/branch/race/speedrunEntry.ts), 不参与 nocheck/any 计量 */
+ *  见 src/branch/race/speedrun/), 不参与 nocheck/any 计量 */
 const SPEEDRUN_DIR = path.join(SRC_DIR, 'branch', 'race', 'speedrun');
 
 function walkTs(dir, out = []) {

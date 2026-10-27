@@ -202,11 +202,7 @@ export default defineConfig(() => {
 	const branchPath = secret?.branches?.[variant]?.path;
 	const baseInput = branchPath
 		?? (variant === 'main' ? 'src/main.ts' : `src/branch/${variant}/main.ts`);
-	// SPEEDRUN_MODE=1: race 变体切冲级赛直通入口 (固定布局 bot, 与 Nexus 链物理隔离)
-	const speedrunEntry = baseInput.replace(/\/main\.ts$/, '/speedrunEntry.ts');
-	const input = process.env.SPEEDRUN_MODE === '1' && fs.existsSync(path.resolve(process.cwd(), speedrunEntry))
-		? speedrunEntry
-		: baseInput;
+	const input = baseInput;
 	const entryAbs = path.resolve(process.cwd(), input);
 	if (!fs.existsSync(entryAbs)) {
 		throw new Error(`分支 ${variant} 的入口不存在: ${input}`);
@@ -241,11 +237,12 @@ export default defineConfig(() => {
 		checks: {
 			pluginTimings: false
 		},
-		// SPEEDRUN_PROFILE=1: 私服 GCL<6 账号也强制启用 PRIVATE_PROFILE (冲级赛直通构建专用)
+		// SPEEDRUN_PROFILE=1: 私服 GCL<6 账号也强制启用 PRIVATE_PROFILE (冲级构建专用,
+		// race 变体入口挂同一 speedrun 引擎, 与 SPEEDRUN_PROFILE 开关无关)
 		// SPEEDRUN_KNOBS='{"swap":1,...}': 构建期烧死实验旋钮 (不触碰 __K, 不影响 PRIVATE_PROFILE)
 		transform: {
 			target: 'node8.9.3',
-			...(process.env.SPEEDRUN_MODE === '1'
+			...(variant === 'race'
 				? {
 						define: {
 							SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE === '1'),

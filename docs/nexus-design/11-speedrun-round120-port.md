@@ -101,3 +101,26 @@
 - `dieMargin` 转正 30 后新基线 `[1071167,1080491,1074976,1079683]` (mean 1,076,579, +0.36%,
   4 seed 全正); 相同时序 L5 12,181–12,317 (旧 12,235–12,328)
 - 其余调参旋钮默认全 0; 损耗机理与已排除项见 `docs/bugs/energy-loss-ledger.md`
+
+## 模块化融合 (race 变体主链化)
+
+- 入口收敛: `speedrunEntry.ts` (SPEEDRUN_MODE 入口切换) 删除, race 变体唯一入口
+  `src/branch/race/main.ts` = 主代码内核 (装配/调度/校准/遥测/错误边界) +
+  `RaceSpeedrun` (commit P0 单模块, 承担全部冲级行为)
+- 模块清单硬约束 (sim 实证, 非随意裁剪):
+  - 不挂 Agents/Broker: betterMove 原型覆写在 Broker 结算, 与引擎裸 move 语义互斥;
+    且 Planner 等系统的意图队列以 Broker 为唯一消费方, 无 Broker 的链不能挂提交意图的模块
+  - 不挂主链行为模块: sim 冲级场景把全 9 房 controller 报 `my=true` (8 个 rcl=0
+    幽灵房), Perception→world 链会把幽灵房当己房 (布局/孵化/工地配额全污染);
+    Spawning 与引擎 spawnIt 同步直调互抢
+  - ActorOwnership 双件保留: 纯 global 运行时层注册表, 零 Memory/零原生调用
+- 布局归一形态: 布局数据以 `planner/static/race.ts` 模板为单一事实源 (speedrun
+  生产档坐标从模板派生); 布局放量节奏 (boxRcl/extMax/建序) 是引擎调优不可分割
+  部分保留在引擎内——主管线接管放量的路线已证伪 (幽灵房配额/RCL<2 门/建序/
+  Broker 依赖四重失配, sim 实测零建造)
+- 构建链归一: `VARIANT=race` 单一入口, SPEEDRUN_MODE 入口切换删除;
+  `SPEEDRUN_PROFILE` define 按 variant=race 激活 (不再依赖 SPEEDRUN_MODE)
+- 逐位验收: 融合构建 4×20k `[1071167,1080491,1074976,1079683]` / 4×40k
+  `[2281648,2295520,2272884,2289314]`, 与基线逐位一致零漂移
+- 附带修复: `newRun` 保留 `Memory.Nexus` 子树 (引擎清 Memory 时不再击穿主代码
+  校准产物, 布局记录跨 run 存活)
