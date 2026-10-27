@@ -52,20 +52,24 @@ function record(room, by, spawn, s) {
 			_.filter(by[r], (x) => x.room.name === room.name).length,
 		];
 	const pile = (rs) => _.sum(rs, (r) => _.sum(r.find(FIND_DROPPED_RESOURCES), "amount"));
-	// where the away-from-home energy actually lies: per room totals and the bigger piles by tile
-	const away = _.filter(Game.rooms, (r) => r.name !== room.name);
+	// where the energy actually lies: per-room totals, and every pile with its tile (the decay is one
+	// energy per tick per pile, so the pile count matters as much as the total)
 	const pr = {};
 	const pp = [];
-	for (const r of away)
+	const pc = [];
+	for (const r of _.values(Game.rooms))
 		for (const p of r.find(FIND_DROPPED_RESOURCES)) {
-			pr[r.name] = (pr[r.name] || 0) + p.amount;
-			if (p.amount >= 150) pp.push(`${r.name}:${p.pos.x},${p.pos.y}=${p.amount}`);
+			if (r.name !== room.name) pr[r.name] = (pr[r.name] || 0) + p.amount;
+			pc.push(`${p.amount}@${r.name}:${p.pos.x},${p.pos.y}`);
+			if (r.name !== room.name && p.amount >= 150) pp.push(`${r.name}:${p.pos.x},${p.pos.y}=${p.amount}`);
 		}
 	const R = (Memory.R = Memory.R || []);
 	R.push({
 		t: el + 1,
 		pr,
 		pp,
+		pn: pc.length,
+		pc,
 		rcl: c.level,
 		cum,
 		e: room.energyAvailable,
