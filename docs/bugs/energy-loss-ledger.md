@@ -242,3 +242,21 @@ W2N2:17,28 165    W2N1:29,28 138    W2N1:22,14 133 ...
 终判：20k 窗口内 paved 无解（道路 132k 必然砸中 4k-14k 爬坡期）。
 40k 窗口待测：roadFrom 21000（20k 后才铺路，20k 档成绩不受影响，
 双榜记录独立保留最优，不存在互斥）。
+
+## 14. 40k 窗口道路终判与本台账收口（2026-10-28）
+
+`{paved:11, slot25:1, roadFrom:21000, extMax4:8, extMax:8}`（20k 后才铺路，
+40k 官方 4 组）：**2,137,093（−6.5%）**，RCL6 拖到 34.6-35.0k（默认 32.2k）。
+20-40k 段 control 55.9/tick < 默认 61.1/tick——paved 车队 24k+ 才成形、
+spawn 折损期吃掉全部红利，40k 也回不了本。**paved/roadFrom 家族全线出局。**
+
+upPerBox 350 / 250：1,072,125（−0.4%）/ 1,071,202（−0.5%），默认 400 保持。
+
+### 收口结论
+
+20k 1,076,579 / 40k 2,284,842 即当前架构双窗口最优解。已证伪路线全表：
+slot25（全程/L5起）×2、upMul、upFrom、upFirst（死路径）、renewPass:0（泊位）、
+towUp:0、chain:0、extMax 8/20/21/30、upPerBox 250/350、paved 组合×2、
+lanePileMax、keepHome、haulMax、extHold、ring 系（历史）。
+结构上限三项乘积：cap 650（7 ext）× 11 槽 × 6 WORK（towed）= 66 control/tick，
+army 500 parts、spawn 20/tick 饱和、损耗 23/tick 均为引擎硬约束下的稳态。
