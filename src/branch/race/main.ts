@@ -10,35 +10,17 @@
  *    controller 报 my=true (8 个 rcl=0 幽灵房), 主链模块会把幽灵房当己房
  *    处理 (布局记录/孵化/工地配额全被污染); 且与引擎的孵化/放量节奏互抢;
  *  - 挂 RaceSpeedrun (commit P0) 承担全部冲级行为。
- * 变体差异收敛在三处标准机制: use 清单 / caps 能力声明 / profile 固定档。
+ * 变体差异收敛在两处标准机制: use 清单 / profile 固定档。
+ * (caps 能力声明的消费方 Planner/Spawning 等不在本链上, 不再声明)
  * 私服环境垫片保持首个 import (缺 Power 类/市场 API 时补桩降级)。
  */
 import "../compat";
 import { RACE_PROFILE } from "./profile";
 import { RaceSpeedrun } from "./speedrunModule";
-import { configureServerCaps } from "@/config/capabilities";
 import { createNexus } from "@/core/nexus";
 import { ActorOwnershipSweep, ActorOwnershipPersist } from "@/runtime/actorOwnershipModule";
 
 const nexus = createNexus(RACE_PROFILE);
-
-// 冲级服能力声明 (对齐 Rosmarin race fork): 产业/防御建筑全禁——
-// 冲级期能量全部投给 ext/仓库/孵化, terminal/lab/factory 等无冲级收益
-// (speedrun 榜口径不产产业分), rampart/wall 不灌能量。
-configureServerCaps({
-	raceCompat: true,
-	skipBuildTypes: [
-		"factory",
-		"nuker",
-		"terminal",
-		"lab",
-		"powerSpawn",
-		"observer",
-		"extractor",
-		"rampart",
-		"wall",
-	],
-});
 
 nexus.use(
 	ActorOwnershipSweep,
