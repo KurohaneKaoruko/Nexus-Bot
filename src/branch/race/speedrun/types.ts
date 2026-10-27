@@ -23,7 +23,7 @@ import {
 } from "./layout";
 import { boxes, hubBox, hubBoxes, takeBox, spare, fill } from "./economy";
 import { tow, swapLoad } from "./towing";
-import { bayUnload, bayStop } from "./spawning";
+import { bayUnload, bayStop, renewable } from "./spawning";
 /**
  * 类型实现: spawnFiller/paver/hauler/hubFiller/miner/upgrader/builder/reserver/tug。
  * 泊位续能 (bay/bayStop/bayUnload): 续能划算的 hauler 停进 spawn 旁泊位卸货等 renew。
