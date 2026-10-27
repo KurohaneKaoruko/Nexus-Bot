@@ -55,3 +55,17 @@ if (spawn0 && !Memory.roomOk) {
 - run 35 无成绩 (该 run 已废, 等服务器 4wt 自动重开)
 - 重开落点仍随机: 落标准房则正常跑, 落非标准房则待机。若要非标准房也能跑,
   需要动态布局 (与"尽量不对冲级做改动"冲突, 暂不做)
+
+## 二次事故（2026-10-27，已修复）
+
+守卫第一版把 `Memory.roomOk=false` 写成**粘性**：非标准房 run 35 (E3N3) 置 false 后，
+守卫的 `return` 挡在 `newRun()` 之前，新 run 的清账永远不执行 → 之后 ~38 个 run
+（含标准房）全部静默待机，榜单停更在 run 34。线上取证：`/api/user/memory` 显示
+`boot.t=40792452`（E3N3 时代）+ `roomOk:false` + `creeps:0` 常驻。
+
+修复：`newRun(spawn0)` 提到守卫**之前**（幂等：boot.id 相同直接 return，零开销）。
+新 run 落地即清 Memory → roomOk 随之消失 → 守卫在新房重新验证。标准房 sim 4×20k
+逐位不变 `[1071167,1080491,1074976,1079683]`。
+
+验证标准（线上）：`/api/speedrun/records/f7632a9a1c5c` 出现 run ≥ 35 的新记录即恢复；
+非标准房行为不变（静默待机该 run，不崩）。

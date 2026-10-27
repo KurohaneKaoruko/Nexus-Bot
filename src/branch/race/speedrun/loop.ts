@@ -16,8 +16,11 @@ export function loop() {
 	configure();
 	// Standard-room guard: the whole layout assumes the fixed landmark tiles. On any other
 	// terrain the fixed posts point at walls or empty ground (every miner tick would throw),
-	// so stand still instead of crashing the loop. A valid room passes once and is remembered.
+	// so stand still instead of crashing the loop.
 	const spawn0 = Object.values(Game.spawns)[0];
+	// newRun runs BEFORE the guard: it wipes Memory each new spawn, so a roomOk=false from a
+	// bad landing room can never outlive that run (run 35 stuck ~38 runs silent this way)
+	if (spawn0) newRun(spawn0);
 	if (spawn0 && !Memory.roomOk) {
 		const ctrl = spawn0.room.controller;
 		Memory.roomOk =
@@ -35,7 +38,6 @@ export function loop() {
 	const room = spawn.room;
 	// hybrid shape (K.ringTo): ring below the gate RCL, legacy triple after — refresh BOXES/SLOTS
 	shape(room.controller.level);
-	newRun(spawn);
 	global.HOME = room.name;
 	if (Game.time % 25 === 0) plan(room);
 	roads(room.name);
