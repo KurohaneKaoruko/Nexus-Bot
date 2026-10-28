@@ -499,7 +499,8 @@ function laneUnload(c, room, home) {
 		return _.sum(room.lookForAt(LOOK_RESOURCES, x, LANE_Y), "amount");
 	};
 	const free = [];
-	for (let x = 14; x <= 20; x++)
+	// lane 可占格随 BOX 派生 (重锚定世界 lane 整体平移, 固定 14-20 会错位)
+	for (let x = BOX.x - 3; x <= BOX.x + 3; x++)
 		if (!room.lookForAt(LOOK_CREEPS, x, LANE_Y).length) free.push(pos(x, LANE_Y, home));
 	// ring: head for a tile that touches the box while it has room (full-rate unload), else the nearest
 	if (RING_HOME.v && c.pos.y !== LANE_Y) {

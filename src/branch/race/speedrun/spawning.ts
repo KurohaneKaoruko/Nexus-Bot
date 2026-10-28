@@ -853,7 +853,8 @@ function nextSpawn(room, by) {
 function newRun(spawn) {
 	if (Memory.boot && Memory.boot.id === spawn.id) return;
 	// Nexus 子树是主代码内核的校准产物 (布局记录等), 与冲级 run 生命周期无关, 保留
-	const keep = _.pick(Memory, ["creeps", "jitter", "debug", "Nexus"]);
+	// anchor (重锚定诊断锚) 也保留: configure 在 newRun 之前跑, 首帧写入的 anchor 否则会被本清账删掉
+	const keep = _.pick(Memory, ["creeps", "jitter", "debug", "Nexus", "anchor"]);
 	for (const k of Object.keys(Memory)) delete Memory[k];
 	Object.assign(Memory, keep, { boot: { id: spawn.id, t: Game.time } });
 }
