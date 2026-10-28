@@ -872,8 +872,15 @@ function spawnIt(s) {
 				spawn,
 			]
 		: undefined;
-	// 主代码统一命名 (中文体名 代号-HEX): 感知侧 unitCodeFromName 可解析回类型
-	const name = generateCreepName(s.type, { random: Math.random, exists: (x) => x in Game.creeps });
+	// 主代码统一命名 (中文体名 代号-HEX): 感知侧 unitCodeFromName 可解析回类型。
+	// race 内部类型与主代码 id 撞名时按语义映射: miner (站位挖能量源) → harvester
+	// (采集体; 主代码 miner 是挖 mineral 的元素矿工), builder (通用建造) → worker
+	// (工作体; 主代码词表未登记 builder)。仅影响命名, 引擎内部分派仍用原类型串
+	const NAMING: Record<string, string> = { miner: "harvester", builder: "worker" };
+	const name = generateCreepName(NAMING[s.type] ?? s.type, {
+		random: Math.random,
+		exists: (x) => x in Game.creeps,
+	});
 	if (
 		spawn.spawnCreep(body, name, {
 			memory: mem,
