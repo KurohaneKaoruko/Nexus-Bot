@@ -278,47 +278,52 @@ function reanchor() {
 	// 标准世界 7 格全平, 恒等退化不受影响
 	const ter = spawnObj.room.getTerrain();
 	const plain = (x, y) => x >= 0 && x <= 49 && y >= 0 && y <= 49 && ter.get(x, y) === 0;
-	const ctrlPts = [
-		...CTRL_BOX_OFF.map(([dx, dy]) => [17 + cx + dx, 25 + cy + dy]),
-		...[15, 16, 17, 18, 19].map((x) => [x + cx, LANE_Y + cy]),
-	];
+	// 箱列偏移探测: 三箱与 lane 核心段按列整体横移 d 避墙 (先 d=0 再 ±1/±2),
+	// 槽位与箱锁定同列平移、并加 ctrl Range3 剪枝 (脱程槽位剔除)。
+	// 按实测地形枚举, 重摆生存率 65% → 82%。d 折叠进 ctrl 系 x 偏移 (gx),
+	// CTRL 本身仍是真实控制器位
+	const boxOK = (dd) => CTRL_BOX_OFF.every(([dx, dy]) => plain(17 + cx + dd + dx, 25 + cy + dy));
+	const laneOK = (dd) => [15, 16, 17, 18, 19].every((x) => plain(x + cx + dd, LANE_Y + cy));
+	const d = [0, 1, -1, 2, -2].find((dd) => boxOK(dd) && laneOK(dd));
+	if (d === undefined) return;
+	const gx = cx + d;
 	const spawnPts = [
 		[17 + sx, 30 + sy],
 		...HUBS[0].fill.map(([x, y]) => [x + sx, y + sy]),
 		...HUBS[0].ext.map(([x, y]) => [x + sx, y + sy]),
 	];
-	const badC = ctrlPts.filter(([x, y]) => !plain(x, y));
-	const badS = spawnPts.filter(([x, y]) => !plain(x, y));
-	if (badC.length || badS.length) return;
-	ANCHOR_OFF.cx = cx;
+	if (spawnPts.some(([x, y]) => !plain(x, y))) return;
+	ANCHOR_OFF.cx = gx;
 	ANCHOR_OFF.cy = cy;
 	ANCHOR_OFF.sx = sx;
 	ANCHOR_OFF.sy = sy;
 	ANCHOR_OFF.re = true;
-	// ctrl 系: 控制器/升级块/槽位/lane 整体平移
+	// ctrl 系: 控制器/升级块/槽位/lane 整体平移 (箱列含偏移 d)
 	CTRL.x += cx;
 	CTRL.y += cy;
-	BOX.x += cx;
+	BOX.x += gx;
 	BOX.y += cy;
 	LANE_Y += cy;
 	RING_BOXES.length = 0;
-	RING_BOXES.push({ x: 17 + cx, y: 27 + cy });
+	RING_BOXES.push({ x: 17 + gx, y: 27 + cy });
 	FULL_BOXES.length = 0;
 	FULL_BOXES.push(
-		...(S27 ? [{ x: 15 + cx, y: 27 + cy }, { x: 19 + cx, y: 27 + cy }] : mkBoxes(CTRL.x, CTRL.y)),
+		...(S27 ? [{ x: 15 + gx, y: 27 + cy }, { x: 19 + gx, y: 27 + cy }] : mkBoxes(CTRL.x + d, CTRL.y)),
 	);
 	BOXES.length = 0;
 	BOXES.push(...(RING_HOME.v ? RING_BOXES : FULL_BOXES));
 	for (const s of RING_SLOTS) {
-		s[0] += cx;
+		s[0] += gx;
 		s[1] += cy;
 	}
 	for (const s of FULL_SLOTS) {
-		s[0] += cx;
+		s[0] += gx;
 		s[1] += cy;
 	}
-	// 槽位落墙剔除 (保持 lane-first 优先序)
-	const keepFull = FULL_SLOTS.filter(([x, y]) => plain(x, y));
+	// 槽位落墙剔除 + Range3 剪枝 (箱列偏移后槽位可能脱离控制器升级距离, 保持 lane-first 序)
+	const keepFull = FULL_SLOTS.filter(
+		([x, y]) => plain(x, y) && Math.max(Math.abs(x - ctrlObj.pos.x), Math.abs(y - ctrlObj.pos.y)) <= 3,
+	);
 	FULL_SLOTS.length = 0;
 	FULL_SLOTS.push(...keepFull);
 	// 喂料侧重排: 基线里 hub1 在 lane 正南, hauler 进 lane 即卸在升级工脚边; 世界重摆后
@@ -353,16 +358,16 @@ function reanchor() {
 	}
 	// S29B/S26 出口是 ctrl 系行上的点, 按 ctrl 偏移重算; 基准档出口 = hub1 容器引用, 已随平移
 	if (S29B) {
-		EXIT[0] = 17 + cx;
+		EXIT[0] = 17 + gx;
 		EXIT[1] = 28 + cy;
 	} else if (S26) {
-		EXIT[0] = 17 + cx;
+		EXIT[0] = 17 + gx;
 		EXIT[1] = 27 + cy;
 	}
-	SPF_POS[0] += cx;
+	SPF_POS[0] += gx;
 	SPF_POS[1] += cy;
 	// K.parkX/parkY (默认 21,27) 是 ctrl 系散点; 实验覆盖值 (__K) 视作绝对坐标不动
-	if (!globalThis.__K || !("parkX" in globalThis.__K)) K.parkX += cx;
+	if (!globalThis.__K || !("parkX" in globalThis.__K)) K.parkX += gx;
 	if (!globalThis.__K || !("parkY" in globalThis.__K)) K.parkY += cy;
 	// S27 档 SPAWN 落在升级块内 (ctrl 系), 其余档 SPAWN 是地标本身 (spawn 系)——上面已按 sx/sy 平移,
 	// S27 是默认关闭的实验旋钮且标准世界恒等, 不为它做双系映射
@@ -374,7 +379,7 @@ function reanchor() {
 	Memory.anchor = {
 		ctrl: [ctrlObj.pos.x, ctrlObj.pos.y],
 		spawn: [spawnObj.pos.x, spawnObj.pos.y],
-		off: [cx, cy, sx, sy],
+		off: [cx, cy, sx, sy, d],
 		slots: SLOTS.length,
 		t: Game.time,
 	};
