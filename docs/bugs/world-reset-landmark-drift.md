@@ -73,13 +73,19 @@ speedrun 得分恒 0, 全服账号无一例外。榜单停留在重开前的历�
 - lane 占位格派生化已修 (laneUnload free tile 枚举 14-20 → BOX.x±3), 新世界
   L3@3643 L4@7083 L5@16009, 40k 升级 1654697
 - 下一世界重摆生存率 (按服务器实测地形全房枚举): lane 校验分层后 ctrl 摆位
-  生存率 59% → 65%——核心段 BOX.x±2 硬校验, 外沿两格落墙降级放行 (运行时按
-  平地裁剪卸货占位)。实测降级摆位 (ctrl off 0,-6, 外沿一格墙): 旧口径 0 分 →
-  新口径 L4@8398 存活 46。拒绝大头是箱墙 (27 个百分点), 破它需要箱列偏移探测
-  (箱列 ±1..±3 随地形横移, 与槽位/lane 同步), 复杂度高留作后续
+  生存率 59% → 65%; 箱列偏移探测 (d∈{0,±1,±2}, 三箱/lane 核心段/槽位锁定同列
+  横移避墙带, 槽位另加 ctrl Range3 剪枝) 后 65% → **82%** (1549 个摆位存活
+  1263)。实测救活摆位 (ctrl off +2,-3, 旧口径整场拒绝): d=+2 → 20k upCum
+  475123。标准世界 d=0 恒等, 4×20k 逐位不变
+- 快照还原周期脏账 (2026-10-28 实测): 服务器 40k 后快照还原, Game.time 回退而
+  Memory/spawn.id 原样残留, `newRun` 的 boot.id 闸门会放行上一 run 的陈旧
+  upCum/anchor/roomOk。已修 (spawning.ts newRun): `Memory.lt` 存 last-seen
+  tick, 落到「未来」即回退, 强制清账重开新 run。rollback 测试床 (预置 lt=19000
+  脏账从 t0 重跑) 实测清账生效: upCum 归零重计, boot.t/anchor 重写
 - 服务器 runtime 停摆中 (全服最后 record 10-26 15:34 UTC, 三分支 activeWorld:false,
   console 表达式不执行)。代码已部署 (race 分支, 部署字节本地复测标准世界逐位
   1071167 + 新世界 L5@16009 + 降级世界 L4@8398 三重验证), 等 runtime 恢复即自动出分
 - 重锚定按「同一 global 生命周期内世界不变」假设设计 (anchorDone 每 global 一次);
-  服务器 4wt 自动重开会连 global 一起重置, 假设成立。若未来出现一个 global 内
-  房间地标不同的情况, 需改为 spawn.id 键控 + 增量平移
+  服务器 4wt 自动重开会连 global 一起重置, 假设成立。快照还原周期 tick 回退已由
+  newRun 的 lt 检测兜住 (清账后 configure/reanchor 随新 global 重跑)。若未来出现
+  一个 global 内房间地标不同的情况, 需改为 spawn.id 键控 + 增量平移
