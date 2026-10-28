@@ -851,7 +851,11 @@ function nextSpawn(room, by) {
 // A new run (another spawn) starts from a clean Memory: what a previous run left (upCum, harvested, plans,
 // another bot's keys) would otherwise steer this one. Creep memory and the sim's own keys stay.
 function newRun(spawn) {
-	if (Memory.boot && Memory.boot.id === spawn.id) return;
+	// 服务器 40k 后快照还原: Game.time 回退而 Memory/spawn.id 原样残留, boot.id 闸门会放行
+	// 上一 run 的陈旧账目。last-seen tick 落到「未来」即回退, 强制清账重开新 run
+	const rolled = Memory.lt !== undefined && Game.time < Memory.lt;
+	Memory.lt = Game.time;
+	if (Memory.boot && Memory.boot.id === spawn.id && !rolled) return;
 	// Nexus 子树是主代码内核的校准产物 (布局记录等), 与冲级 run 生命周期无关, 保留
 	// anchor (重锚定诊断锚) 也保留: configure 在 newRun 之前跑, 首帧写入的 anchor 否则会被本清账删掉
 	const keep = _.pick(Memory, ["creeps", "jitter", "debug", "Nexus", "anchor"]);
