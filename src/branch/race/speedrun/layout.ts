@@ -278,17 +278,30 @@ function reanchor() {
 	// 标准世界 7 格全平, 恒等退化不受影响
 	const ter = spawnObj.room.getTerrain();
 	const plain = (x, y) => x >= 0 && x <= 49 && y >= 0 && y <= 49 && ter.get(x, y) === 0;
-	// 块行偏移探测: 升级块 (三箱+lane+槽位) 整体上下挪行避墙 (先基线 dy=2 再 1/3),
-	// 槽位从箱位推导 (箱行交错槽 + 北侧行贴箱链), 与基线模板逐位一致;
-	// 横移 d 与纵移 dy 逐组合探测 (先小偏移)。按实测地形枚举, 重摆生存率 65% → 89%
-	const boxOK = (dd, dy) =>
-		CTRL_BOX_OFF.every(([dx]) => plain(17 + cx + dd + dx, 25 + cy + dy));
-	const laneOK = (dd, dy) =>
-		[15, 16, 17, 18, 19].every((x) => plain(x + cx + dd, 26 + cy + dy));
-	const hit = ([2, 1, 3] as const)
-		.map((dy) => ({ dy, dd: [0, 1, -1, 2, -2].find((v) => boxOK(v, dy) && laneOK(v, dy)) }))
-		.find((o) => o.dd !== undefined)!;
-	const { dy, dd: d } = hit;
+	// 块重摆探测: 升级块 (三箱+lane+槽位) 挪行挪列避墙带 (dy∈{2,1,3} × d∈{0,±1,±2}),
+	// 槽位从箱位推导 (箱行交错槽 + 北侧行贴箱链)。探测目标「存活槽位数最多」而非首个通过
+	// ——重摆世界的墙带常吞槽, 换行/列常能整排救回 (当前服务器世界 8 槽 → 11 槽满配);
+	// 平手时先到先得 (dy=2, d=0 基线优先, 标准世界恒等)。重摆生存率 65% → 89%
+	const ctrlPt = (x: number, y: number) =>
+		plain(x, y) &&
+		!(x === ctrlObj.pos.x && y === ctrlObj.pos.y) &&
+		Math.max(Math.abs(x - ctrlObj.pos.x), Math.abs(y - ctrlObj.pos.y)) <= 3;
+	const cand = [] as { dy: number; dd: number; n: number }[];
+	for (const dy of [2, 1, 3] as const)
+		for (const dd of [0, 1, -1, 2, -2] as const) {
+			const bx0 = 17 + cx + dd;
+			const by0 = 25 + cy + dy;
+			if (!CTRL_BOX_OFF.every(([dx]) => plain(bx0 + dx, by0))) continue;
+			if (![15, 16, 17, 18, 19].every((x) => plain(x + cx + dd, by0 + 1))) continue;
+			let n = 0;
+			for (const x of [bx0 - 1, bx0 + 1, bx0 - 3, bx0 + 3, bx0 - 2, bx0, bx0 + 2])
+				if (ctrlPt(x, by0) && ctrlPt(x, by0 - 1)) n += 2;
+				else if (ctrlPt(x, by0) || ctrlPt(x, by0 - 1)) n += 1;
+			cand.push({ dy, dd, n });
+		}
+	if (!cand.length) return;
+	const best = cand.reduce((a, b) => (b.n > a.n ? b : a));
+	const { dy, dd: d } = best;
 	const gx = cx + d;
 	const spawnPts = [
 		[17 + sx, 30 + sy],
@@ -321,10 +334,9 @@ function reanchor() {
 	BOXES.push(...(RING_HOME.v ? RING_BOXES : FULL_BOXES));
 	// 槽位从箱位推导: 箱行交错槽 (内缝先) + 北侧行贴箱链 (正上→缝→外延);
 	// dy=2 时与基线模板逐位一致 (恒等), 其余 dy 自动派生
-	const laneFirst = K_SLOTS_LANE && !S26;
 	const mkSlots = () => {
 		const w: [number, number][] = [];
-		if (laneFirst) {
+		if (K_SLOTS_LANE && !S26) {
 			for (const x of [bx0 - 1, bx0 + 1, bx0 - 3, bx0 + 3]) w.push([x, by0]);
 			for (const x of [bx0 - 2, bx0, bx0 + 2, bx0 - 1, bx0 + 1, bx0 - 3, bx0 + 3])
 				w.push([x, by0 - 1]);
@@ -335,17 +347,17 @@ function reanchor() {
 		}
 		return w;
 	};
+	// 探测期槽位过滤: 平地 + 不压 ctrl 本体 + Range3 (供评分与正式剔除共用)
+	const slotOK = (x: number, y: number) =>
+		plain(x, y) &&
+		!(x === ctrlObj.pos.x && y === ctrlObj.pos.y) &&
+		Math.max(Math.abs(x - ctrlObj.pos.x), Math.abs(y - ctrlObj.pos.y)) <= 3;
 	RING_SLOTS.length = 0;
-	RING_SLOTS.push(...mkSlots());
+	RING_SLOTS.push(...mkSlots().filter(([x, y]) => slotOK(x, y) && Math.abs(x - bx0) <= 2 && y >= by0 - 1 && y <= by0));
 	FULL_SLOTS.length = 0;
 	FULL_SLOTS.push(...mkSlots());
 	// 槽位落墙剔除 + Range3 剪枝 + ctrl 本体格排除 (dy=1 北行 = ctrl 行会撞本体)
-	const keepFull = FULL_SLOTS.filter(
-		([x, y]) =>
-			plain(x, y) &&
-			!(x === ctrlObj.pos.x && y === ctrlObj.pos.y) &&
-			Math.max(Math.abs(x - ctrlObj.pos.x), Math.abs(y - ctrlObj.pos.y)) <= 3,
-	);
+	const keepFull = FULL_SLOTS.filter(([x, y]) => slotOK(x, y));
 	FULL_SLOTS.length = 0;
 	FULL_SLOTS.push(...keepFull);
 	// 喂料侧重排: 基线里 hub1 在 lane 正南, hauler 进 lane 即卸在升级工脚边; 世界重摆后
