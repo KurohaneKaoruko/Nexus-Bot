@@ -472,6 +472,21 @@ export const migrateV14ToV15: MigrationFn = (memory) => {
 	return {};
 };
 
+/**
+ * v15 → v16: 远程源注册表按母房分键 (economy.remoteSources → economy.remoteSourcesByHome)。
+ * 旧数组不分殖民地, 第二殖民地会读到第一殖民地的外矿列表与路程。注册表是可重建缓存
+ * (首次规划时按母房 PathFinder 重算), 迁移只删旧键、不搬数据。
+ * 回退安全: 旧代码读不到 remoteSources 时按原逻辑重建数组, 不抛错。
+ * 迁移幂等: 已删键二次跑无变化。
+ */
+export const migrateV15ToV16: MigrationFn = (memory) => {
+	const economy = memory["economy"];
+	if (isPlainObject(economy)) {
+		delete economy["remoteSources"];
+	}
+	return {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -488,4 +503,5 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV12ToV13,
 	migrateV13ToV14,
 	migrateV14ToV15,
+	migrateV15ToV16,
 ];
