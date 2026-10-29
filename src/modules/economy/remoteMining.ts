@@ -19,7 +19,7 @@ function myUsername(): string | undefined {
 }
 
 /** 邻房名计算: 已抽公共 utils/roomCoord (bugs/P1-17), 此处仅再导出兼容本文件内引用 */
-import { neighborRooms } from "@/utils/roomCoord";
+import { neighborRooms, roomKind } from "@/utils/roomCoord";
 import { REMOTE_CARRY_CONFIG } from "@/config/economy";
 import { remoteSourceWeightOf } from "@/modules/economy/income";
 import { isProductionSecured } from "@/modules/economy/productionGate";
@@ -47,16 +47,24 @@ export interface RemoteSourceEntry {
  * 无视野也能开矿——scout 只是视野加速器, 不是开门前置。
  * 首次注册后 Memory 恒用 (上游同款缓存, 源位与地形不变)。
  */
+/**
+ * 外矿候选只取普通房: 高速路无源; SK 房 (源有 keeper 守卫) 与扇区中央房需要护航,
+ * 不进自动外矿注册表。读缓存时同样过滤, 兼容修复前已缓存的旧条目。
+ */
+function isMinableRemote(entry: RemoteSourceEntry): boolean {
+	return entry.home || roomKind(entry.room) === "normal";
+}
+
 export function remoteSourcesOf(ctx: TickContext, homeRoomName: string): RemoteSourceEntry[] {
 	const byHome = (ctx.memory.economy.remoteSourcesByHome ??= {});
 	const cached = byHome[homeRoomName];
-	if (cached && cached.length > 0) return cached;
+	if (cached && cached.length > 0) return cached.filter(isMinableRemote);
 	const homeRoom = Game.rooms[homeRoomName];
 	const origin = homeRoom?.find(FIND_MY_SPAWNS)[0]?.pos ?? undefined;
 	if (!origin) return [];
 	// neighborRooms 已含全部 8 邻房 (正交 + 对角), 勿再并 diagonalNeighbors
 	// ——角落房双注册会吃掉预算槽 (20k 实证 4 槽只开 3 房)
-	const rooms = [homeRoomName, ...neighborRooms(homeRoomName)];
+	const rooms = [homeRoomName, ...neighborRooms(homeRoomName).filter((name) => roomKind(name) === "normal")];
 	const list: RemoteSourceEntry[] = [];
 	for (const roomName of rooms) {
 		const room = Game.rooms[roomName];
