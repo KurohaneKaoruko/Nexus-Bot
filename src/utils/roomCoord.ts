@@ -41,6 +41,24 @@ export function neighborRooms(roomName: string): string[] {
 	return rooms;
 }
 
+/** 房间类型: 高速路 / SK 房 / 扇区中央房 / 普通房 */
+export type RoomKind = "normal" | "highway" | "keeper" | "center";
+
+/**
+ * 按房名数字推导房间类型, 无需视野: 任一坐标为 10 的倍数 → highway;
+ * 两坐标对 10 取余都在 4..6 → (5,5) 为 center, 其余为 keeper (SK 房)。
+ * 口径为官服 / 标准私服地图; 自定义地图的私服不保证成立。非法房名返回 null。
+ */
+export function roomKind(roomName: string): RoomKind | null {
+	const match = roomName.match(/^[WE](\d+)[NS](\d+)$/);
+	if (!match) return null;
+	const x = parseInt(match[1] ?? "0", 10) % 10;
+	const y = parseInt(match[2] ?? "0", 10) % 10;
+	if (x === 0 || y === 0) return "highway";
+	if (x >= 4 && x <= 6 && y >= 4 && y <= 6) return x === 5 && y === 5 ? "center" : "keeper";
+	return "normal";
+}
+
 /** 正交 4 向邻房 (扩张候选用), 顺次确定性 */
 export function orthogonalNeighbors(roomName: string): string[] {
 	const coord = roomWorldCoord(roomName);
