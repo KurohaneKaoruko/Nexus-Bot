@@ -13,7 +13,6 @@ import { noteMoveIntent, updateCongestion } from "@/modules/movement/trafficMoni
 import { recordActionRates } from "@/modules/economy";
 import { recordTowerSpend } from "@/modules/defense";
 import { takeIntents } from "@/runtime/intentQueue";
-import type { NexusMemory } from "@/core/store/memorySchema";
 
 export { ensureBroker };
 
@@ -23,7 +22,8 @@ function isWorkTile(creep: Creep | PowerCreep, _pos: RoomPosition): boolean {
 		return true;
 	}
 	const taskId = creep.memory?.taskId;
-	const nexus = (Memory as unknown as { nexus?: NexusMemory } | undefined)?.nexus;
+	// 持久化根是 Memory.Nexus (大写, 与 calibration / accessor 同键); 曾误读小写 nexus 致恒 undefined、工位锁失效
+	const nexus = Memory.Nexus;
 	if (!taskId || !nexus) {
 		return true;
 	}
