@@ -20,6 +20,13 @@
   不是真实执行器)
 - 唯一真实的核弹执行路径 = 人操 console 内直接调用不存在的方法 → 必 TypeError
 
+## 防护 (2026-10-28, 不替代修复)
+
+两处调用方在调用前检测 `Room.prototype` 上是否有实现 (旗逻辑 `nukeLaunchSupported()`,
+`src/proto/Flag/function/baseFunction.ts`; console 内联同一检测): 旗逻辑无实现时跳过该旗并每 1000 tick
+告警一次, 不再抛 TypeError 中断 RoomFeatures 本 tick 的其余旗帜 / 房间处理;
+console `nuker.launch` 直接返回提示。实装或收编 broker 后检测自然通过, 防护可删。
+
 ## 修复方向 (二选一, 随 9.2 legacy 删除轨决策)
 
 1. **实装 prototype/Room**: 按 Screeps 原生语义补 `GHOUL NukerCanLaunchTo (距离 ≤10 房内 nuker 且 cooldown=0)` ——最小实现, 保留人操语义

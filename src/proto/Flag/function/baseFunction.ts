@@ -1,6 +1,14 @@
 // @ts-nocheck
 import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
+/** 核弹发射未实现告警的上次输出 tick (限频, 进程级) */
+let nukeUnsupportedWarnTick = -Infinity;
+
+/** Room 原型上是否已有核弹发射实现 (docs/bugs/nuker-launch-missing-impl.md: 声明有、实现未随迁) */
+function nukeLaunchSupported() {
+    return typeof Room.prototype.NukerCanLaunchTo === 'function' && typeof Room.prototype.NukerLaunchTo === 'function';
+}
+
 export default class FlagBaseFunction extends Flag {
     // 移动旗帜
     handleSetPositionFlag() {
@@ -22,6 +30,16 @@ export default class FlagBaseFunction extends Flag {
     // 核弹打击（仅处理 nuke-* / nuke_*，不影响其他旗帜）
     handleNukeFlag() {
         if (!(this.name.startsWith('nuke-') || this.name.startsWith('nuke_'))) return false;
+
+        // 无实现时跳过并限频告警: 调用不存在的方法会抛 TypeError, 中断 RoomFeatures
+        // 本 tick 其余旗帜与房间处理, 并累积到模块熔断
+        if (!nukeLaunchSupported()) {
+            if (Game.time - nukeUnsupportedWarnTick >= 1000) {
+                nukeUnsupportedWarnTick = Game.time;
+                console.log(`[nuke] 核弹发射未实现, 旗帜 ${this.name} 已跳过 (docs/bugs/nuker-launch-missing-impl.md)`);
+            }
+            return true;
+        }
 
         const nextTryTick = typeof this.memory['nextTryTick'] === 'number' ? this.memory['nextTryTick'] : 0;
         if (nextTryTick && nextTryTick > Game.time) return true;
