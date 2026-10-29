@@ -249,3 +249,80 @@ Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例�
 - **终态**：豁免 60 条 = P8 22 + P2 14 + 人操 13 + P7 4 + 编队 5 + P4 1 + P8 spawn 1。P6/P3 全清。**A 波闸门 ≤60 达成**。
 - **makeCombatHealHandler 遗留**：工厂零消费方（defendSingle/defendDuo 删除断链），combatHeal 纯函数（TeamBattle/boundPartner/aio 活消费）保留——待 C 波 8.3 死导出收敛处置。
 - **并行工作警示**：src/modules/comms/（b2b 协议三件）系另一会话 13:36 落盘的未完成工作（channel.ts 仍有 tsc 错误），不属本切片，未动。
+
+## U. C 波复核实测总扫描（legacy-consolidation-b 任务 2.1，2026-10-29）
+
+> 方法：全仓符号文本匹配（`grep -rn` over src/tests/sim/scripts/config/docs/openspec）+ 逐条归类真引用/注释文档/再导出穿透 + 场景不触发核对（A 节 sim 画像沿用：mine 链全场景零触发）。漂移裁定规则见 `legacy-consolidation-b/specs/dormant-code-retirement`。
+
+**U.1 external/mine 链（清单第 1 项）——维持休眠判定，可删**：
+- 闭包核证：`mine/*` 六文件仅被 `externalMine.ts`（汇出口）import；`externalMine.ts` 仅被 `outMine.ts`（原型类）与 `external/index.ts`（re-export 两行）import；`outMine.ts` 的 `OutMine` 类仅被 `proto/Room/index.ts:18` extend 挂载、`outMine()/EnergyMine()/CenterMine()` 原型方法全仓零调用（唯 `room.interface.d.ts:662` 注释 example）；`externalScheduler.ts` 仅被 `mine/analysis.ts`/`mine/spawner.ts` import。链外活消费 = **零**。
+- `registerOutMineIncomeProvider` 存根：唯一消费方 `proto/features.ts:30`（空函数调用，语义为占位）——随链删除。
+- `ExternalMineAnalysis`/`ExternalMineSourceStat` re-export（external/index.ts:6）：穿透后无最终消费方——纯再导出穿透死面。
+- 场景不触发：A 节四场景 mine 链零执行（沿用）；outMine 原型方法零调用实证。
+- **裁定：整链删除**（mine/ 六文件 + externalMine.ts + outMine.ts + externalScheduler.ts + proto/Room extend 行 + interface 声明 + index.ts re-export + features.ts 存根挂载）。
+
+**U.2 `Memory.OutMineData`（清单第 2 项）——活簿记，保留**：
+- 活读写面（真引用非注释）：`mineralWork.ts`（highway 轮询 L528 + powerMine/depositMine 簿记 L226-227，economy planning 生产路径）、`console/function/mine.ts`（power/deposit/cancel 人操命令族 + energy/centerRoom 列示）、`road/roadMemory.ts`/`roadVisual.ts`（RoadData）、`statistics.ts:316`（energy 列表 HUD）、`roomVisuals.ts:372`（energy 视觉）、`usePower.ts:72-73`（powerMine/depositMine 非空判定——改蛋感知）。
+- **energy 子键写入方唯一**：`mine/state.ts:629-645`（autoAddNearbyEnergyTargets 自动扩图）——链删除后 energy 仅剩 console 人操 `mine.add` 写入（console mine.ts L152-201 域）与读取面。**死子键判定：无**——所有子键（energy/centerRoom/highway/powerMine/depositMine/RoadData/RoadVersion）均有链外活读写方。
+- **裁定：OutMineData 与 `getOutMineData` accessor 全保留，不升 Memory 版本、不做迁移**；mine 链删除后 energy/centerRoom 的自动扩图写入面消亡（写入面收敛为人操 + 原有数据驻留），台账登记。
+
+**U.3 PC `mode/assist|operate`（清单第 3 项）——活模式，转显式保留**：
+- `PowerCreeps` TickModule 挂载于 main.ts:49（commit 阶段），每 tick `pc.exec()`；`execute.ts` 分发 `runAssist`（`-assist` 旗）/`runOperate`（默认）。**整链是 PC 驱动主径而非休眠面**。
+- 函数级复核：`runOperate` 无条件分发（零触发路径不存在）；`runAssist` 的触发条件是 `${pcname}-assist` 旗——console help.ts:324 有登记的人操指引。旧清单「零触发路径部分」实际只有已删的 `assistHeal.ts`（S/T 节：随 4.5b 删除）。
+- **裁定：mode/assist|operate 整体转显式保留 + 台账登记（PC 驱动链活模式；-assist 旗为人操入口）**，零删除。
+
+**U.4 `visuals/highwayMine.ts`（清单第 4 项）——活消费，人操豁免保留**：
+- 消费方：`console/function/mine.ts` 三处（L227/228/234/235——enable/visualizeOnMap/enableAll/run）。`visuals/index.ts:36` re-export 有最终消费方。
+- **裁定：与 console mine 命令族一并登记人操豁免保留**（读 OutMineData.highway 活簿记，无自动调用点）。
+
+**U.5 `core/qos.ts` 兼容读口（清单第 5 项）——部分死，删死留活**：
+- 零消费导出（全仓扫描，qos.ts 外零真引用）：`noteTickCpu`、`isCpuBreakerTripped`、`updateQoS`（仅 qos API 对象内自引用）、`isTickAligned`（同）、`ROLE_CPU_FREEZE_PRIORITY`、`shouldSkipCreepInEmergency`——但注意前四者是 `qos: QoSAPI` 聚合对象成员，聚合对象本身 12 文件活消费（`qos.shouldRun` 等），`mountQoS` 挂 globalThis.qos（console 人机入口）。
+- 活消费：`getQoS`（6 文件）、`shouldRun`（5 文件）、`qos` 聚合（12 文件）、`mountQoS`（console）。
+- **裁定**：API 成员面不动（聚合对象契约 + globalThis 人机面）；独立零消费导出 `ROLE_CPU_FREEZE_PRIORITY`、`shouldSkipCreepInEmergency` 按 2.5 零引用程序复核后删。`getRoomQosLevel` 类读口已不存在（features.ts 注释实证），无处置。
+
+**U.6 `accessor.ts` legacy getter（清单第 6 项）——逐个活，全保留**：
+- `getOutMineData`：U.2 活簿记 accessor，保留。全量 getter 扫描（getBotMemory/getRoomData/getLayoutData/getMissionPools/getStructData/getResourceManage/getNukerData/getAutoData/getAutoMarketData/getAutoLabData/getAutoFactoryData/getAutoPowerData/getOutMineData/getTeamData…）：抽样核对 `getMissionPools`（spawn 池链活）、`getStructData`（usePower 活）——均有消费方；`getHeartbeatTick`/`getModeName`/`ensureTeamPendingSpawns` 等哨兵符号在 accessor 内不存在（无死 getter 可删）。
+- **裁定：无死 getter，整项零处置**（唯一历史死 getter 已随 A 波各域删除）。
+
+**U.7 `core/ai` 零引用导出（清单第 7 项）——stateMachine/adapters 整体零消费**：
+- `behaviorTree`：活（teams/units/aio.ts 全套消费——BtStatus/BehaviorTree/condition/fail/leaf/selector/sequence）。`BtFactory`/`BtNode` 类型导出零外部引用但为 behaviorTree 契约面（库类型），保留。
+- `stateMachine.ts`：全符号（StateId/EventId/GuardId/Transition/GuardMap/StateHandler/MachineConfig/StateStorage…）仓内零消费（唯 creep.interface.d.ts 提及 StateId 是类型声明引用——待 2.5 穿透定性）。
+- `adapters.ts`：全符号（ensureFsmBucket/createFsmStorage/createLayeredRunner）零消费。
+- **裁定：stateMachine.ts + adapters.ts 整文件零引用删除候选**（2.5 执行零引用程序），behaviorTree.ts 保留。
+
+**U.8 死导出收敛（清单第 8 项）**：
+- `makeCombatHealHandler` 工厂：T 节已登记零消费（COMBAT_HEAL_POLICIES 含死键），`combatHeal` 纯函数活（TeamBattle/boundPartner/aio）——删工厂+表，留纯函数。
+- `statistics.ts` energyState 读口：活消费（HUD L335/428——5.1 台账已裁定保留 energyState），不动。
+- console 对已删域读口：mine.ts 读 OutMineData 是活簿记面（U.2），不动。
+
+**U.9 汇总裁定表**：
+
+| 清单项 | 裁定 | 处置 |
+|---|---|---|
+| 1 external/mine 链 | 真休眠 | 2.2 整链删除（~2939 行） |
+| 2 OutMineData | 活簿记 | 保留，不迁移；energy 自动扩图写入面随链消亡（登记） |
+| 3 PC mode | 活模式 | 显式保留 + 台账（零删除） |
+| 4 highwayMine.ts | 活消费 | 人操豁免保留 + 台账 |
+| 5 qos 兼容读口 | 部分死 | ROLE_CPU_FREEZE_PRIORITY/shouldSkipCreepInEmergency 删（2.5）；API 聚合面不动 |
+| 6 accessor getter | 全活 | 零处置 |
+| 7 core/ai | stateMachine/adapters 零引用 | 2.5 删两文件；behaviorTree 留 |
+| 8 死导出 | makeCombatHealHandler 死 | 2.5 删工厂+POLICIES 表；combatHeal 纯函数留 |
+
+**U.10 2.2 删除连带发现（2026-10-29）**：`core/bucketGovernor.ts` 的阈值消费方（externalMine runEnergy/runCenter）随链消亡——governor 本体不在 C 波清单，按「清单外只留档」处置：注释已改写指向本节，模块去留待后续变更复核（候选：随下一波孤儿清理退役或转道供 economy 消费）。
+
+**U.11 2.2/2.5 删除后残留扫描（2026-10-29，删除提交前置扫描）**：
+- 全符号（ExternalMine*/getOutmineSourceKey/registerOutMineIncomeProvider/outMine 系方法/ROLE_CPU_FREEZE_PRIORITY/shouldSkipCreepInEmergency/stateMachine 族符号/combatHeal 工厂族）：src/tests/sim/scripts/config 命中为零（文档 survey/台账/openspec 的历史引用按口径豁免）。
+- docs 死链：现行设计篇（nexus-design 01–08/README）无 external/mine 引用（唯 10 台账与 09 存档的历史记载，保留）；bugs 目录历史文档引用属时间线记录不改写。
+- 活链回归：road 链（CostMatrixCache/PathPlanner/RoadBuilder/RoadMemory/RoadVisual/getBuiltRoadCoverage）消费方完好（proto/Room baseFunction、console mine.ts、teams）；typecheck 绿 + 双守护绿 + lint 仅 speedrun 隔离区既有 warning。
+
+**U.12 C 波删除门归因（2026-10-29，删除确认门八门跑档）**：
+
+首轮 6 场景门（03:18 起跑，02:07 构建 bundle=删除前）全红——红线**先于 C 波删除存在**。三重二分归因：
+
+1. **门可信性**：4a3ee14（基线冻结点）worktree 干净重建，boot 精确复现基线 `L3@8889/p95 7ms`（283t/s 快机档）→ sim 引擎、场景、测量路径全部正常；
+2. **漂移归属**：HEAD 6856eb6（无 C 波删除）worktree 重建，boot `L3@9639/p95 8ms` → 漂移在 HEAD 已存在，源于基线冻结（10-24）后的 53 提交——race 变体主链化（413d872，speedrun 引擎并入主调度链）+ 重锚定族 5 提交（重摆保活/lane 校验/箱列/块行/槽位探测）+ 其余修复，属合法时间线演进；
+3. **C 波零扰动**：工作树（含删除）重建后 boot `L3@9639` 与 HEAD **逐位一致**、race-body-audit `L2@458` 一致 → 删除对行为零扰动（与链运行期不可达的预期吻合）。
+
+p95 全场景 +3~6ms 首轮读数系**并行负载噪声**（跑门期间并行执行了 typecheck/grep/构建；同 bundle 静机复跑 p95 回 7-8ms）。
+
+**处置**（用户裁定）：按 0.2 注记先例路径——HEAD 干净树重冻基线（6 场景静机读数存档 legacy-consolidation-b/baseline/），C 波删除对照新基线验证逐位一致后放行切片。world 世界重摆类的 race 探测提交还会带来 run 间方差（40a2397 记档 +29.4%），分段门场景按趋势观察项口径读。
