@@ -11,12 +11,25 @@
 3. **sim 验证**：对应场景全场景门绿（`scripts/sim-matrix.mjs`）；
 4. **CPU 验证**：接管后 cpu p95 不劣化（同场景对比，劣化 > 2ms 拒绝）。
 
+## 豁免清单对账（A 波收口，legacy-consolidation-b 任务 1.1，2026-10-29）
+
+> 口径：`specs/code-structure-standards`（legacy-consolidation-b）——88 条两分对账，非赛 ≤60 闸门 + 赛区隔离区单列。arch:guard 全量在-call 逐条核对，无「无主」条目。
+
+| 类目 | 条数 | 明细 | 闸门约束 |
+|---|---|---|---|
+| 冲级赛直通隔离区 | 28 | `branch/race/speedrun`（economy 5 / layout 1 / loop 2 / spawning 3 / towing 4 / traffic 1 / types 11）——上游单文件血统，与 Nexus 命令管线物理隔离 | 单列类目不受 ≤60 约束；单调不增（只减） |
+| 非赛 · 永久豁免 | 42 | P8 broker 执行层 21（actionBroker 执行器 case 表）+ 人操豁免 14（console 13 + warSpawn 1）+ 编队域 5（blitz 2 / TeamClass 1 / TeamController 1 / TeamSpawner 1，原型重写旗标链）+ P8 spawn-arbiter 1 + P4 movement-adapter 1 | 结构性直连终态；受 min checkpoint 单调约束 |
+| 非赛 · 待收编轨道 | 18 | P2 command-boundary 14（agentSystem 直连收编面，位于 actionBroker 执行器内）+ P7 industry-adapter 4（lab 1 / nuker 2 / terminal 1） | 有收编轨道；非赛合计 60 = 闸门上限 |
+| 非赛 · 随 C 波消失 | 0（预留） | external/mine 链删除零豁免条目（该链直连在 2026-10-17 已收编，文件残留无直连） | C 波删除后此行核销 |
+
+**结论**：非赛 60 ≤ 60 闸门达成；race 主链化（`413d872`）带来的 28 条按赛区隔离区登记，不占闸门额度；每条 track 注记与实际在-call 状态一致（arch:guard --report 核对，无待处置项）。C 波（external/mine 链删除）不产生豁免条目收缩，非赛条目下降依赖 P2/P7 收编推进（后续变更）。
+
 ## 台账
 
 | 日期 | 删除单元（域） | 豁免清单变化 | 四条件证据 | 结果 |
 |---|---|---|---|---|
 | 2026-10-17 | external/mine suicide + roadBuilder destroy/remove 直连（6 调用） | 334→328（−6） | ① destroyStructure/removeSite/suicide kind 既有；② 未上实服（人操不可达路径，sim 内亦不可达）；③ race L2@796 bit 一致；④ p95 5.0ms 持平 | ✅ 已删（8.7） |
-
+| 2026-10-29 | C 波切片一（legacy-consolidation-b 2.2）：external/mine 休眠链整链——`mine/` 六文件（analysis/math/runtime/shared/spawner/state）+ `outMine.ts`/`externalMine.ts`/`externalScheduler.ts`（~2939 行）+ proto/Room extend 行与 import + `room.interface.d.ts` outMine 系方法声明（outMine/EnergyMine/CenterMine/LookHighWay/PowerMine/DepositMine）与 RoomMemory 死域字段（powerMine/depositMine，写入方已亡、活面走 OutMineData）+ `external/index.ts` 两行 re-export + `features.ts` registerOutMineIncomeProvider 存根挂载 + structure-guard PROTO_IMPORTS_FROZEN 留档行 + features/bucketGovernor 注释改写 | 88→88（删除文件零豁免条目） | ① 等价存在：活链 economy/remoteMining 任务板（planRemoteHarvest）在产；OutMineData 活簿记保留（U.2 复核实测节：全子键有链外活读写方）；② 实服待补（mine 链运行期不可达，sim 互证）；③ 删除确认门**八门全绿逐位一致**——基线重冻后对照（归因三重对照见 U.12 与 baseline/2026-10-29-baseline-refreeze.md：旧基线冻结后 53 提交演进，HEAD 6856eb6 重冻，C 波删除零扰动实证）：speedrun L2@458/L3@10399/L4@30960（p95 9，首轮 20ms 系冷机噪声，复跑回 9）/ arena L3@9780/L4@37090 / sprint L3@35661 / boot L3@9639 / race L2@458 / remote-mine L3@0 全部与 HEAD 基线**逐位一致** + run-residue L2@1059/p95 4ms + stronghold-door L8@0/p95 5ms；④ p95 持平（arena 9/sprint 9/boot 8/race 10 与基线一致） | ✅ 已删（C 波切片一） |
 > 注：external 域 6 处为「直连收编」而非 legacy 角色删除，实服条件按「路径不可达 + sim 互证」口径豁免；9.2 的角色库删除必须四条件齐全才可执行。
 
 | 2026-10-25 | `rooms[].energyState`（energyState/energyStateTick） | 保留为 RoomFeatures 基础状态 | 5.1 裁定：活消费方在——statistics HUD（`core/statistics.ts:335,428`）、rush 仲裁、external/mine 休眠链（`state.ts:135` 经 `getEnergyState` 读）；transportMission 消费随域 3.4 删除但不影响保留判定。不迁移 v13（`room.memory` 域与 Nexus 结构化域分治，非退役对象） | sim 四场景门 + run-residue（随 5.2 总对账） |

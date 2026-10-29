@@ -13,7 +13,6 @@ import mountRoomVisual from '@/modules/visuals/proto'
 import { ConsoleExtension } from '@/console'
 import { qos } from '@/core/qos'
 import '@/core/structureCache'
-import { registerOutMineIncomeProvider } from '@/modules/external'
 import { updateBucketGovernor } from '@/core/bucketGovernor'
 import type { TickContext, TickModule } from '@/core'
 
@@ -27,7 +26,6 @@ function ensureMounted(): void {
 	mountRoomPosition();
 	mountRoomVisual();
 	ConsoleExtension();
-	registerOutMineIncomeProvider();
 	mounted = true;
 }
 
@@ -48,11 +46,11 @@ function runRoomFeatures(room: Room): void {
 	// 全场 179 只中 139 只无日志孵化, 让位期仍孵 upgrader/worker 把攒能窗口抽干)。
 	room.updateEnergyState?.(false)
 
-	// 外矿双体系勘误 (2026-10-15): 外矿由任务板系 planRemoteHarvest 独家驱动
-	// (economy/remoteMining, scout→远程采集任务)。原型系 outMine()/ExternalMine
-	// 全链 (cc 保活/外矿编制/跨房搬运) 保持休眠——两套并行会双份 scout/编制,
-	// 实测 CPU p95 14→51ms、arena 40k 不进 L3 (docs/bugs sim-audit-10-12 (七))。
-	// 若未来启用原型系, 必须同时关闭任务板侧的 remoteMining 开关。
+	// 外矿双体系勘误 (2026-10-15, C 波已收口 2026-10-29): 外矿由任务板系
+	// planRemoteHarvest 独家驱动 (economy/remoteMining, scout→远程采集任务)。
+	// 原型系外矿采集链 (mine/* + outMine/externalMine/externalScheduler) 已随
+	// legacy-consolidation-b C 波退役删除; 人操簿记面存续 (console mine.ts +
+	// Memory.OutMineData, mineralWork 消费)。
 
 	if (tier !== 'normal') return
 }

@@ -60,7 +60,6 @@ const CORE_VIOLATIONS_FROZEN = new Set([
 /** modules→proto 既有引用留档 (A 波收缩过程的基线; 仅白名单外新增才红) */
 const PROTO_IMPORTS_FROZEN = new Set([
 	'src/modules/defense/units/defendSingle.ts -> @/proto',
-	'src/modules/external/mine/shared.ts -> @/proto',
 	'src/modules/teams/runtime/TeamController.ts -> @/proto',
 	'src/modules/visuals/proto/index.ts -> @/proto/registry',
 ]);

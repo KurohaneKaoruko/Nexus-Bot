@@ -655,43 +655,6 @@ interface Room {
     autoPower(): void;
 
 
-    // ==================== 外矿采集 ====================
-    /**
-     * 外矿采集主函数
-     * @description 处理房间的外矿采集逻辑，包括能量矿、中央九房、过道观察、Power采集、Deposit采集
-     * @example room.outMine(); // 在房间exec()中调用
-     */
-    outMine(): void;
-
-    /**
-     * 能量矿采集
-     * @description 处理外矿能量源的采集，包括侦查、预定、采集、搬运、建造等
-     */
-    EnergyMine(): void;
-
-    /**
-     * 中央九房采集
-     * @description 处理中央九房(SK房)的资源采集，包括Source Keeper房间的特殊处理
-     */
-    CenterMine(): void;
-
-    /**
-     * 观察过道
-     * @description 使用Observer观察过道房间，寻找PowerBank和Deposit
-     */
-    LookHighWay(): void;
-
-    /**
-     * Power采集
-     * @description 处理PowerBank的采集任务，包括攻击队、治疗队、搬运队的孵化
-     */
-    PowerMine(): void;
-
-    /**
-     * Deposit采集
-     * @description 处理Deposit的采集任务，包括采集者和搬运者的孵化
-     */
-    DepositMine(): void;
 }
 
 /**
@@ -733,42 +696,6 @@ interface RoomMemory {
      */
     road?: number[];
 
-    // ==================== 外矿采集任务 ====================
-    
-    /**
-     * Power采集任务数据
-     * @description 存储各过道房间的PowerBank采集任务
-     * @example
-     * ```typescript
-     * this.memory['powerMine'] = {
-     *     'E5N5': { creep: 2, boostLevel: 1, prNum: 1, active: true }
-     * };
-     * ```
-     */
-    powerMine?: {
-        [roomName: string]: PowerMineTaskData;
-    };
-
-    /**
-     * Deposit采集任务数据
-     * @description 存储各过道房间的Deposit采集任务
-     * - 以房间名为key时，value为DepositMineTaskData对象
-     * - 以deposit.id为key时，value为可用位置数量(number)
-     * @example
-     * ```typescript
-     * // 房间级任务数据
-     * this.memory['depositMine'] = {
-     *     'E5N5': { type: 'silicon', num: 2, active: true }
-     * };
-     * // 或者 deposit 级位置数据
-     * this.memory['depositMine'] = {
-     *     '5f1234567890abcdef': 3  // deposit周围可用位置数
-     * };
-     * ```
-     */
-    depositMine?: {
-        [roomNameOrDepositId: string]: DepositMineTaskData | number;
-    };
 }
 
 /**

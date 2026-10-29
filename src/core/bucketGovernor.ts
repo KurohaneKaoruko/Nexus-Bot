@@ -6,8 +6,9 @@
  * - 桶高于目标 → 阈值下降 → 更多外矿激活
  * - 桶低于目标 → 阈值上升 → 低性价比外矿按 score 挂起
  *
- * 消费方：externalMine 的 runEnergy/runCenter 用 score 对比阈值，
- * score = 净收益/tick ÷ 孵化占用（见 estimateTargetSelectionStat）。
+ * 消费方：原型系外矿链 (externalMine runEnergy/runCenter, score 对比阈值) 已随
+ * legacy-consolidation-b C 波退役; threshold 当前无消费方, 模块处置待留档复核
+ * (docs/bugs/legacy-consolidation-survey.md U.10)。
  *
  * 与 QoS 的分工：governor 管「业务开多少」（平滑可逆），QoS 管「单 tick 硬兜底」。
  */
