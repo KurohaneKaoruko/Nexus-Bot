@@ -79,9 +79,10 @@ const NAMESPACE_FORWARD_EXACT = [
 	/TeamAction\.move\s*\(/,
 ];
 
-/** 同上, 但仅限特定文件内生效的转发形态 (如 TeamAction.ts 内部 this.move(team, ...)) */
+/** 同上, 但仅限特定文件内生效的转发形态 (如 teamActionMove.ts 内部 this.move(team, ...));
+ *  TeamAction 拆分 (legacy-consolidation-b 3.3) 后 this 转发随 move 域落位新文件 */
 const NAMESPACE_FORWARD_BY_FILE = new Map([
-	['src/modules/teams/core/TeamAction.ts', [/this\.move\s*\(/, /this\.QuadMoveTo\s*\(/]],
+	['src/modules/teams/core/teamActionMove.ts', [/this\.move\s*\(/, /this\.QuadMoveTo\s*\(/]],
 ]);
 
 function scanFile(filePath) {

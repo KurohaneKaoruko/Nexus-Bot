@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
-const REF_PATH = join(ROOT, 'openspec/changes/legacy-consolidation/baseline/sim-matrix-reference.json');
+const REF_PATH = join(ROOT, 'openspec/changes/legacy-consolidation-b/baseline/sim-matrix-reference.json');
 
 const args = process.argv.slice(2);
 const doUpdate = args.includes('--update');
