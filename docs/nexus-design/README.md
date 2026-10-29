@@ -16,6 +16,10 @@
 | 08 | [`08-race-speedrun.md`](08-race-speedrun.md) | race 冲级机制复刻 P0–P5（原生路线参考） | 专题 |
 | 09 | [`09-legacy-archive.md`](09-legacy-archive.md) | 原 03–17 共 12 篇设计稿（已被 01/02 篇取代） | 历史存档 |
 | 10 | [`10-legacy-removal-ledger.md`](10-legacy-removal-ledger.md) | legacy 删除四条件台账（02 篇 §28 判定程序） | 治理 |
+| 11 | [`11-speedrun-round120-port.md`](11-speedrun-round120-port.md) | round-120 冲级血统同步移植记录 | 专题 |
+| 12 | [`12-legacy-bot-migration-map.md`](12-legacy-bot-migration-map.md) | 旧 Bot（Rosmarin）迁移总图：状态口径、缺陷 B1–B13、双轨清单、路线 M0–M8（§25 章节号，v1.0.0 走查基线） | 走查 |
+| 13 | [`13-external-mining-migration.md`](13-external-mining-migration.md) | 外矿迁移契约：分期、名册、Intel、选点、闭环、安全、收益反馈（§24 章节号，一期变更 `openspec/changes/phase4-remote-intel/`） | 走查 |
+| — | [`migration-audit/`](migration-audit/README.md) | 12/13 的走查原始记录（01–07）与核对链，v1.0.0 基线快照 | 证据 |
 
 ## 章节编号
 
