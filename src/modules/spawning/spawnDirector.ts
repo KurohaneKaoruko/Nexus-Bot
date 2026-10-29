@@ -652,7 +652,7 @@ export function raceRemoteDeficitOf(ctx: TickContext, board: TaskBoard): boolean
 
 /** 换班提前量: 路程未实测回退线性房距估算 (上游 dist 未实测时同款退化) */
 function remoteWalkLeadOf(ctx: TickContext, homeRoomName: string, targetRoomName: string, pace: number): number {
-	const cached = ctx.memory.economy.remoteSources;
+	const cached = ctx.memory.economy.remoteSourcesByHome?.[homeRoomName];
 	const hit = cached?.find((e) => e.room === targetRoomName);
 	if (hit) return hit.dist * pace;
 	const home = roomWorldCoord(homeRoomName);

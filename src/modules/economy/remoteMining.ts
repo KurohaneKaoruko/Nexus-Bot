@@ -48,7 +48,8 @@ export interface RemoteSourceEntry {
  * 首次注册后 Memory 恒用 (上游同款缓存, 源位与地形不变)。
  */
 export function remoteSourcesOf(ctx: TickContext, homeRoomName: string): RemoteSourceEntry[] {
-	const cached = ctx.memory.economy.remoteSources;
+	const byHome = (ctx.memory.economy.remoteSourcesByHome ??= {});
+	const cached = byHome[homeRoomName];
 	if (cached && cached.length > 0) return cached;
 	const homeRoom = Game.rooms[homeRoomName];
 	const origin = homeRoom?.find(FIND_MY_SPAWNS)[0]?.pos ?? undefined;
@@ -72,7 +73,7 @@ export function remoteSourcesOf(ctx: TickContext, homeRoomName: string): RemoteS
 		});
 	}
 	list.sort((a, b) => (a.home === b.home ? a.dist - b.dist : a.home ? -1 : 1));
-	ctx.memory.economy.remoteSources = list;
+	byHome[homeRoomName] = list;
 	return list;
 }
 
@@ -81,7 +82,7 @@ export function remoteSourcesOf(ctx: TickContext, homeRoomName: string): RemoteS
  * 真实源位并重算 dist。矿工/reserver 首次进房时调用, 每条只修一次。
  */
 export function ensureRemoteSourceIntel(ctx: TickContext, homeRoomName: string, remoteRoomName: string): void {
-	const cached = ctx.memory.economy.remoteSources;
+	const cached = ctx.memory.economy.remoteSourcesByHome?.[homeRoomName];
 	if (!cached) return;
 	const room = Game.rooms[remoteRoomName];
 	if (!room) return;
@@ -110,7 +111,7 @@ export function registerRemoteSourceDist(
 	source: Source,
 	roomName: string,
 ): number {
-	const cached = ctx.memory.economy.remoteSources;
+	const cached = ctx.memory.economy.remoteSourcesByHome?.[homeRoomName];
 	if (cached) {
 		const hit = cached.find((e) => e.id === source.id);
 		if (hit) return hit.dist;
