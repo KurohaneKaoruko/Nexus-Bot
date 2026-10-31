@@ -116,7 +116,7 @@ const TeamController = {
             // 检查小队成员是否齐全
             if (teamData.status === 'ready') {
                 // 清理无效 Creep ID
-                teamData.creeps = teamData.creeps.filter((id: any) => Game.getObjectById(id));
+                teamData.creeps = teamData.creeps.filter((id: Id<Creep>) => Game.getObjectById(id));
 
                 // 检查小队是否超时未集结
                 // 1. 长期超时 (50000 tick)
@@ -150,7 +150,7 @@ const TeamController = {
                             ? TeamUtils.doorGatherPos(teamData.homeRoom, teamData.targetRoom)
                             : undefined;
                         if (doorPos) {
-                            teamData.creeps.forEach((creepID: any) => {
+                            teamData.creeps.forEach((creepID: Id<Creep>) => {
                                 const creep = Game.getObjectById(creepID) as Creep;
                                 if (!creep) return;
                                 if (creep.room.name === teamData.homeRoom) {
@@ -164,7 +164,7 @@ const TeamController = {
                                 }
                             });
                         } else {
-                            teamData.creeps.forEach((creepID: any) => {
+                            teamData.creeps.forEach((creepID: Id<Creep>) => {
                                 const creep = Game.getObjectById(creepID) as Creep;
                                 if (!creep) return;
                                 if (creep.room.name == teamData.homeRoom &&

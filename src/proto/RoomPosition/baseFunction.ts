@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 export default class BaseFunction extends RoomPosition {
     // 切比雪夫距离
@@ -110,7 +109,7 @@ export default class BaseFunction extends RoomPosition {
 
     // 是否有rampart
     override coverRampart(): boolean {
-        if (!Game.rooms[this.roomName]) return undefined;
+        if (!Game.rooms[this.roomName]) return false;
         return this.lookFor(LOOK_STRUCTURES).some(e=>e.structureType == STRUCTURE_RAMPART);
     }
 
@@ -286,10 +285,11 @@ export default class BaseFunction extends RoomPosition {
                 return this.y ? BOTTOM : TOP;
             }
         }
+        return TOP;
     }
 
     /** 创建旗帜（借用 Room 原生实现 + 伪 Room；无视野房可用） */
     override createFlag(name: string, color1: ColorConstant = COLOR_WHITE, color2: ColorConstant = COLOR_WHITE) {
-        return Room.prototype.createFlag.call({ name: this.roomName }, this.x, this.y, name, color1, color2);
+        return (Room.prototype.createFlag as (this: unknown, x: number, y: number, name?: string, color?: ColorConstant, secondaryColor?: ColorConstant) => string).call({ name: this.roomName }, this.x, this.y, name, color1, color2);
     }
 }

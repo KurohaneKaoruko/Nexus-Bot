@@ -1,5 +1,5 @@
 
-interface Room {
+interface Room extends RoomCombatFields {
     // ==================== 房间建筑缓存 ====================
     /**
      * 房间中的source数组
@@ -662,7 +662,12 @@ interface Room {
  * @description 存储房间相关的持久化数据
  */
 interface RoomMemory {
-    /** 
+    /**
+     * 防御塔信息快照 (TeamCache 按tick刷新)
+     */
+    towerInfos?: { id: Id<StructureTower>; x: number; y: number; work: boolean; effect: number }[];
+
+    /**
      * source周边的最大可用位置数
      * @description 缓存每个source周围可站立的位置数量，用于分配harvester
      * @example { "sourceId1": 3, "sourceId2": 5 }

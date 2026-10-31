@@ -35,7 +35,7 @@ export interface TeamActionApi {
 	getSamllMoveDirection(team: Team, targetPos: RoomPosition): DirectionConstant | undefined;
 	getTeamMoveDirection(
 		team: Team,
-		goals: { pos: RoomPosition }[],
+		goals: ({ pos: RoomPosition } | Creep | Structure | Flag | RoomPosition)[],
 		pathMode?: "flee",
 	): DirectionConstant | undefined;
 	moveOuterBorder(creep: Creep, nearCreep: Creep): void;

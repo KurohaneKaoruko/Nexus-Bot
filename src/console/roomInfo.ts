@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 import { getMissionNumInPool } from '@/modules/spawning';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
@@ -132,7 +131,8 @@ const renderLab = (room: Room, structMem: any): string => {
     if (!structMem['lab']) return disabled();
     const { labAtype, labBtype } = structMem;
     if (!labAtype || !labBtype) return idle();
-    const product = REACTIONS[labAtype][labBtype]!;
+    const product = REACTIONS[labAtype]?.[labBtype];
+    if (!product) return idle();
     return td(colorText(`${ICONS.good} ${labAtype} + ${labBtype} -> ${product}`, COLORS.good));
 };
 

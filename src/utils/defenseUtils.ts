@@ -1,4 +1,5 @@
 import { buildCombatProfile, estimateDismantlePower } from '@/utils/combatCalc';
+import type { BodyPartLike } from '@/utils/combatCalc';
 
 export type DefenseRampartMode = 'melee' | 'ranged';
 
@@ -137,12 +138,12 @@ declare global {
 }
 
 const getRoomTowerFocusMem = (room: Room): TowerFocusMemory => {
-    if (!room.memory) (room as any).memory = {};
+    if (!room.memory) room.memory = {} as RoomMemory;
     if (!room.memory['_towerFocus']) room.memory['_towerFocus'] = {};
     return room.memory['_towerFocus'] as TowerFocusMemory;
 };
 
-const isClaimer = (c: Creep): boolean => {
+const isClaimer = (c: { body?: BodyPartDefinition[] }): boolean => {
     return (c.body || []).some(p => p.hits > 0 && p.type === CLAIM);
 };
 
@@ -157,15 +158,15 @@ const getValueBonus = (c: Creep): number => {
         else if (p.type === ATTACK) v += 3;
         else if (p.type === WORK) v += 2;
     }
-    const dismantle = estimateDismantlePower(c as any);
+    const dismantle = estimateDismantlePower(c as unknown as { body?: BodyPartLike[] });
     if (dismantle > 0) v += 6;
     return v;
 };
 
 const getNetTowerDamage = (room: Room, target: Creep | PowerCreep): number => {
-    const fn = (room as any).TowerDamageToCreep;
+    const fn = room.TowerDamageToCreep;
     if (typeof fn !== 'function') return 0;
-    return Number(fn.call(room, target)) || 0;
+    return Number(fn.call(room, target as unknown as Creep)) || 0;
 };
 
 export const pickTowerFocusTarget = (room: Room, hostiles: (Creep | PowerCreep)[]): DefenseTargetPick | null => {
@@ -175,8 +176,8 @@ export const pickTowerFocusTarget = (room: Room, hostiles: (Creep | PowerCreep)[
     const focusActive = typeof mem.until === 'number' && mem.until > Game.time && mem.id;
     if (focusActive) {
         const keep = Game.getObjectById(mem.id!);
-        if (keep && (keep as any).pos && (keep as any).pos.roomName === room.name) {
-            const netDamage = getNetTowerDamage(room, keep as any);
+        if (keep && keep.pos && keep.pos.roomName === room.name) {
+            const netDamage = getNetTowerDamage(room, keep as unknown as Creep);
             if (netDamage > 0) {
                 mem.lastSeen = Game.time;
                 return { id: mem.id!, reason: 'killable-value', score: 1e9, netDamage };
@@ -187,11 +188,11 @@ export const pickTowerFocusTarget = (room: Room, hostiles: (Creep | PowerCreep)[
     let best: DefenseTargetPick | null = null;
     for (const h of hostiles) {
         if (!h) continue;
-        if ((h as any).pos?.roomName !== room.name) continue;
+        if (h.pos?.roomName !== room.name) continue;
 
-        const netDamage = getNetTowerDamage(room, h as any);
+        const netDamage = getNetTowerDamage(room, h as unknown as Creep);
         const killable = netDamage > 0;
-        const hits = Number((h as any).hits) || 0;
+        const hits = Number(h.hits) || 0;
         const ttk = killable ? hits / Math.max(1, netDamage) : Infinity;
         let score = 0;
 
@@ -206,16 +207,16 @@ export const pickTowerFocusTarget = (room: Room, hostiles: (Creep | PowerCreep)[
             const v = getValueBonus(h as any);
             score += v * 50;
 
-            const profile = buildCombatProfile(h as any);
+            const profile = buildCombatProfile(h as unknown as Parameters<typeof buildCombatProfile>[0]);
             if (profile.boosted) score += 200;
-            if (isClaimer(h as any)) score += 800;
+            if (isClaimer(h as unknown as { body?: BodyPartDefinition[] })) score += 800;
         }
 
-        const distToCore = room.storage ? room.storage.pos.getRangeTo((h as any).pos) : 25;
+        const distToCore = room.storage ? room.storage.pos.getRangeTo(h.pos) : 25;
         score += Math.max(0, 30 - distToCore) * 8;
 
         if (!best || score > best.score) {
-            best = { id: (h as any).id, reason: killable ? 'killable-fast' : 'unbreakable-delay', score, netDamage };
+            best = { id: h.id, reason: killable ? 'killable-fast' : 'unbreakable-delay', score, netDamage };
         }
     }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 export const colors = {
     white: '#ffffff',
@@ -52,7 +51,7 @@ function relPoly(x: number, y: number, poly: TuplePoint[]) {
 
 
 export default class RoomVisualExtension extends RoomVisual {
-    public structure(x: number, y: number, type: StructureConstant, opts: any = {}) {
+    public override structure(x: number, y: number, type: StructureConstant, opts: any = {}) {
         opts = Object.assign(
             {
                 opacity: 1
@@ -96,7 +95,7 @@ export default class RoomVisualExtension extends RoomVisual {
                     [-0.68, 0.11]
                 ]
                 this.poly(outline.map(p => ([p[0] + x, p[1] + y] as TuplePoint)), {
-                    fill: null,
+                    fill: undefined,
                     stroke: colors.outline,
                     strokeWidth: 0.05,
                     opacity: opts.opacity
@@ -156,7 +155,6 @@ export default class RoomVisualExtension extends RoomVisual {
                 })
                 this.poly(factoryLevelGaps.map(p => ([p[0] + x, p[1] + y] as TuplePoint)), {
                     fill: '#140a0a',
-                    stroke: null,
                     opacity: opts.opacity
                 })
                 this.circle(x, y, {
@@ -227,8 +225,10 @@ export default class RoomVisualExtension extends RoomVisual {
                 ]
                 outer = relPoly(x, y, outer)
                 inner = relPoly(x, y, inner)
-                outer.push(outer[0])
-                inner.push(inner[0])
+                const outerFirst = outer[0]
+                if (outerFirst) outer.push(outerFirst)
+                const innerFirst = inner[0]
+                if (innerFirst) inner.push(innerFirst)
                 this.poly(outer, {
                     fill: colors.dark,
                     stroke: colors.outline,
@@ -265,8 +265,10 @@ export default class RoomVisualExtension extends RoomVisual {
                 ]
                 outer = relPoly(x, y, outer)
                 inner = relPoly(x, y, inner)
-                outer.push(outer[0])
-                inner.push(inner[0])
+                const outerFirst = outer[0]
+                if (outerFirst) outer.push(outerFirst)
+                const innerFirst = inner[0]
+                if (innerFirst) inner.push(innerFirst)
                 this.poly(outer, {
                     fill: colors.dark,
                     stroke: colors.outline,

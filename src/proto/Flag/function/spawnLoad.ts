@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 import { getAllMissionFromPool } from '@/modules/spawning';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
@@ -26,8 +25,9 @@ export const getFlagSpawnLoad = (
     let live = 0;
     for (const creepName in Game.creeps) {
         const creep = Game.creeps[creepName];
+        if (!creep) continue;
         if (
-            matchesFlagSpawnMemory(creep?.memory, flagName, unit, legacyMatch) &&
+            matchesFlagSpawnMemory(creep.memory, flagName, unit, legacyMatch) &&
             (!liveMatch || liveMatch(creep))
         ) {
             live++;

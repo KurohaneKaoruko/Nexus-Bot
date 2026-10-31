@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 /**
  * 计算函数
@@ -69,14 +68,14 @@ const TeamCalc = {
         [RANGED_ATTACK]: RANGED_ATTACK_POWER,
         [ATTACK]: ATTACK_POWER,
         [HEAL]: HEAL_POWER,
-    },
+    } as Record<string, number>,
 
     /**
      * boost 资源对应的强化倍数
      */
-    BOOST_POWER: (Object.values(BOOSTS) as any[])
-        .flatMap((e: Record<string, any>) => Object.entries(e).map(([k, v]: [string, any]) => [k, Object.values(v)[0]] as [string, number]))
-        .reduce((a, [boost, number]: [string, number]) => ({ ...a, [boost]: number }), {} as Record<string, number>),
+    BOOST_POWER: (Object.values(BOOSTS) as unknown as Record<string, Record<string, Record<string, number>>>[])
+        .flatMap((e) => Object.entries(e).map(([k, v]) => [k, Object.values(v)[0] ?? 0] as [string, number]))
+        .reduce((a, [boost, power]) => ({ ...a, [boost]: power }), {} as Record<string, number>),
 
 
     /**
@@ -198,7 +197,7 @@ const TeamCalc = {
         massAttack = false,
         checkHits = false,
     ) {
-        let power = this.BODY_POWER[partType]
+        let power = this.BODY_POWER[partType] ?? 0
         if (massAttack && distance > 1 && distance <= 3 && partType == RANGED_ATTACK) power = distance == 2 ? 4 : 1
         else if (massAttack && distance > 1 && distance <= 3 && partType == HEAL) power = RANGED_HEAL_POWER
         else if (distance > 1 && partType != RANGED_ATTACK) power = 0
@@ -206,11 +205,11 @@ const TeamCalc = {
 
         if (checkHits) {
             return (
-                power! *
+                power *
                 _.sum(creep.body, (part: BodyPartDefinition) =>
                     part.type == partType && (part.hits || !checkHits)
                         ? part.boost
-                            ? this.BOOST_POWER[part.boost]
+                            ? this.BOOST_POWER[part.boost] ?? 1
                             : 1
                         : 0,
                 )
@@ -218,9 +217,9 @@ const TeamCalc = {
         }
 
         return (
-            power! *
+            power *
             _.sum(creep.body, (part: BodyPartDefinition) =>
-                part.type == partType ? (part.boost ? this.BOOST_POWER[part.boost] : 1) : 0,
+                part.type == partType ? (part.boost ? this.BOOST_POWER[part.boost] ?? 1 : 1) : 0,
             )
         )
     },
@@ -263,8 +262,8 @@ const TeamCalc = {
 
             return (
                 power *
-                _.sum([...creep.body].toReversed().slice(0, checkHits), (part: BodyPartDefinition) =>
-                    part.type == HEAL ? (part.boost ? this.BOOST_POWER[part.boost] : 1) : 0,
+                _.sum(creep.body.slice().reverse().slice(0, checkHits), (part: BodyPartDefinition) =>
+                    part.type == HEAL ? (part.boost ? this.BOOST_POWER[part.boost] ?? 1 : 1) : 0,
                 )
             )
         }

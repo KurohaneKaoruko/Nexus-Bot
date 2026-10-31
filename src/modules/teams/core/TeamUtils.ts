@@ -19,7 +19,7 @@ const TeamUtils = {
             return list.map(p => ({ x: p.x - minX, y: p.y - minY }))
                 .sort((a, b) => a.x - b.x || a.y - b.y);
         };
-        const actual = norm(team.creeps.map((c: any) => ({ x: c.pos.x, y: c.pos.y })));
+        const actual = norm(team.creeps.map((c: Creep) => ({ x: c.pos.x, y: c.pos.y })));
         const expected = norm(slots.map(s => ({ x: s.x, y: s.y })));
         return actual.every((p, i) => p.x === expected[i]!.x && p.y === expected[i]!.y);
     },
@@ -76,10 +76,10 @@ const TeamUtils = {
     getPosRange(team: Team): { minX: number; maxX: number; minY: number; maxY: number } | undefined {
         if (team.creeps.length == 0) return undefined;
         let creepPos = team.creeps.map((c: Creep) => c.pos);
-        let minX = Math.min(...creepPos.map((p: any) => p.x));
-        let maxX = Math.max(...creepPos.map((p: any) => p.x));
-        let minY = Math.min(...creepPos.map((p: any) => p.y));
-        let maxY = Math.max(...creepPos.map((p: any) => p.y));
+        let minX = Math.min(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let maxX = Math.max(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let minY = Math.min(...creepPos.map((p: { x: number; y: number }) => p.y));
+        let maxY = Math.max(...creepPos.map((p: { x: number; y: number }) => p.y));
         return { minX, maxX, minY, maxY };
     },
 
@@ -93,10 +93,10 @@ const TeamUtils = {
     getGlobalPosRange(team: Team): { minX: number; maxX: number; minY: number; maxY: number } | undefined {
         if (team.creeps.length == 0) return undefined;
         let creepPos = team.creeps.map((c: Creep) => c.pos.toGlobal());
-        let minX = Math.min(...creepPos.map((p: any) => p.x));
-        let maxX = Math.max(...creepPos.map((p: any) => p.x));
-        let minY = Math.min(...creepPos.map((p: any) => p.y));
-        let maxY = Math.max(...creepPos.map((p: any) => p.y));
+        let minX = Math.min(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let maxX = Math.max(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let minY = Math.min(...creepPos.map((p: { x: number; y: number }) => p.y));
+        let maxY = Math.max(...creepPos.map((p: { x: number; y: number }) => p.y));
         return { minX, maxX, minY, maxY };
     },
 
@@ -110,11 +110,11 @@ const TeamUtils = {
      * - 结果会按 tick 缓存到 team['pos']/team['posTick']。
      */
     getTeamPos(team: Team): RoomPosition {
-        if ((team as any) ['posTick'] === Game.time && (team as any) ['pos']) return (team as any) ['pos'];
+        if (team._posTick === Game.time && team._pos) return team._pos;
         let teamPos = null;
         if (team.creeps.length >= 3) {
             let s = Infinity;
-            team.creeps.forEach((c: any) => {
+            team.creeps.forEach((c: Creep) => {
                 let gp = c.pos.toGlobal();
                 if (gp.x + gp.y > s) return;
                 s = gp.x + gp.y;
@@ -125,8 +125,8 @@ const TeamUtils = {
             teamPos = team.creeps[team.creeps.length - 1]!.pos;
         } else teamPos = team.creeps[0]!.pos;
         
-        (team as any) ['pos'] = teamPos;
-        (team as any) ['posTick'] = Game.time;
+        if (teamPos) team._pos = teamPos;
+        team._posTick = Game.time;
         return teamPos!;
     },
 
@@ -140,8 +140,7 @@ const TeamUtils = {
      * - 该结果用于队形保持/集结逻辑的分支选择（例如是否需要 Gather 归位）。
      */
     isQuad(team: Team): boolean {
-        const teamAny = team as any;
-        if (teamAny['isQuadTick'] === Game.time) return !!teamAny['isQuad'];
+        if (team._isQuadTick === Game.time) return !!team._isQuad;
 
         // 跨房了不检查
         // if (new Set(creeps.map((creep) => creep.room.name)).size > 1) return
@@ -152,15 +151,15 @@ const TeamUtils = {
             for (let j = 0; j < team.creeps.length; j++) {
                 if (i === j) continue
                 if (!creep!.pos.isCrossRoomNearTo!(team.creeps[j]!.pos)) {
-                    teamAny['isQuad'] = false
-                    teamAny['isQuadTick'] = Game.time
+                    team._isQuad = false
+                    team._isQuadTick = Game.time
                     return false
                 }
             }
         }
 
-        (team as any) ['isQuad'] = true;
-        (team as any) ['isQuadTick'] = Game.time
+        team._isQuad = true;
+        team._isQuadTick = Game.time
         return true;
     },
 
@@ -209,7 +208,7 @@ const TeamUtils = {
      * @returns 是否均未装备攻击部件
      */
     isDisarmed(team: Team): boolean {
-        return team.creeps.every((c: any) =>
+        return team.creeps.every((c: Creep) =>
                 !c.getActiveBodyparts(ATTACK) &&
                 !c.getActiveBodyparts(RANGED_ATTACK))
     },
@@ -301,11 +300,11 @@ const TeamUtils = {
         if (!team.creeps?.length) return true
         if (team.creeps.length === 1) return true
 
-        const sim = team.creeps.map((c: any) =>
+        const sim = team.creeps.map((c: Creep) =>
             this.simulateCreepNextPos({ x: c.pos.x, y: c.pos.y, roomName: c.pos.roomName }, direction),
         )
 
-        const globals = sim.map((p: any) => {
+        const globals = sim.map((p: { x: number; y: number; roomName: string }) => {
             const { rx, ry } = this.parseRoomCoord(p.roomName)
             return { gx: rx * 50 + p.x, gy: ry * 50 + p.y }
         })
@@ -443,7 +442,7 @@ const TeamUtils = {
      * 小队中是否有爬疲劳
      */
     hasCreepFatigue(team: Team): boolean{
-        return team.creeps.some((creep: any) => creep.fatigue > 0)
+        return team.creeps.some((creep: Creep) => creep.fatigue > 0)
     },
 
     /**
@@ -451,7 +450,7 @@ const TeamUtils = {
      */
     hasCreepOnEdge(team: Team): boolean{
         if (team.creeps.length == 0) return false;
-        return team.creeps.some((creep: any) => creep.pos.isRoomEdge())
+        return team.creeps.some((creep: Creep) => creep.pos.isRoomEdge())
     },
 
     /**
@@ -463,9 +462,9 @@ const TeamUtils = {
     focusTarget(team: Team, originPos: RoomPosition) {
         let targets: (Creep | Structure)[] = []
         if (team['_attackTargets']?.length) {
-            targets = (team as any) ['_attackTargets']
+            targets = team._attackTargets
         } else if (team['_targets']?.length) {
-            targets = team['_targets'].filter((s: any) => 'hits' in s) as (Creep | Structure)[]
+            targets = (team._targets?.filter((s) => 'hits' in s) ?? []) as (Creep | Structure)[]
         }
         return originPos.findClosestByRange(targets)
     },

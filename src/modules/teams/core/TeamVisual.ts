@@ -1,5 +1,6 @@
 
 import TeamCache from '@/modules/teams/core/TeamCache'
+import type { QoSAPI, QoSLevel, QoSState } from '@/core/qos'
 import RoomArray from '@/modules/teams/core/RoomArray'
 import TeamUtils from '@/modules/teams/core/TeamUtils'
 
@@ -10,9 +11,9 @@ const ENABLE_TEAM_MOVE_VISUAL = true
  */
 const TeamVisual = {
     shouldDraw(): boolean {
-        const qosLevel =
-            (globalThis as any).qos?.getQoS?.()?.level ||
-            (globalThis as any).QoS?.level ||
+        const qosLevel: QoSLevel =
+            (globalThis as unknown as { qos?: QoSAPI }).qos?.getQoS()?.level ||
+            (globalThis as unknown as { QoS?: QoSState }).QoS?.level ||
             'normal'
         const bucket = Number(Game.cpu.bucket || 0)
         if (qosLevel === 'emergency' || bucket < 1000) return false
@@ -63,7 +64,7 @@ const TeamVisual = {
             ready: '#8a8a8a',
         }
 
-        team.creeps.forEach((creep: any) => {
+        team.creeps.forEach((creep: Creep) => {
             const status = team.status
             if (status) {
                 creep.room.visual.circle(creep.pos.x, creep.pos.y, { fill: colors[status], opacity: 0.4, radius: 0.5 })
@@ -79,7 +80,7 @@ const TeamVisual = {
      */
     drawCreepHealNeed(team: Team) {
         if (!this.shouldDraw()) return
-        team.creeps.forEach((creep: any) => {
+        team.creeps.forEach((creep: Creep) => {
             if (!creep['_heal_need']) {
                 return
             }
@@ -97,9 +98,11 @@ const TeamVisual = {
      */
     drawTargets(team: Team) {
         if (!this.shouldDraw()) return
-        (team as any)['_targets']?.forEach((target: any) => {
-            if (!target?.pos) return
-            target.room?.visual.circle(target.pos.x, target.pos.y, { fill: '#6141cc', radius: 0.5 })
+        team._targets?.forEach((target) => {
+            const pos = target instanceof RoomPosition ? target : target?.pos
+            const room = target instanceof RoomPosition ? undefined : target?.room
+            if (!pos) return
+            room?.visual.circle(pos.x, pos.y, { fill: '#6141cc', radius: 0.5 })
         })
     },
 
@@ -108,7 +111,7 @@ const TeamVisual = {
      */
     drawAvoidObjs(team: Team) {
         if (!this.shouldDraw()) return
-        (team as any)['_avoidObjs']?.forEach(({ pos }: any) => {
+        team._avoidObjs?.forEach(({ pos }) => {
             const visual = new RoomVisual(pos.roomName)
             visual.circle(pos.x, pos.y, { fill: '#ff0000', radius: 0.5 })
         })
@@ -170,7 +173,7 @@ const TeamVisual = {
         const color = hold ? '#00ffff' : (team.status ? statusColors[team.status] : '#00ffff')
         const arrowOffsetY = 0
 
-        team.creeps.forEach((creep: any) => {
+        team.creeps.forEach((creep: Creep) => {
             const creepDir = creepDirections?.[creep.id] || direction
             if (!creepDir) return
             const dd = dirDelta[creepDir]

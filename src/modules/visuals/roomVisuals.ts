@@ -1,4 +1,3 @@
-// @ts-nocheck
 /*
  * 冲级行数据 + spawn 标注: 只产出 HudLine[], 面板渲染统一在 core/boot drawHud。
  * 分段评估消费 utils/raceSegments (与主线单源), 判废快照仅最新单条入 Memory。
@@ -9,6 +8,8 @@ import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import { isSpawningUnit } from "@/modules/spawning/spawningRoster";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 import { evaluateRaceSegments, applySegmentVerdicts, RUSH_SEGMENT_LEVELS } from "@/utils/raceSegments";
+import type { SegmentStatus } from "@/utils/raceSegments";
+import type { RoomIntelRecord } from "@/core/store/memorySchema";
 import { CompoundColor } from "@/constant/ResourceConstant";
 import { getLabAB } from "@/modules/industry";
 import { decompressBatch } from "@/utils/compress";
@@ -29,19 +30,21 @@ export function drawSpawnInfo(spawns: StructureSpawn[]): void {
 	for (const spawn of spawns) {
 		// 孵化中判据走统一接口 (6.3): visuals 只展示, 名单语义单源
 		if (!isSpawningUnit(spawn.name, undefined)) continue;
+		const spawning = spawn.spawning;
+		if (!spawning) continue;
 
-		const creepMemory = Memory.creeps[spawn.spawning!.name];
+		const creepMemory = Memory.creeps[spawning.name];
 		const unit = creepMemory?.unit;
 		if (!isUnitId(unit)) {
 			// 只告警不取消: 突变须经命令边界 (命令管线), 可视化层无突变权
 			console.log(
-				`[visuals.spawn-orphan] ${spawn.room.name} ${spawn.spawning.name} 孵化中无角色记录, 待命令层处置`,
+				`[visuals.spawn-orphan] ${spawn.room.name} ${spawning.name} 孵化中无角色记录, 待命令层处置`,
 			);
 			continue;
 		}
 
 		const code = unitCode(unit);
-		spawn.room.visual.text(`${code} 🕒${spawn.spawning.remainingTime}`, spawn.pos.x, spawn.pos.y, {
+		spawn.room.visual.text(`${code} 🕒${spawning.remainingTime}`, spawn.pos.x, spawn.pos.y, {
 			align: "center",
 			color: "red",
 			stroke: "#ffffff",
@@ -194,7 +197,7 @@ const rateColor = (rate: number): string =>
  */
 export function raceHudLines(room: Room): HudLine[] {
 	const controller = room.controller;
-	if (!controller?.my) return;
+	if (!controller?.my) return [];
 
 	const mem = getRaceMem(room.name);
 	const level = controller.level;
@@ -216,7 +219,7 @@ export function raceHudLines(room: Room): HudLine[] {
 		mem.eSpawnAcc = 0;
 		mem.relayAccum = 0;
 		mem.relaySamples = [];
-		mem.segments = undefined;
+		delete mem.segments;
 		mem.baseline = now;
 	}
 	if (!mem.levels[level]) {
@@ -243,7 +246,7 @@ export function raceHudLines(room: Room): HudLine[] {
 	cumulative += progress;
 
 	const samples = mem.samples;
-	if (samples.length === 0 || now - samples[samples.length - 1].t! >= SAMPLE_STEP) {
+	if (samples.length === 0 || now - (samples[samples.length - 1]?.t ?? now) >= SAMPLE_STEP) {
 		samples.push({ t: now, p: cumulative });
 		while (samples.length > SAMPLE_KEEP) samples.shift();
 	}
@@ -300,7 +303,7 @@ export function raceHudLines(room: Room): HudLine[] {
 	mem.relayAccum += relayThisTick;
 
 	const relaySamples = mem.relaySamples;
-	if (relaySamples.length === 0 || now - relaySamples[relaySamples.length - 1].t! >= SAMPLE_STEP) {
+	if (relaySamples.length === 0 || now - (relaySamples[relaySamples.length - 1]?.t ?? now) >= SAMPLE_STEP) {
 		relaySamples.push({ t: now, p: mem.relayAccum });
 		while (relaySamples.length > SAMPLE_KEEP) relaySamples.shift();
 	}
@@ -317,7 +320,7 @@ export function raceHudLines(room: Room): HudLine[] {
 			s.structureType === STRUCTURE_CONTAINER &&
 			s.pos.inRangeTo(controller.pos, CONTROLLER_BUFFER_CONFIG.adoptRange),
 	})[0];
-	const ccEnergy = ccStructure ? ccStructure.store.energy : -1;
+	const ccEnergy = ccStructure?.structureType === STRUCTURE_CONTAINER ? ccStructure.store.energy : -1;
 	// 控制器容器 + 丢落堆 (面板行用: 缺容器时显示丢落堆规模)
 	const ccHitRatio = ccStructure ? ccStructure.hits / ccStructure.hitsMax : -1;
 	const dropPile = controller.pos.findInRange(FIND_DROPPED_RESOURCES, 2)
@@ -338,8 +341,8 @@ export function raceHudLines(room: Room): HudLine[] {
 	for (const s of room.find(FIND_STRUCTURES) as AnyStructure[]) {
 		if (s.structureType === STRUCTURE_RAMPART || s.structureType === STRUCTURE_WALL) hits += s.hits;
 	}
-	const eSamples = mem.energySamples!;
-	if (eSamples.length === 0 || now - eSamples[eSamples.length - 1].t! >= SAMPLE_STEP) {
+	const eSamples = mem.energySamples ?? (mem.energySamples = []);
+	if (eSamples.length === 0 || now - (eSamples[eSamples.length - 1]?.t ?? now) >= SAMPLE_STEP) {
 		eSamples.push({ t: now, eIn: mem.eInAcc || 0, eSpawn: mem.eSpawnAcc || 0, store, sites: sitesProg, hits, cum: cumulative });
 		while (eSamples.length > SAMPLE_KEEP) eSamples.shift();
 		mem.eInAcc = 0;
@@ -395,9 +398,10 @@ export function raceHudLines(room: Room): HudLine[] {
 
 	// ── 判废落账: 仅首次判废或判废段变化时写快照 (单条覆盖有界, specs 判废快照) ──
 	if (mem.segments.some((s) => s.failed)) {
-		const nexusMemory = Memory.Nexus ?? (Memory.Nexus = {});
-		const roomTable = nexusMemory.rooms ?? (nexusMemory.rooms = {});
-		const intel = roomTable[room.name] ?? (roomTable[room.name] = {});
+		const nexusMemory = Memory.Nexus;
+		if (!nexusMemory) return [];
+		const roomTable = nexusMemory.rooms;
+		const intel: RoomIntelRecord = roomTable[room.name] ?? (roomTable[room.name] = { lastSeen: Game.time, confidence: 1, sourceIds: [] });
 		const verdict = intel.raceVerdict ?? (intel.raceVerdict = {});
 		const isNew = applySegmentVerdicts(verdict, mem.segments, (segment) => ({
 			time: now,

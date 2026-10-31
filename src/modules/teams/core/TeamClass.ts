@@ -23,7 +23,7 @@ class Team {
     homeRoom: string;    // 孵化房间
     targetRoom: string;  // 目标房间
     creeps: Creep[];     // 成员数组
-    cache: { [key: string]: any };    // 缓存
+    cache: { [key: string]: unknown };    // 缓存
     flag: Flag;          // 小队指挥旗
     actionMode: 'normal' | 'rush' | 'press';
     targetMode: 'default' | 'structure' | 'creep' | 'flag';
@@ -62,7 +62,7 @@ class Team {
         this.anchorLock = teamData.anchorLock;
 
         const creepIds = teamData.creeps || [];
-        const liveCreeps = creepIds.map((id: any) => Game.getObjectById(id)).filter(Boolean) as Creep[];
+        const liveCreeps = creepIds.map((id: Id<Creep>) => Game.getObjectById(id)).filter(Boolean) as Creep[];
         this.creeps = liveCreeps;
     }
 
@@ -113,7 +113,7 @@ class Team {
         teamData.formation = this.formation;
         teamData.targetRoom = this.targetRoom;
         teamData.moveMode = this.moveMode;
-        teamData.cache = this.cache as any;
+        teamData.cache = this.cache as TeamCacheMemory;
         if (this.creeps) {
             teamData.creeps = this.creeps.map((c: Creep) => c.id);
             if (this.creeps.length > 0) {
@@ -338,7 +338,7 @@ class Team {
             this.creeps.length >= 4 && hasOnEdge
         ) {
             if (!this._targets) this._targets = [anchor];
-            const moveGoals: any[] = this._targets ?? [anchor]
+            const moveGoals: (Creep | Structure | RoomPosition | Flag)[] = this._targets ?? [anchor]
             let direction = TeamAction.getTeamMoveDirection(this, moveGoals)
             if (!direction && this.status === 'avoid') {
                 direction = TeamAction.getTeamMoveDirection(this, moveGoals, 'flee')
@@ -358,7 +358,7 @@ class Team {
             if (isQuad || this.status === 'flee') {
                 if (hasOnEdge || !TeamAction.switchTeam4Pos(this)) {
                     if (!this._targets) this._targets = [anchor];
-                    let moveGoals: any[] = this._targets
+                    let moveGoals: (Creep | Structure | RoomPosition | Flag)[] = this._targets ?? []
                     let direction = TeamAction.getTeamMoveDirection(this, moveGoals)
                     if (!direction && this.status === 'avoid') {
                         direction = TeamAction.getTeamMoveDirection(this, moveGoals, 'flee')
@@ -370,7 +370,7 @@ class Team {
                     } else if (isQuad) {
                         // 成阵但整阵无路 (窄门摆不下 2x2): 散装窗口内直接散装穿门,
                         // 否则累计受卡到阈值切散装窗口——鱼贯而过, 过门后再重组
-                        const isLoose = (this.cache.looseUntilTick ?? 0) > Game.time;
+                        const isLoose = ((this.cache.looseUntilTick as number | undefined) ?? 0) > Game.time;
                         if (isLoose) {
                             TeamAction.looseAdvance(this, anchor);
                             this.moved = true;
@@ -383,7 +383,7 @@ class Team {
             if (!this.moved && !isQuad) {
                 // 破阵集结: 散装窗口内直接散装推进 (窄口永远凑不齐 2x2 = 死锁);
                 // 否则尝试集结, 受卡累计到阈值自动切散装窗口
-                const isLoose = (this.cache.looseUntilTick ?? 0) > Game.time;
+                const isLoose = ((this.cache.looseUntilTick as number | undefined) ?? 0) > Game.time;
                 if (isLoose) {
                     TeamAction.looseAdvance(this, anchor);
                     this.moved = true;

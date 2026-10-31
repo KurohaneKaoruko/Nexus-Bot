@@ -9,7 +9,7 @@ import { isRoomTickAligned } from '@/utils/roomPhase';
 export function runAutoLab(room: Room): number | void {
         if (!isRoomTickAligned(room.name, AUTO_LAB_CONFIG.tickInterval)) return;
         if (!room.lab || !room.lab.length) return;
-        const botmem = getStructData(room.name) as any;
+        const botmem = getStructData(room.name);
         if (botmem.lab === undefined) botmem.lab = true;
         if (!botmem.lab) return;
 
@@ -50,13 +50,13 @@ export function runAutoLab(room: Room): number | void {
                 return;
             }
 
-            const continueInputMin = Number((AUTO_LAB_CONFIG as any).continueInputMin ?? AUTO_LAB_CONFIG.continueLabStoreMin ?? 5);
+            const continueInputMin = Number(AUTO_LAB_CONFIG.continueInputMin ?? AUTO_LAB_CONFIG.continueLabStoreMin ?? 5);
             const storageOk = getAvail(botmem.labAtype as ResourceConstant) >= continueInputMin
                 && getAvail(botmem.labBtype as ResourceConstant) >= continueInputMin;
             const labStoreOk = labA.mineralType === botmem.labAtype &&
                 labB.mineralType === botmem.labBtype &&
-                ((labA.store as any) [botmem.labAtype] || 0) >= continueInputMin &&
-                ((labB.store as any) [botmem.labBtype] || 0) >= continueInputMin;
+                (labA.store[botmem.labAtype] || 0) >= continueInputMin &&
+                (labB.store[botmem.labBtype] || 0) >= continueInputMin;
 
             if (storageOk || labStoreOk) {
                 delete botmem.labWaitSince;
@@ -82,9 +82,9 @@ export function runAutoLab(room: Room): number | void {
         if (!task) return;
         if (taskAmount === undefined || taskAmount === null) taskAmount = 0;
 
-        botmem.labAtype = ((LabMap as any) [task] as any) ['raw1'];
-        botmem.labBtype = ((LabMap as any) [task] as any) ['raw2'];
-        botmem.labAmount = taskAmount;
+        botmem.labAtype = LabMap[task as keyof typeof LabMap]['raw1'] as ResourceConstant;
+        botmem.labBtype = LabMap[task as keyof typeof LabMap]['raw2'] as ResourceConstant;
+        botmem.labAmount = Number(taskAmount) || 0;
 
         return OK;
 }
@@ -95,8 +95,8 @@ const getCustomizeTask = (room: Room, getAvail: (res: ResourceConstant) => numbe
 
     const getInputMin = (product: string) => {
         if (!RESOURCE_PRODUCTION.enabled) return AUTO_LAB_CONFIG.customTaskInputMin;
-        if ((t3 as any).includes(product)) return RESOURCE_PRODUCTION.lab.chain.inputMin.t3;
-        if ((t2 as any).includes(product)) return RESOURCE_PRODUCTION.lab.chain.inputMin.t2;
+        if (t3.includes(product as never)) return RESOURCE_PRODUCTION.lab.chain.inputMin.t3;
+        if (t2.includes(product as never)) return RESOURCE_PRODUCTION.lab.chain.inputMin.t2;
         return RESOURCE_PRODUCTION.lab.chain.inputMin.t1;
     };
 
@@ -104,14 +104,15 @@ const getCustomizeTask = (room: Room, getAvail: (res: ResourceConstant) => numbe
     let task = null;
     let lv = Infinity; // 优先级
     for (const res in autoLabMap) {
-        if (!(LabMap as any) [res] || (LabLevel as any) [res] === undefined) continue;
-        const level = (LabLevel as any) [res];
+        if (!LabMap[res as keyof typeof LabMap] || LabLevel[res as keyof typeof LabLevel] === undefined) continue;
+        const level = LabLevel[res as keyof typeof LabLevel];
         if (lv <= level) continue;
         const limit = autoLabMap[res];
-        const raw1 = ((LabMap as any) [res] as any) ['raw1'] as ResourceConstant;
-        const raw2 = ((LabMap as any) [res] as any) ['raw2'] as ResourceConstant;
+        const recipe = LabMap[res as keyof typeof LabMap];
+        const raw1 = recipe['raw1'] as ResourceConstant;
+        const raw2 = recipe['raw2'] as ResourceConstant;
         if (limit! > 0) {
-            const cur = getAvail(res as any);
+            const cur = getAvail(res as ResourceConstant);
             if (cur >= limit! * AUTO_LAB_CONFIG.customTaskDoneRatio) continue;
         }
         const inputMin = getInputMin(res);

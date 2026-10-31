@@ -68,7 +68,7 @@ const teamActionObjDirection: Pick<
     /**
      * 获取小队移动方向
      */
-    getTeamMoveDirection(team: Team, goals: {pos: RoomPosition}[], pathMode?: 'flee') {
+    getTeamMoveDirection(team: Team, goals: ({ pos: RoomPosition } | Creep | Structure | Flag | RoomPosition)[], pathMode?: 'flee') {
         const creeps = team.creeps
         const originPos = TeamUtils.getTeamPos(team)!
         const status = pathMode || team.status
@@ -77,7 +77,8 @@ const teamActionObjDirection: Pick<
         const oldMoveMode = team.moveMode
         const isFourTeam = creeps.length >= 3
         const teamFlag = team.flag
-        const safeGoals = (goals || []).filter((g: any) => g && g.pos) as { pos: RoomPosition }[]
+        // RoomPosition 无 pos 字段, 与原过滤行为一致地被排除
+        const safeGoals = (goals || []).filter((g): g is { pos: RoomPosition } => !!g && !!(g as { pos?: RoomPosition }).pos)
         team.moveMode = status
 
         // 和上一 tick 的移动模式相同，并且不需要避让，则检查缓存并按缓存移动
@@ -111,11 +112,11 @@ const teamActionObjDirection: Pick<
 
         const allGoals: { pos: RoomPosition; range: number }[] = []
         // 修改范围，逃跑模式下避开有攻击力的爬
-        safeGoals.forEach((goal: any) => {
+        safeGoals.forEach((goal) => {
             // 逃跑状态只避开爬和塔
             if (isFlee && !(goal instanceof Creep) && !(goal instanceof StructureTower)) return
 
-            goal['_range'] =
+            let range =
                 !isFlee
                     ? 1
                     : !(goal instanceof Creep)
@@ -132,15 +133,15 @@ const teamActionObjDirection: Pick<
                 !(goal.pos.isEqualTo(teamFlag.pos)) &&
                 team.actionMode !== 'rush' &&
                 team.actionMode !== 'press') {
-                (goal as any) ['_range'] = 2
+                range = 2
             }
             const allowEdgeChase = !needAvoid && goal && 'hits' in goal
             const pos = allowEdgeChase && goal.pos?.isRoomEdge?.() ? TeamUtils.pushInsideRoomPos(goal.pos, 1) : goal.pos
-            allGoals.push({ pos, range: goal['_range'] })
+            allGoals.push({ pos, range })
         })
 
         if (isFlee) {
-            allGoals.push(...((team as any) ['_avoidObjs'] || []))
+            allGoals.push(...(team._avoidObjs || []))
             if (allGoals.length === 0) {
                 let towers = Game.rooms[originPos.roomName]?.tower || [];
                 allGoals.push(...towers.map((tower) => ({ pos: tower.pos, range: 50 })))
@@ -169,16 +170,16 @@ const teamActionObjDirection: Pick<
                         if (exitDirection) {
                             const calcClearance = (pos: RoomPosition) => {
                                 let min = Infinity
-                                safeGoals.forEach((g: any) => {
+                                allGoals.forEach((goal) => {
+                                    const g = goal as { pos: RoomPosition; range: number }
                                     if (!g?.pos) return
                                     if (g.pos.roomName !== pos.roomName) return
                                     let dangerRange = 0
                                     if (g instanceof StructureTower) dangerRange = 20
-                                    else if (g instanceof Creep) dangerRange = (g as any) ['_range'] || 0
-                                    else return
+                                    else dangerRange = g.range
                                     min = Math.min(min, pos.getRangeTo(g.pos) - dangerRange)
                                 })
-                                ;((team as any) ['_avoidObjs'] || []).forEach((o: any) => {
+                                ;(team._avoidObjs || []).forEach((o) => {
                                     if (!o?.pos) return
                                     if (o.pos.roomName !== pos.roomName) return
                                     const dangerRange = o.range || 0
@@ -256,7 +257,7 @@ const teamActionObjDirection: Pick<
                 // 生成稳定的避让对象哈希：只让“位于该房间的避让对象”影响 key，
                 // 避免跨房间时避让对象变化导致缓存抖动，同时防止简单 key 撞车。
                 let avoidHash = ''
-                const avoidObjs = (team as any) ['_avoidObjs'] as { pos: RoomPosition; range?: number }[] | undefined
+                const avoidObjs = team._avoidObjs as { pos: RoomPosition; range?: number }[] | undefined
                 if (avoidObjs?.length) {
                     const objsInRoom = avoidObjs.filter((o) => o.pos.roomName === roomName)
                     if (objsInRoom.length) {
@@ -276,7 +277,7 @@ const teamActionObjDirection: Pick<
                 const isVisible = !!Game.rooms[roomName]
                 const structHitLimit = team.cache.structHitLimit || this.structHitLimit
                 const isSpawnDanger = !!team.cache.isSpawnDanger
-                const damageLimit = (team as any) ['_max_damage'] || 0
+                const damageLimit = team.creeps.reduce((pre, c) => Math.min(pre, c._break_damage ?? Infinity), Infinity) || 0
                 const swampCost = needAvoid ? 50 : 5
 
                 // 缓存 key 需要包含所有会改变矩阵的关键参数，避免“不同参数共用同一矩阵”带来矛盾：
@@ -294,7 +295,7 @@ const teamActionObjDirection: Pick<
                 const costs = this.getMoveAbleCostMatrix(
                     roomName,
                     creeps,
-                    (team as any) ['_avoidObjs'],
+                    team._avoidObjs,
                     damageLimit,
                     rangePlus,
                     isFourTeam,

@@ -70,7 +70,7 @@ const findAttackTarget = (creep: Creep, baseName: string): AttackTarget | null =
     if (cachedTarget) return cachedTarget;
 
     if (flag?.room) {
-        const structure = flag.pos.lookFor(LOOK_STRUCTURES).find((s: any) => !s.my);
+        const structure = flag.pos.lookFor(LOOK_STRUCTURES).find((s: AnyStructure) => !(s as AnyOwnedStructure).my);
         if (structure) return structure;
     }
 
@@ -178,7 +178,7 @@ const executeDefaultAttack = (creep: Creep, target: AttackTarget) => {
     if (creep.pos.isNearTo(target)) {
         combatRangedMassAttack(creep);
     } else if (creep.pos.inRangeTo(target, 3)) {
-        combatRangedAttack(creep, target as any);
+        combatRangedAttack(creep, target as Creep | Structure);
     }
     if (!creep.pos.inRangeTo(target, 1)) {
         combatMoveTo(creep, target);
@@ -320,10 +320,10 @@ const createAioBehaviorTree = () =>
     );
 
 const aio = {
-    prepare: (creep: any) => {
+    prepare: (creep: Creep) => {
         return creep.ensureBoosted(creep.memory['boostmap']);
     },
-    run: (creep: any) => {
+    run: (creep: Creep) => {
         creep.disableAttackNotificationsOnce();
         createAioBehaviorTree().tick({
             creep,

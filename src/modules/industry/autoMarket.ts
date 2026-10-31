@@ -33,7 +33,7 @@ const fmtPct = (ratio: number) => `${ratio >= 0 ? '+' : ''}${(ratio * 100).toFix
 
 const logAuto = (lines: string[]) => log('AutoMarket', lines.join(br));
 
-const getResourceIcon = (resourceType: any) => {
+const getResourceIcon = (resourceType: string) => {
     if (resourceType === 'empty') {
         return `<span style="display:inline-block;width:12px;height:12px;border:1px dashed #555;border-radius:2px;margin-right:2px;vertical-align:middle;"></span>`;
     }
@@ -43,9 +43,9 @@ const getResourceIcon = (resourceType: any) => {
     return `<img src="${iconUrl}" alt="${safeType}" style="height:12px;width:14px;object-fit:contain;vertical-align:middle;margin-right:3px;border-radius:2px;" />`;
 };
 
-const resTag = (resType: any, color: string = LOG_COLORS.text) => `${getResourceIcon(resType)}${mono(String(resType), color)}`;
+const resTag = (resType: string, color: string = LOG_COLORS.text) => `${getResourceIcon(resType)}${mono(String(resType), color)}`;
 
-const normalizeResType = (resType: any) => (BASE_CONFIG.RESOURCE_ABBREVIATIONS[resType] || resType) as ResourceConstant;
+const normalizeResType = (resType: string) => (BASE_CONFIG.RESOURCE_ABBREVIATIONS[resType as keyof typeof BASE_CONFIG.RESOURCE_ABBREVIATIONS] || resType) as ResourceConstant;
 
 let cachedEnergyAvgPriceTick = -1;
 let cachedEnergyAvgPrice: number = AUTO_MARKET_CONFIG.energyAvgPriceFallback;
@@ -125,7 +125,7 @@ export function runAutoMarket(room: Room): void {
 }
 
 
-function AutoBuy(roomName: string, item: any) {
+function AutoBuy(roomName: string, item: AutoMarketTask) {
     const amount = item.amount;   // 资源自动购买上限
     const room = Game.rooms[roomName];
     const RES = BASE_CONFIG.RESOURCE_ABBREVIATIONS;
@@ -137,8 +137,8 @@ function AutoBuy(roomName: string, item: any) {
     const storage = room!.storage!;
     if (!terminal) return;
 
-    const terminalAmount = ((terminal.store as any) [resourceType] || 0);
-    const storageAmount = (((room!.storage ?? storage).store as any) [resourceType] || 0);
+    const terminalAmount = (terminal.store[resourceType] || 0);
+    const storageAmount = ((room!.storage ?? storage).store[resourceType] || 0);
 
     // 资源存量
     let totalAmount = 0;
@@ -238,7 +238,7 @@ function AutoBuy(roomName: string, item: any) {
     return result;
 }
 
-function AutoSell(roomName: string, item: any) {
+function AutoSell(roomName: string, item: AutoMarketTask) {
     const amount = item.amount;
     const room = Game.rooms[roomName];
     const RES = BASE_CONFIG.RESOURCE_ABBREVIATIONS;
@@ -250,8 +250,8 @@ function AutoSell(roomName: string, item: any) {
     const storage = room!.storage!;
     if (!terminal) return;
 
-    const terminalAmount = ((terminal.store as any) [resourceType] || 0);
-    const storageAmount = ((storage.store as any) [resourceType] || 0);
+    const terminalAmount = (terminal.store[resourceType] || 0);
+    const storageAmount = (storage.store[resourceType] || 0);
     const totalAmount = (!storage || !terminal.pos.inRangeTo(storage, 2)) ? terminalAmount : (terminalAmount + storageAmount);
     
     if (totalAmount < amount) return;
@@ -364,7 +364,7 @@ function AutoSell(roomName: string, item: any) {
     return result;
 }
 
-function AutoDealBuy(roomName: string, item: any) {
+function AutoDealBuy(roomName: string, item: AutoMarketTask) {
     const amount = item.amount; // 资源数量, 自动出售阈值
     const price = item.price;   // 限制价格
     const room = Game.rooms[roomName];
@@ -376,8 +376,8 @@ function AutoDealBuy(roomName: string, item: any) {
     const terminal = room!.terminal!;
     if (!terminal || terminal.cooldown > 0) return;
 
-    const terminalAmount = (terminal.store as any) [resourceType] || 0;
-    const storageAmount = room!.storage! ? ((room!.storage.store! as any) [resourceType]! || 0) : 0;
+    const terminalAmount = terminal.store[resourceType] || 0;
+    const storageAmount = room!.storage! ? (room!.storage.store[resourceType] || 0) : 0;
     const totalAmount = terminalAmount + storageAmount;
     
     if (totalAmount >= amount) return;
@@ -391,7 +391,7 @@ function AutoDealBuy(roomName: string, item: any) {
 
 }
 
-function AutoDealSell(roomName: string, item: any) {
+function AutoDealSell(roomName: string, item: AutoMarketTask) {
     const amount = item.amount; // 资源数量, 自动出售阈值
     const price = item.price;   // 限制价格
     const room = Game.rooms[roomName];
@@ -402,8 +402,8 @@ function AutoDealSell(roomName: string, item: any) {
     // 检查房间资源储备
     const terminal = room!.terminal!;
     if (!terminal || terminal.cooldown > 0) return;
-    const terminalAmount = (terminal.store as any) [resourceType] || 0;
-    const storageAmount = (room!.storage!.store as any) [resourceType] || 0;
+    const terminalAmount = terminal.store[resourceType] || 0;
+    const storageAmount = room!.storage!.store[resourceType] || 0;
     const totalAmount = terminalAmount + storageAmount;
     
     if (totalAmount <= amount) return;
@@ -424,7 +424,7 @@ function AutoDeal(
     amount: number,
     orderType: ORDER_BUY | ORDER_SELL,
     length: number,
-    price: number,
+    price: number | undefined,
     minEffectiveUnitPrice?: number
 ) {
     const room = Game.rooms[roomName];

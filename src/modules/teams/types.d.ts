@@ -35,6 +35,8 @@ interface TeamMemory {
     num: number,         // 成员数量
     roomName: string,   // 小队当前所在房间
     spawnFlag?: string  // 该队伍由哪个孵化旗创建
+    /** 孵化配置 key (stronghold 分支写入) */
+    configKey?: string
     /** 结构优先集火: 房间内存在该类型可攻击建筑时只打这类 (如要塞塔) */
     structurePriority?: StructureConstant | undefined
     /** 集结期禁火: 不索敌, 推进点回落到指挥旗 (等数量够了再开火推进) */
@@ -64,7 +66,7 @@ interface Team {
     holdFire?: boolean | undefined;
     anchorLock?: boolean | undefined;
     /** 战斗决策缓存: 当前攻击目标集 */
-    _targets?: (Creep | Structure | RoomPosition)[];
+    _targets?: (Creep | Structure | RoomPosition | Flag)[];
     /** 战斗决策缓存: 本 tick 已提交攻击的目标 */
     _attackTargets?: (Creep | Structure)[];
     /** 战斗决策缓存: 房间可攻击建筑 (含缓存) */
@@ -73,4 +75,14 @@ interface Team {
     _attackable_creeps?: Creep[];
     /** 战斗决策缓存: 集火用户名成本表 */
     _username_costs?: Record<string, number>;
+    /** 决策缓存: 队伍中心位置 */
+    _pos?: RoomPosition;
+    /** 决策缓存: _pos 的 tick */
+    _posTick?: number;
+    /** 决策缓存: 是否 quad 阵型 */
+    _isQuad?: boolean;
+    /** 决策缓存: _isQuad 的 tick */
+    _isQuadTick?: number;
+    /** 规避对象列表 (autoAvoid 写入) */
+    _avoidObjs?: { pos: RoomPosition; range: number }[];
 }

@@ -4,6 +4,7 @@ import { log } from '@/utils/log';
 import { ensureTeamData, getTeamData, getTeamSpawnQueue, getTeamPendingSpawns } from "@/core/store/accessor";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
 import { getTeamConfig } from "@/modules/teams/config/TeamConfig";
+import type { TeamMemberConfig } from "@/modules/teams/config/TeamConfig";
 import { directSpawn } from "@/modules/spawning/spawnDirector";
 import { combatRemoveFlag } from "@/modules/combat";
 
@@ -30,6 +31,29 @@ export type TeamSpawnSpec = {
     blockUnownedController?: boolean;
     /** 场上同时存在的队伍上限（缺省不限制） */
     teamCap?: number;
+};
+
+/** TeamData 条目的只读快照形态 (孵化判定只读这几列) */
+type TeamDataSnapshot = {
+    homeRoom?: string;
+    status?: string;
+    time?: number;
+    creeps?: string[];
+    num?: number;
+};
+
+/** 孵化队列条目 (Memory.Nexus.TeamSpawnQueue[roomName]) */
+export type TeamSpawnQueueEntry = {
+    queue: { flagName: string; enqueueTime: number }[];
+    active?: {
+        teamID: string;
+        flagName: string;
+        startTime: number;
+        timedOut?: boolean;
+        timedOutAt?: number;
+        inferredAt?: number;
+    } | undefined;
+    ignoreTeams?: { [teamID: string]: number };
 };
 
 /** 待补孵的单个成员：跨 tick 重试直至成功 */
@@ -263,11 +287,11 @@ const TeamSpawner = {
      * - 每房间每次 run 只会派发 1 支队伍，避免并行孵化打爆 lab/任务池。
      */
     dispatchQueues(specs: Map<string, TeamSpawnSpec>): void {
-        const root = getTeamSpawnQueue() as any;
+        const root = getTeamSpawnQueue();
         if (!root) return;
 
         for (const roomName in root) {
-            const entry = root[roomName] || {};
+            const entry: TeamSpawnQueueEntry = root[roomName] || { queue: [] };
             if (!entry.queue) entry.queue = [];
             root[roomName] = entry;
 
@@ -276,7 +300,7 @@ const TeamSpawner = {
                 if (inferredTeamID) {
                     entry.active = { teamID: inferredTeamID, flagName: '', startTime: getTeamData(inferredTeamID)?.time || Game.time };
                     // 接管即计宽限起点: 宽限后仍 ready 无 pending → isActiveDone 释放
-                    (entry.active as any).inferredAt = Game.time;
+                    entry.active.inferredAt = Game.time;
                 }
             }
 
@@ -310,7 +334,7 @@ const TeamSpawner = {
             if (dispatched) {
                 // 派单成功即释放节奏锁: 孵化由 TeamPendingSpawns 跨 tick 自理,
                 // active 挂到满员会把后续建队卡 600+t (串行饿死蓝球波次)
-                entry.active = undefined;
+                delete entry.active;
             }
         }
 
@@ -373,8 +397,8 @@ const TeamSpawner = {
      * 入队只存 flagName，避免复制配置/颜色等信息；flag 本身是唯一真源。
      */
     enqueue(roomName: string, flagName: string): void {
-        const root = getTeamSpawnQueue() as any;
-        if (!root[roomName]) root[roomName] = { queue: [], active: undefined };
+        const root = getTeamSpawnQueue();
+        if (!root[roomName]) root[roomName] = { queue: [] };
         if (!root[roomName].queue) root[roomName].queue = [];
         root[roomName].queue.push({ flagName, enqueueTime: Game.time });
     },
@@ -382,9 +406,9 @@ const TeamSpawner = {
     /**
      * 清理队列中的失效请求（flag 不存在/孵化房不匹配等）。
      */
-    cleanupQueue(roomName: string, entry: any, specs: Map<string, TeamSpawnSpec>): void {
+    cleanupQueue(roomName: string, entry: TeamSpawnQueueEntry, specs: Map<string, TeamSpawnSpec>): void {
         if (!entry.queue || !entry.queue.length) return;
-        entry.queue = entry.queue.filter((r: any) => {
+        entry.queue = entry.queue.filter((r) => {
             if (!r || !r.flagName) return false;
             if (!Game.flags[r.flagName]) return false;
             return specs.get(r.flagName)?.spawnRoomName === roomName;
@@ -395,17 +419,17 @@ const TeamSpawner = {
      * 判断旗帜是否已在指定房间的队列中。
      */
     isFlagQueued(roomName: string, flagName: string): boolean {
-        const root = getTeamSpawnQueue() as any;
+        const root = getTeamSpawnQueue();
         const entry = root?.[roomName];
         if (!entry?.queue) return false;
-        return entry.queue.some((r: any) => r?.flagName === flagName);
+        return entry.queue.some((r: { flagName?: string }) => r?.flagName === flagName);
     },
 
     /**
      * 判断旗帜是否正在作为该房间的 active 孵化请求执行中。
      */
     isFlagActive(roomName: string, flagName: string): boolean {
-        const root = getTeamSpawnQueue() as any;
+        const root = getTeamSpawnQueue();
         const entry = root?.[roomName];
         if (!entry?.active) return false;
         return entry.active.flagName === flagName;
@@ -419,7 +443,7 @@ const TeamSpawner = {
      * - 选择 time 最新的一支，避免误锁住更早的残留队伍。
      */
     inferActiveTeamID(roomName: string, ignoreTeams?: Record<string, number>): string | undefined {
-        const teams = getTeamData() as any;
+        const teams = getTeamData() as Record<string, TeamDataSnapshot | undefined>;
         if (!teams) return;
         let best: { id: string; time: number } | undefined;
         for (const teamID in teams) {
@@ -442,19 +466,20 @@ const TeamSpawner = {
      * - status 已不为 ready 或成员齐全\n
      * - 超时（ACTIVE_TTL）：强制释放，并记录一次日志
      */
-    isActiveDone(active: any): boolean {
-        const teamID: string | undefined = active?.teamID;
-        if (!teamID) return true;
-        const teamData = getTeamData(teamID) as any;
+    isActiveDone(activeArg: TeamSpawnQueueEntry['active']): boolean {
+        const active = activeArg;
+        if (!active?.teamID) return true;
+        const teamID = active.teamID;
+        const teamData = getTeamData(teamID) as TeamDataSnapshot | undefined;
         if (!teamData) return true;
         if (teamData.status && teamData.status !== 'ready') return true;
         if (teamData.creeps && teamData.num && teamData.creeps.length >= teamData.num) return true;
         // 孵化已交 TeamPendingSpawns 跨 tick 自理: 锁不再等服务出生,
         // 否则建队到满员期间 (~600t) 后续建队全部排队饿死
-        if ((getTeamPendingSpawns() as any)?.[teamID]?.members?.length) return true;
+        if (getTeamPendingSpawns()?.[teamID]?.members?.length) return true;
         // infer 接管的 ready 队: 宽限期后仍未满且无 pending (能量不足等),
         // 不再无限锁住队列, 释放给下一队 (队本身由 pending/reinforce 继续)
-        const inferredAt = (active as any)?.inferredAt;
+        const inferredAt = active?.inferredAt;
         if (typeof inferredAt === 'number' && Game.time - inferredAt > TeamSpawner.INFER_GRACE_TICKS) {
             return true;
         }
@@ -478,7 +503,7 @@ const TeamSpawner = {
     /**
      * 超时后短期忽略某个 teamID，避免同 tick 反复推断 active。
      */
-    ignoreTeam(entry: any, teamID: string): void {
+    ignoreTeam(entry: TeamSpawnQueueEntry, teamID: string): void {
         if (!entry.ignoreTeams) entry.ignoreTeams = {};
         entry.ignoreTeams[teamID] = Game.time + TeamSpawner.IGNORE_TTL_AFTER_TIMEOUT;
     },
@@ -509,7 +534,7 @@ const TeamSpawner = {
 
         // 场上队伍上限（spec.teamCap 存在时生效）
         if (spec.teamCap) {
-            const teams = getTeamData() as any;
+            const teams = getTeamData() as Record<string, TeamDataSnapshot | undefined>;
             if (teams && Object.keys(teams).length >= spec.teamCap) return false;
         }
         return true;
@@ -525,17 +550,17 @@ const TeamSpawner = {
      * 当前规则按 bodypart 数量 * 30 估算化合物消耗。\n
      * `boostmap` 的 key 为 bodypart 常量（如 `ATTACK/HEAL`），value 为对应 boost 资源名（如 `XUH2O`）。
      */
-    calcBoostNeeds(Team_Config: any[]): Record<string, number> {
+    calcBoostNeeds(Team_Config: TeamMemberConfig[]): Record<string, number> {
         const RES_MAP: Record<string, number> = {};
         for (const c of Team_Config) {
             if (!c || !c.boostmap) continue;
             for (const part of c.bodypart) {
                 const partType = part[0];
-                const partNum = part[1];
-                const boostType = c.boostmap[partType];
+                const partNum = part[1] ?? 0;
+                const boostType = c.boostmap[String(partType)];
                 if (!boostType) continue;
-                if (RES_MAP[boostType]) RES_MAP[boostType] += partNum * 30;
-                else RES_MAP[boostType] = partNum * 30;
+                if (RES_MAP[boostType]) RES_MAP[boostType] += (partNum as number) * 30;
+                else RES_MAP[boostType] = (partNum as number) * 30;
             }
         }
         return RES_MAP;
@@ -558,8 +583,8 @@ const TeamSpawner = {
     ensureBoostResources(room: Room, RES_MAP: Record<string, number>, flagName: string, flag: Flag, keepFlag = false): boolean {
         if (!RES_MAP || Object.keys(RES_MAP).length === 0) return true;
 
-        const ok = Object.keys(RES_MAP).every(res => {
-            if ((room as any) [res] > RES_MAP[res]!) return true;
+        const ok = Object.keys(RES_MAP).every((res: string) => {
+            if (((room as unknown as Record<string, number>)[res] ?? 0) > (RES_MAP[res] ?? Infinity)) return true;
             console.log(`BOOST资源${res}不足.`);
             return false;
         });
@@ -584,11 +609,11 @@ const TeamSpawner = {
      * - 队伍初始状态设为 `ready`，由 TeamController 检测成员齐全后切到 `attack`。\n
      * - `try/catch` 分支用于处理 `createFlag` 失败时的兜底：先在 (0,0) 建旗，再写入 Memory.flags 的 setPosition。
      */
-    createTeam(teamID: string, Team_Config: any[], room: Room, flag: Flag, configKey: string): void {
+    createTeam(teamID: string, Team_Config: TeamMemberConfig[], room: Room, flag: Flag, configKey: string): void {
         // 创建小队
         const teamMem = ensureTeamData(teamID);
         // 配置键推导队形：/4 且含 2 个以上治疗成员 → quad（2x2 抗伤阵），/5 → cross（八向十字）、/9 → square3（三方阵），其余 line
-        const healCount = Team_Config.filter((m: any) => m?.unit === 'team-heal').length;
+        const healCount = Team_Config.filter((m: TeamMemberConfig) => m?.unit === 'team-heal').length;
         const formation = configKey.endsWith('/9') ? 'square3'
             : configKey.endsWith('/5') ? 'cross'
             : (Team_Config.length === 4 && healCount >= 2) ? 'quad'
@@ -628,7 +653,7 @@ const TeamSpawner = {
      * （`.flat()` 会把计数混进 body 导致 ERR_INVALID_ARGS，见 broker invalid 日志）。
      * 这里保持原调用参数不变，避免影响孵化系统的调度优先级与任务结构。
      */
-    spawnTeamCreeps(teamID: string, Team_Config: any[], room: Room): void {
+    spawnTeamCreeps(teamID: string, Team_Config: TeamMemberConfig[], room: Room): void {
         getTeamPendingSpawns()[teamID] = {
             roomName: room.name,
             members: Team_Config.map((c) => ({

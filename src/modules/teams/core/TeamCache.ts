@@ -151,7 +151,7 @@ const TeamCache = {
     /**
      * 创建塔伤分布图
      */
-    createTowerDamageMap(towerInfoList: any[]) {
+    createTowerDamageMap(towerInfoList: { id: Id<StructureTower>; x: number; y: number; work: boolean; effect: number }[]) {
         // 计算房间每个位置的防御塔总伤害
         const arr = new RoomArray()
         // 可以工作的防御塔
@@ -194,7 +194,7 @@ const TeamCache = {
             if (!towers!.length) return this.emptyRoomArray
 
             // 获取塔的基本信息
-            const towerInfos = towers!.map((tower: any) => {
+            const towerInfos = towers!.map((tower: StructureTower) => {
                 // 计算强化效果
                 const effect =
                     (tower.effects as PowerEffect[] | undefined)?.reduce((sum, e) => {
@@ -226,7 +226,7 @@ const TeamCache = {
             if (oldTowerInfos) {
                 // 综合 id
                 const ids = towerInfos.map((tower) => tower.id + tower.work + tower.effect)
-                const oldIds = oldTowerInfos.map((tower: any) => tower.id + tower.work + tower.effect)
+                const oldIds = oldTowerInfos.map((tower) => tower.id + tower.work + tower.effect)
                 const oldIdsSet = new Set(oldIds)
                 // 如果数量不一样或者有不同的 id
                 if (ids.length !== oldIds.length || !ids.every((id) => oldIdsSet.has(id))) {
@@ -276,7 +276,7 @@ const TeamCache = {
         const structures = room.find(FIND_STRUCTURES);
         const result = structures.map((s) => ({
             pos: s.pos,
-            my: (s as any).my as boolean,
+            my: (s as AnyOwnedStructure).my as boolean,
             owner: 'owner' in s ? s.owner?.username ?? '' : '',
             structureType: s.structureType,
             hits: s.hits,
@@ -499,9 +499,13 @@ const TeamCache = {
                     (s.structureType == STRUCTURE_RAMPART || s.structureType == STRUCTURE_WALL) &&
                     floodFill[s.pos.x][s.pos.y] == '3',
             )
-            exposedWall.forEach((s) => ((s as any) ['_nearValue'] = new Set(s.pos.nearPos(1).map((p) => +floodFill[p.x][p.y]))))
+            const nearValues = new Map<Structure, Set<number>>();
+            exposedWall.forEach((s) => nearValues.set(s, new Set(s.pos.nearPos(1).map((p) => +(floodFill[p.x] || [])[p.y]))))
             const touchableWall = exposedWall.filter(
-                (s) => ((s as any) ['_nearValue']!.has(1) || (s as any) ['_nearValue']!.has(0)) && (s as any) ['_nearValue']!.has(+connectValue),
+                (s) => {
+                    const near = nearValues.get(s);
+                    return !!near && (near.has(1) || near.has(0)) && near.has(+connectValue);
+                },
             )
             const bestWall = touchableWall.sort((a, b) => a.hits - b.hits).slice(0, 3)
             if (bestWall.length) return bestWall

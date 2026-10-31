@@ -22,20 +22,20 @@ export function factoryWork(room: Room, board?: TaskBoard): void {
     const product = memory.factoryProduct;
     if (!product) return;
 
-    const info = (COMMODITIES as any)?.[product as any];
+    const info = COMMODITIES[product as CommoditiesTypes];
     const productLevel = Number(info?.level ?? 0);
-    const flv = Number(factory.level || (memory as any).factoryLevel || 0);
+    const flv = Number(factory.level || memory.factoryLevel || 0);
     if (productLevel && productLevel !== flv) {
-        (memory as any).factoryProduct = null;
-        (memory as any).factoryAmount = 0;
-        delete (memory as any).factoryWaitSince;
+        memory.factoryProduct = undefined;
+        memory.factoryAmount = 0;
+        delete memory.factoryWaitSince;
         return;
     }
 
     // 原料
     const components = COMMODITIES[product as CommodityConstant]?.components;
     // 原料不足时不处理
-    if (!components || Object.keys(components).some((c: any) => (factory.store as any) [c] < (components as any) [c])) return;
+    if (!components || Object.keys(components).some((c: string) => (factory.store[c as ResourceConstant] ?? 0) < (components[c as CommoditiesTypes] ?? 0))) return;
 
     // 经命令边界同步执行: 原生调用权收编进 broker
     const result = industryProduce(factory, product as CommodityConstant);

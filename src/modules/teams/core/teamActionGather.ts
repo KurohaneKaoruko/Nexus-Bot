@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 /**
  * TeamAction 域模块: 队形集结: Gather 族/变阵/阵位交换/朝向微调。
@@ -50,8 +49,11 @@ const teamActionObjGather: Pick<
         team.cache.lastMoveHold = false
         team.cache.lastCreepMoveDirections = {}
 
-        const { minX, maxX, minY, maxY } = TeamUtils.getPosRange(team);
+        const posRange = TeamUtils.getPosRange(team);
+        if (!posRange) return false;
+        const { minX, maxX, minY, maxY } = posRange;
         let [ A1, A2, B1, B2 ] = team.creeps;
+        if (!A1) return false;
 
         let LT = new RoomPosition(minX, minY, A1!.room.name);
         let RT = new RoomPosition(maxX, minY, A1!.room.name);
@@ -136,52 +138,62 @@ const teamActionObjGather: Pick<
         // 3/4 人队伍内部顺序重排：保证“队首→队尾”的跟随链更稳定
         let creeps: Creep[] = []
         if (team.creeps.length === 4) {
-            creeps = [team.creeps[0], team.creeps[2], team.creeps[1], team.creeps[3]]
+            creeps = [team.creeps[0], team.creeps[2], team.creeps[1], team.creeps[3]].filter((c): c is Creep => !!c)
         } else if (team.creeps.length === 3) {
-            creeps = [team.creeps[0], team.creeps[2], team.creeps[1]]
+            creeps = [team.creeps[0], team.creeps[2], team.creeps[1]].filter((c): c is Creep => !!c)
         } else {
             creeps = team.creeps
         }
+        const head = creeps[0]
+        if (!head) return false
 
         // 优先按 TeamGater 旗帜集结（仅在 homeRoom 生效）
         let GaterFlag = Game.flags['TeamGater']?.pos.roomName === team.homeRoom ? Game.flags['TeamGater'] : null;
         if (GaterFlag) {
             const pos = GaterFlag.pos;
-            if (!creeps[0].pos.isEqual! (pos))
-                combatMoveTo(creeps[0], pos);
+            if (!head.pos.isEqual(pos))
+                combatMoveTo(head, pos);
             for (let i = 1; i < creeps.length; i++) {
-                if (creeps[i].pos.isNearTo! (creeps[i - 1].pos!)) continue;
-                combatMoveTo(creeps[i], creeps[i - 1]);
+                const cur = creeps[i]
+                const prev = creeps[i - 1]
+                if (!cur || !prev) continue
+                if (cur.pos.isNearTo(prev.pos)) continue;
+                combatMoveTo(cur, prev);
             }
             return true;
         }
 
         // 队首的“自驱动”：到目标房后靠旗帜收敛；在 homeRoom 时往目标房中心/出口靠拢
-        let head = creeps[0];
-        if (head!.room.name == team.targetRoom) {
+        if (head.room.name == team.targetRoom) {
             // 已在目标房：有旗收敛到旗，无旗按数据目标房中心推进
-            combatMoveTo(head!, team.flag ? team.flag : new RoomPosition(25, 25, team.targetRoom));
-        } else if (head!.room.name == team.homeRoom) {
+            combatMoveTo(head, team.flag ? team.flag : new RoomPosition(25, 25, team.targetRoom));
+        } else if (head.room.name == team.homeRoom) {
             let tarPos = team.flag ? team.flag.pos :
                         team.targetRoom ?
                         new RoomPosition(25, 25, team.targetRoom) :
-                        head!.room.find(FIND_EXIT)[0];
+                        head.room.find(FIND_EXIT)[0];
+            if (!tarPos) return true
             // 跨房目标不受边界带限制（边界带会把队伍永久冻在出口前）
-            const crossRoom = tarPos!.roomName !== team.homeRoom;
-            const inBand = !(head!.pos.x > 4 && head!.pos.y > 4 && head!.pos.x < 45 && head!.pos.y < 45);
+            const crossRoom = tarPos.roomName !== team.homeRoom;
+            const inBand = !(head.pos.x > 4 && head.pos.y > 4 && head.pos.x < 45 && head.pos.y < 45);
             if (inBand && !crossRoom) return true;
-            combatMoveTo(head!, tarPos);
+            combatMoveTo(head, tarPos);
             for (let i = 1; i < creeps.length; i++) {
-                if (creeps[i].pos.inRangeTo! (tarPos, 2)) continue;
-                combatMoveTo(creeps[i], tarPos);
+                const cur = creeps[i]
+                if (!cur) continue
+                if (cur.pos.inRangeTo(tarPos, 2)) continue;
+                combatMoveTo(cur, tarPos);
             }
             return true;
         }
 
         // 通用跟随：后续成员尽量贴近前一名成员
         for (let i = 1; i < creeps.length; i++) {
-            if (creeps[i].pos.isNearTo! (creeps[i - 1].pos!)) continue;
-            combatMoveTo(creeps[i], creeps[i - 1]);
+            const cur = creeps[i]
+            const prev = creeps[i - 1]
+            if (!cur || !prev) continue
+            if (cur.pos.isNearTo(prev.pos)) continue;
+            combatMoveTo(cur, prev);
         }
         return true;
     },
@@ -232,9 +244,9 @@ const teamActionObjGather: Pick<
             if (terrain.get(p.x + 1, p.y) == TERRAIN_MASK_WALL) return false;
             if (terrain.get(p.x + 1, p.y + 1) == TERRAIN_MASK_WALL) return false;
             const area = [p.y, p.x, p.y + 1, p.x + 1]
-            if (room!.lookForAtArea(LOOK_STRUCTURES, area[0], area[1], area[2], area[3], true).filter(structCheck).length) return false;
-            if (room!.lookForAtArea(LOOK_CREEPS, area[0], area[1], area[2], area[3], true).filter(creepCheck).length) return false;
-            if (room!.lookForAtArea(LOOK_POWER_CREEPS, area[0], area[1], area[2], area[3], true).length) return false;
+            if (room!.lookForAtArea(LOOK_STRUCTURES, area[0]!, area[1]!, area[2]!, area[3]!, true).filter(structCheck).length) return false;
+            if (room!.lookForAtArea(LOOK_CREEPS, area[0]!, area[1]!, area[2]!, area[3]!, true).filter(creepCheck).length) return false;
+            if (room!.lookForAtArea(LOOK_POWER_CREEPS, area[0]!, area[1]!, area[2]!, area[3]!, true).length) return false;
             return true;
         }
 
@@ -260,7 +272,7 @@ const teamActionObjGather: Pick<
 
         const moveToTarget = (creep: Creep, target: RoomPosition) => {
             if (creep.pos.isEqualTo(target)) return
-            if (typeof (creep as any).move === 'function' && typeof creep.pos.getDirectionTo === 'function') {
+            if (typeof creep.move === 'function' && typeof creep.pos.getDirectionTo === 'function') {
                 const dir = creep.pos.getDirectionTo(target) as DirectionConstant | 0
                 if (dir) {
                     combatMove(creep, dir)
@@ -272,19 +284,19 @@ const teamActionObjGather: Pick<
 
         const moveExact = (p: RoomPosition) => {
             const [tl, tr, bl, br] = quadTargets(p)
-            if (LT) moveToTarget(LT, tl)
-            if (RT) moveToTarget(RT, tr)
-            if (LB) moveToTarget(LB, bl)
-            if (RB) moveToTarget(RB, br)
+            if (LT && tl) moveToTarget(LT, tl)
+            if (RT && tr) moveToTarget(RT, tr)
+            if (LB && bl) moveToTarget(LB, bl)
+            if (RB && br) moveToTarget(RB, br)
         }
 
         const computeStepsExact = (p: RoomPosition) => {
             const [tl, tr, bl, br] = quadTargets(p)
             let steps = 0
-            if (LT) steps = Math.max(steps, getRange(LT.pos, tl))
-            if (RT) steps = Math.max(steps, getRange(RT.pos, tr))
-            if (LB) steps = Math.max(steps, getRange(LB.pos, bl))
-            if (RB) steps = Math.max(steps, getRange(RB.pos, br))
+            if (LT && tl) steps = Math.max(steps, getRange(LT.pos, tl))
+            if (RT && tr) steps = Math.max(steps, getRange(RT.pos, tr))
+            if (LB && bl) steps = Math.max(steps, getRange(LB.pos, bl))
+            if (RB && br) steps = Math.max(steps, getRange(RB.pos, br))
             return steps
         }
 
@@ -297,14 +309,21 @@ const teamActionObjGather: Pick<
             const patterns = n === 4 ? QUAD_ASSIGN_PATTERNS_4 : QUAD_ASSIGN_PATTERNS_3
             for (let pi = 0; pi < patterns.length; pi++) {
                 const pattern = patterns[pi]
+                if (!pattern) continue
                 let steps = 0
                 for (let i = 0; i < n; i++) {
-                    steps = Math.max(steps, getRange(allCreeps[i].pos!, targets[pattern! [i]!]))
+                    const target = i < pattern.length ? targets[pattern[i] ?? 0] : undefined
+                    const mover = allCreeps[i]
+                    if (!target || !mover) continue
+                    steps = Math.max(steps, getRange(mover.pos, target))
                     if (steps >= bestSteps) break
                 }
                 if (steps >= bestSteps) continue
                 bestSteps = steps
-                bestAssign = allCreeps.map((c, i) => [c, targets[pattern! [i]!]])
+                bestAssign = allCreeps.flatMap((c, i) => {
+                    const t = targets[pattern![i]!]
+                    return t ? [[c, t] as [Creep, RoomPosition]] : []
+                })
                 if (bestSteps <= 1) break
             }
 
@@ -351,6 +370,7 @@ const teamActionObjGather: Pick<
         // 优先：能 1 tick 精确占位就直接精确占位
         for (let i = 0; i < candidates.length; i++) {
             const p = candidates[i]
+            if (!p) continue
             if (computeStepsExact(p) <= 1) {
                 moveExact(p)
                 return true
@@ -360,6 +380,7 @@ const teamActionObjGather: Pick<
         // 次优：能 1 tick 恢复 quad（任意占位）就直接恢复 quad
         for (let i = 0; i < candidates.length; i++) {
             const p = candidates[i]
+            if (!p) continue
             const quad = computeStepsQuadAndAssign(p)
             if (quad.steps <= 1) {
                 quad.assign.forEach(([creep, target]) => moveToTarget(creep, target))
@@ -380,6 +401,7 @@ const teamActionObjGather: Pick<
 
         for (let i = 0; i < topK; i++) {
             const p = candidates[i]
+            if (!p) continue
             const exactSteps = computeStepsExact(p)
             const quad = computeStepsQuadAndAssign(p)
             const useExact = exactSteps <= quad.steps
@@ -394,7 +416,8 @@ const teamActionObjGather: Pick<
             bestAssign = quad.assign
         }
 
-        if (!bestPos) bestPos = candidates[0]
+        if (!bestPos) bestPos = candidates[0] ?? null
+        if (!bestPos) return false
         if (bestUseExact) {
             moveExact(bestPos)
             return true
@@ -420,7 +443,8 @@ const teamActionObjGather: Pick<
 
         // 3 个爬时可能小于 2，这时候把队首加进去
         if (middleCreeps.length < 2) {
-            middleCreeps.push(creeps[0])
+            const headCreep = creeps[0]
+            if (headCreep) middleCreeps.push(headCreep)
         }
         const [middlePos1, middlePos2] = middleCreeps.map((creep) => creep.pos)
         const creepPosHashSet = new Set(creeps.map((creep) => creep.pos.hashCode()))
@@ -431,12 +455,13 @@ const teamActionObjGather: Pick<
         // 我们要做的就是判断是哪种情况，然后把其他的爬填入空位（使用二分匹配）
 
         // 生成四个坐标
-        const genRoomPositions = (x1: number, y1: number, x2: number, y2: number) => {
+        const genRoomPositions = (x1: number, y1: number, x2: number, y2: number): RoomPosition[] => {
+            if (!middlePos1 || !middlePos2) return []
             return [
                 middlePos1,
                 middlePos2,
-                new RoomPosition(x1, y1, middlePos1!.roomName),
-                new RoomPosition(x2, y2, middlePos2!.roomName),
+                new RoomPosition(x1, y1, middlePos1.roomName),
+                new RoomPosition(x2, y2, middlePos2.roomName),
             ]
         }
 
@@ -491,7 +516,7 @@ const teamActionObjGather: Pick<
 
         creeps.forEach((creep) => {
             const targetPos = result[creep.name]
-            if (!creep.pos.isEqualTo(targetPos)) {
+            if (targetPos && !creep.pos.isEqualTo(targetPos)) {
                 combatMove(creep, creep.pos.getDirectionTo(targetPos))
             }
         })
@@ -505,7 +530,9 @@ const teamActionObjGather: Pick<
         const clamp = (v: number) => Math.max(1, Math.min(48, v));
         const anchor = this.stagingAnchorOf(team.name, team.creeps, team.targetRoom);
         let cx = clamp(anchor.x), cy = clamp(anchor.y);
-        const roomName = team.creeps[0].room.name!;
+        const firstCreep = team.creeps[0];
+        if (!firstCreep) return false;
+        const roomName = firstCreep.room.name;
 
         // 锚点贴墙/贴建筑时模板槽位会被钳进不可走格 (成员追一个到不了的槽位 = 卡角落):
         // 沿朝房间中心方向逐格试, 找到全部槽位可走的锚点; 找不到维持原锚点 (散装推进兜底)

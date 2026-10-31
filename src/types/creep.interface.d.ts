@@ -133,11 +133,45 @@ interface CreepFlatCache {
     [key: string]: any;
 }
 
+/** 战斗预测字段 (TeamBattle 每tick计算后挂在 creep 上) */
+interface CreepCombatFields {
+    /** 射程3内的敌人 */
+    _ra_enemys?: Creep[];
+    /** 射程1内的蓝球或红球敌人 */
+    _ra_atk_enemys?: Creep[];
+    /** 上一tick受到的伤害 */
+    _fired_damage?: number;
+    /** 下一tick回满血所需治疗量 */
+    _need_heal_power?: number;
+    /** 治疗需求记账 */
+    _heal_need?: number;
+    /** 破防伤害 */
+    _break_damage?: number;
+    /** 虚拟血量 */
+    _virtual_hits?: number;
+    /** 治疗能力 */
+    _heal_power?: number;
+    /** 本tick已被治疗标记 */
+    _been_heal?: boolean;
+    /** 蓝球单发伤害 (敌情评估) */
+    _ra_damage?: number;
+    /** 红球单发伤害 (敌情评估) */
+    _atk_damage?: number;
+}
+
+/** 战斗房间缓存字段 (TeamBattle 按tick缓存敌情) */
+interface RoomCombatFields {
+    _team_hostiles_tick?: number;
+    _team_hostiles?: Creep[];
+    _team_hostiles_ranged?: Creep[];
+    _team_hostiles_rangedOrAttack?: Creep[];
+}
+
 /**
  * Creep接口扩展
  * @description 扩展Screeps原生Creep类，添加自定义方法
  */
-interface Creep {
+interface Creep extends CreepCombatFields {
     // ==================== 核心方法 ====================
     /**
      * 初始化

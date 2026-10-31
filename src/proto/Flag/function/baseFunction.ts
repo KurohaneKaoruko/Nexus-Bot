@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
 
 /** 核弹发射未实现告警的上次输出 tick (限频, 进程级) */
@@ -11,7 +10,7 @@ function nukeLaunchSupported() {
 
 export default class FlagBaseFunction extends Flag {
     // 移动旗帜
-    handleSetPositionFlag() {
+    override handleSetPositionFlag() {
         if (!this.memory['setPosition']) return false;
 
         let [x, y, roomName] = this.memory['setPosition'].split('/');
@@ -28,7 +27,7 @@ export default class FlagBaseFunction extends Flag {
     }
 
     // 核弹打击（仅处理 nuke-* / nuke_*，不影响其他旗帜）
-    handleNukeFlag() {
+    override handleNukeFlag() {
         if (!(this.name.startsWith('nuke-') || this.name.startsWith('nuke_'))) return false;
 
         // 无实现时跳过并限频告警: 调用不存在的方法会抛 TypeError, 中断 RoomFeatures

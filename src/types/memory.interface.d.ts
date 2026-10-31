@@ -66,8 +66,20 @@ interface BotMemory {
     OutMineData: { [roomName: string]: OutMineMemory };
     AutoData: AutoDataMemory;
     ResourceManage: { [roomName: string]: ResourceManageMemory };
-    TeamData: Record<string, any>;
-    TeamSpawnQueue: Record<string, any>;
+    TeamData: Record<string, TeamMemory>;
+    /** 孵化队列条目 (与 TeamSpawner.TeamSpawnQueueEntry 同形) */
+    TeamSpawnQueue: Record<string, {
+        queue: { flagName: string; enqueueTime: number }[];
+        active?: {
+            teamID: string;
+            flagName: string;
+            startTime: number;
+            timedOut?: boolean;
+            timedOutAt?: number;
+            inferredAt?: number;
+        } | undefined;
+        ignoreTeams?: { [teamID: string]: number };
+    }>;
     /** 编队待补孵成员（跨 tick 补孵, global 重置后不丢）: teamID → 待孵条目 */
     TeamPendingSpawns: Record<string, {
         roomName: string;
@@ -217,9 +229,10 @@ interface RoomControlMemory {
      * - 'low': 低功耗模式，减少 CPU 消耗
      * - 'high': 高功耗模式，最大化运行效率
      * - 'rush': 冲刺模式，保留高功耗策略并强调前期冲刺
+     * - 'mini': 极简模式，非必要设施全部关闭
      * - 'stop': 停止模式，暂停大部分功能
      */
-    mode: 'main' | 'low' | 'high' | 'rush' | 'stop';
+    mode: 'main' | 'low' | 'high' | 'rush' | 'mini' | 'stop';
 
     /**
      * 布局类型
@@ -235,6 +248,12 @@ interface RoomControlMemory {
         x: number;
         y: number;
     };
+
+    /**
+     * 防御模式档位
+     * @description 0 关闭；数值档位控制防御策略激进程度
+     */
+    defend_mode?: number;
 
     /**
      * 控制器签名
@@ -315,15 +334,27 @@ interface StructControlMemory {
 
     /**
      * 当前生产任务
-     * @description 正在生产的商品类型
+     * @description 正在生产的商品类型；清空用 undefined
      */
-    factoryProduct?: ResourceConstant;
+    factoryProduct?: ResourceConstant | null | undefined;
 
     /**
      * 生产任务限额
      * @description 生产数量上限，达到后停止生产
      */
     factoryAmount?: number;
+
+    /**
+     * 缺料等待起始 tick
+     * @description 超时后允许自动切换/清空任务，避免永久卡死
+     */
+    factoryWaitSince?: number;
+
+    /**
+     * 产物禁产冷却（tick 时间戳）
+     * @description 填装超时结束后对同一产物的冷却期，避免重分配抖动
+     */
+    factoryBan?: { [product: string]: number };
 
     // --------------------------------------------------------
     // Lab 配置
@@ -342,16 +373,22 @@ interface StructControlMemory {
     labAmount?: number;
 
     /**
-     * 底物 A 类型
-     * @description Lab 合成反应的第一种底物
+     * 缺料等待起始 tick
+     * @description 底物断供超时后清空任务，避免长期占用
      */
-    labAtype?: ResourceConstant;
+    labWaitSince?: number;
+
+    /**
+     * 底物 A 类型
+     * @description Lab 合成反应的第一种底物；清空写 null
+     */
+    labAtype?: ResourceConstant | null;
 
     /**
      * 底物 B 类型
-     * @description Lab 合成反应的第二种底物
+     * @description Lab 合成反应的第二种底物；清空写 null
      */
-    labBtype?: ResourceConstant;
+    labBtype?: ResourceConstant | null;
 
     /**
      * 底物 Lab A 的坐标（压缩）
@@ -583,13 +620,13 @@ interface AutoDataMemory {
         /**
          * 默认运行模式
          */
-        mode: 'main' | 'low' | 'high' | 'rush';
+        mode: 'main' | 'low' | 'high' | 'rush' | 'mini';
 
         /**
          * 自动托管允许的布局类型
          * @description 仅允许自动布局，避免静态布局在无人介入时误构建
          */
-        layout: 'auto' | '63auto' | 'scorpior';
+        layout: 'auto' | 'mini';
     };
 
     /**
@@ -709,10 +746,14 @@ interface ResourceManageMemory {
  */
 interface MissionPoolMemory {
     /**
-     * 任务列表
-     * @description key 为任务类型，value 为任务数组
+     * 孵化任务队列（唯一活跃池）
      */
-    [missionType: string]: Task[];
+    spawn?: Task[];
+
+    /**
+     * transport 池遗留（已随 mission-pool-retirement 退役），仅供存量读取
+     */
+    transport?: ManageTransportTask[];
 }
 
 // ============================================================

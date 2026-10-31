@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 import { getOutMineData, getRoomData } from '@/core/store/accessor';
 
@@ -77,7 +76,7 @@ export const HighwayMineVisual = {
 
         for (const flagName in Game.flags) {
             const match = flagName.match(/^(.+)\/mineMapVisual$/);
-            if (match) sourceRoomsToDraw.add(match[1]);
+            if (match?.[1]) sourceRoomsToDraw.add(match[1]);
         }
 
         for (const sourceRoom in this.enabled) {

@@ -149,6 +149,47 @@ interface Task {
 }
 
 /**
+ * 中央搬运任务数据（存量兼容读取）
+ * @description transport 池已随 mission-pool-retirement 退役；autoFactory/productionInfo 仍按该形态读取遗留任务判断补料中资源
+ */
+interface ManageTask {
+    /**
+     * 资源来源
+     * @description 可选值：storage、terminal、link、factory、powerSpawn
+     */
+    source: 'storage' | 'terminal' | 'link' | 'factory' | 'powerSpawn';
+
+    /**
+     * 资源目标
+     * @description 可选值：storage、terminal、link、factory、powerSpawn
+     */
+    target: 'storage' | 'terminal' | 'link' | 'factory' | 'powerSpawn';
+
+    /**
+     * 资源类型
+     */
+    resourceType: ResourceConstant;
+
+    /**
+     * 搬运数量
+     */
+    amount: number;
+}
+
+/**
+ * 中央搬运任务（transport 池遗留形态）
+ * @description data 形态见 {@link ManageTask}
+ */
+interface ManageTransportTask {
+    id: string;
+    level: number;
+    type: 'manage';
+    data: ManageTask;
+    lock?: boolean;
+    bindCreep?: Id<Creep> | null;
+}
+
+/**
  * 孵化任务数据
  * @description 用于孵化creep的任务
  */

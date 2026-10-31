@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 import { UNITS } from '@/constant/CreepConstant';
 export default class SourceFunction extends Creep {

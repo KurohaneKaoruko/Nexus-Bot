@@ -18,7 +18,7 @@ export default {
                         skip++;
                         continue;
                     }
-                    const BotMemStructures = getStructData(rn) as any;
+                    const BotMemStructures = getStructData(rn);
                     BotMemStructures['lab'] = true;
                     ok++;
                 }
@@ -30,7 +30,7 @@ export default {
                 globalThis.log(`房间 ${roomName} 不存在或未添加。`);
                 return;
             }
-            const BotMemStructures = getStructData(roomName) as any;
+            const BotMemStructures = getStructData(roomName);
             BotMemStructures['lab'] = true;
             globalThis.log(`[${roomName}] 已开启lab合成。`);
             return OK;
@@ -46,7 +46,7 @@ export default {
                         skip++;
                         continue;
                     }
-                    const BotMemStructures = getStructData(rn) as any;
+                    const BotMemStructures = getStructData(rn);
                     BotMemStructures['lab'] = false;
                     ok++;
                 }
@@ -58,7 +58,7 @@ export default {
                 globalThis.log(`房间 ${roomName} 不存在或未添加。`);
                 return;
             }
-            const BotMemStructures = getStructData(roomName) as any;
+            const BotMemStructures = getStructData(roomName);
             BotMemStructures['lab'] = false;
             globalThis.log(`[${roomName}] 已关闭lab合成。`);
             return OK;
@@ -70,14 +70,14 @@ export default {
                 globalThis.log(`房间 ${roomName} 不存在或未拥有。`);
                 return;
             }
-            const BotMemStructures = getStructData(roomName) as any;
+            const BotMemStructures = getStructData(roomName);
             if (product) {
-                if (!(LabMap as any) [product]) {
+                if (!LabMap[product as keyof typeof LabMap]) {
                     globalThis.log(`不存在Lab合成产物 ${product} 。`);
                     return;
                 }
-                let A = (LabMap as any)[product]?.raw1;
-                let B = (LabMap as any)[product]?.raw2;
+                let A = LabMap[product as keyof typeof LabMap]['raw1'] as ResourceConstant;
+                let B = LabMap[product as keyof typeof LabMap]['raw2'] as ResourceConstant;
                 BotMemStructures['labAtype'] = A;
                 BotMemStructures['labBtype'] = B;
                 BotMemStructures['labAmount'] = Math.max(0, amount);
@@ -121,7 +121,7 @@ export default {
                 if (!lab) continue;
                 const RES = BASE_CONFIG.RESOURCE_ABBREVIATIONS;
                 let resourceType = (RES as Record<string, ResourceConstant>)[labsetMatch[1]!] || labsetMatch[1] as ResourceConstant;
-                if (!resourceType || !(LabMap as any) [resourceType]) {
+                if (!resourceType || !LabMap[resourceType as keyof typeof LabMap]) {
                     delete boostLabs[lab.id];
                     flag.remove();
                     console.log(`在房间 ${roomName} 删除了 lab(${lab.id}) 的强化资源设置`);
@@ -158,7 +158,7 @@ export default {
                     globalThis.log(`房间 ${roomName} 不存在或未拥有。`);
                     return;
                 }
-                if(!(LabMap as any) [product]) {
+                if(!LabMap[product as keyof typeof LabMap]) {
                     globalThis.log(`资源 ${product} 不存在。`);
                     return;
                 }
@@ -176,13 +176,13 @@ export default {
                     globalThis.log(`房间 ${roomName} 不存在或未拥有。`);
                     return;
                 }
-                if(!(LabMap as any)[product as string]) {
+                if(!LabMap[product as keyof typeof LabMap]) {
                     globalThis.log(`资源 ${product} 不存在。`);
                     return;
                 }
                 const BotMem = getAutoLabData(roomName);
     
-                delete (BotMem as any)[product as string];
+                delete BotMem[product as string];
                 globalThis.log(`已删去 ${roomName} 的自动lab合成: ${product}`);
                 return OK;
             },

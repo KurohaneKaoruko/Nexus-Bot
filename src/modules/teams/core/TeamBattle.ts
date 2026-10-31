@@ -40,12 +40,12 @@ const TeamBattle = {
         tick: number,
         opts?: { threatTick?: number; minHitsRate?: number },
     ) {
-        const creeps = team.creeps as any;
+        const creeps = team.creeps;
         const threatTick = opts?.threatTick ?? tick
 
         // 搜索 n tick 后会攻击到自己的敌人
-        creeps.forEach((creep: any) => {
-            const room = creep.room as any
+        creeps.forEach((creep: Creep) => {
+            const room = creep.room
             // 按房间缓存敌人列表：同 tick 内同房间的所有 creep 复用一次 find
             if (room._team_hostiles_tick !== Game.time) {
                 room._team_hostiles_tick = Game.time
@@ -120,14 +120,14 @@ const TeamBattle = {
             // 被集火的伤害，即假设周围的爬都打到自己的伤害
             let maxCreepDamage = 0
             const selfHasAttack = TeamCalc.hasBodyPart(creep, ATTACK)
-            creep._ra_enemys.forEach((e: any) => {
+            creep._ra_enemys?.forEach((e: Creep) => {
                 if (e._ra_damage === undefined) {
                     // rangedAttack 虽然是 3 格远，但是伤害和 1 格一样，同时不考虑敌人受伤（可能随时可能奶回来）
                     e._ra_damage = TeamCalc.calcRangeDamage(e, 1, false, false)
                 }
                 maxCreepDamage += e._ra_damage
             })
-            creep._ra_atk_enemys.forEach((e: any) => {
+            creep._ra_atk_enemys?.forEach((e: Creep) => {
                 if (e._atk_damage === undefined) {
                     e._atk_damage = TeamCalc.calcAttackDamage(e, 1, false)
                 }
@@ -135,7 +135,7 @@ const TeamBattle = {
                 maxCreepDamage += e._atk_damage * (selfHasAttack ? 2 : 1)
                 // TODO: 一格以内的蓝球，对面肯定 mass，需要根据小队人数算出更大的伤害
                 // >4 人队无专属档位，按 4 人口径取值（防 undefined 污染伤害评估）
-                maxCreepDamage += ((e as any)._ra_damage || 0) * (this.rangeNearDamageRate[creeps.length] ?? this.rangeNearDamageRate[4] ?? 0)
+                maxCreepDamage += ((e as Creep & { _ra_damage?: number })._ra_damage || 0) * (this.rangeNearDamageRate[creeps.length] ?? this.rangeNearDamageRate[4] ?? 0)
             })
 
             // 塔伤分布图
@@ -151,7 +151,7 @@ const TeamBattle = {
         })
 
         let totalHeal = 0
-        creeps.forEach((creep: any) => {
+        creeps.forEach((creep: Creep) => {
             if (creep._heal_power === undefined) {
                 // 当前 tick 每个爬的真实治疗量
                 creep._heal_power = TeamCalc.calcHealDamage(creep, 1, false, true)
@@ -159,7 +159,7 @@ const TeamBattle = {
             totalHeal += creep._heal_power
         })
 
-        creeps.forEach((creep: any) => {
+        creeps.forEach((creep: Creep) => {
             // 下一 tick 每个爬回满血需要的治疗量
             creep._need_heal_power = TeamCalc.calcDamageNeedHeal(creep, creep._fired_damage!, true)
             creep._heal_need = creep._need_heal_power
@@ -171,22 +171,22 @@ const TeamBattle = {
 
         // 当前 tick 奶周围的爬（包括自己）
         const canIssueHealOrder = tick === 0 && team.cache.healOrdersTick !== Game.time
-        creeps.forEach((creep: any) => {
+        creeps.forEach((creep: Creep) => {
             if (!creep._heal_power) return
 
-            const needHealCreeps = creeps.filter((other: any) => other._need_heal_power! > 0 && creep.pos.isNearTo(other))
+            const needHealCreeps = creeps.filter((other: Creep) => (other._need_heal_power ?? 0) > 0 && creep.pos.isNearTo(other))
             if (!needHealCreeps.length) return
 
             // 找到周围破防伤害最小的爬
-            const hurtCreeps = needHealCreeps.filter((c: any) => c.hits < c.hitsMax)
+            const hurtCreeps = needHealCreeps.filter((c: Creep) => c.hits < c.hitsMax)
             let maxNeedHealCreep =
                 hurtCreeps.length >= 1 &&
-                hurtCreeps.reduce((pre: any, cur: any) => {
+                hurtCreeps.reduce((pre: Creep, cur: Creep) => {
                     return pre._break_damage! < cur._break_damage! ? pre : cur
                 })
             if (!maxNeedHealCreep) {
                 // 找到周围需要奶量最大的爬
-                maxNeedHealCreep = needHealCreeps.reduce((pre: any, cur: any) => {
+                maxNeedHealCreep = needHealCreeps.reduce((pre: Creep, cur: Creep) => {
                     return pre._need_heal_power! > cur._need_heal_power! ? pre : cur
                 })
             }
@@ -207,12 +207,12 @@ const TeamBattle = {
             team.cache.healOrdersTick = Game.time
         }
 
-        if (creeps.every((creep: any) => !creep._fired_damage)) {
+        if (creeps.every((creep: Creep) => !creep._fired_damage)) {
             return true
         }
 
         const minHitsRate = opts?.minHitsRate ?? 0.6
-        if (creeps.some((creep: any) => creep._virtual_hits! < 0 || creep.hits < creep.hitsMax * minHitsRate)) {
+        if (creeps.some((creep: Creep) => (creep._virtual_hits ?? 0) < 0 || creep.hits < creep.hitsMax * minHitsRate)) {
             // 第一 tick 就寄啦
             return false
         }
@@ -220,16 +220,16 @@ const TeamBattle = {
         // 下一 tick
         // 总奶量
         const totalNextTickHeal = creeps.reduce(
-            (pre: any, cur: any) => pre + TeamCalc.calcHealDamage(cur, 1, false, cur._virtual_hits),
+            (pre: number, cur: Creep) => pre + TeamCalc.calcHealDamage(cur, 1, false, cur._virtual_hits ?? 0),
             0,
         )
 
         // 检查每个爬能否 hold 住
         if (
             creeps.find(
-                (creep: any) =>
-                    TeamCalc.calcHealHoldRealDamage(creep, totalNextTickHeal, creep._virtual_hits!) <
-                    creep._fired_damage!,
+                (creep: Creep) =>
+                    TeamCalc.calcHealHoldRealDamage(creep, totalNextTickHeal, creep._virtual_hits ?? 0) <
+                    (creep._fired_damage ?? 0),
             )
         ) {
             return false
@@ -244,10 +244,10 @@ const TeamBattle = {
      * 小队能承受的最大伤害，大于该值一定会破防，低于该值可能破防
      */
     maxBreakDamage(team: Team) {
-        const creeps = team.creeps as any;
+        const creeps = team.creeps;
         // 取所有爬中最小的破防伤害
-        (this as any)['_max_damage'] = creeps.reduce((pre: any, cur: any) =>(pre < cur._break_damage! ? pre : cur._break_damage), Infinity)
-        return (this as any)['_max_damage'];
+        const maxDamage = creeps.reduce((pre: number, cur: Creep) =>(pre < (cur._break_damage ?? Infinity) ? pre : cur._break_damage!), Infinity)
+        return maxDamage;
     },
 
     /**
@@ -273,7 +273,7 @@ const TeamBattle = {
         // 集结期禁火: 不给目标 → 推进点回落到指挥旗, 队伍才会钉在集结点,
         // 不会被最近的塔/守军勾着往火力圈里钻
         if (team.holdFire) {
-            (team as any)['_targets'] = [];
+            team._targets = [];
             return;
         }
 
@@ -282,7 +282,7 @@ const TeamBattle = {
         const hasWeapon = team.creeps.some((c) =>
             c.getActiveBodyparts(ATTACK) > 0 || c.getActiveBodyparts(RANGED_ATTACK) > 0);
         if (!hasWeapon && team.flag) {
-            (team as any)['_targets'] = [team.flag];
+            team._targets = [team.flag];
             return;
         }
         const room = Game.rooms[scanRoomName];
@@ -294,7 +294,7 @@ const TeamBattle = {
         const preferFlag = team.targetMode === 'flag' && !!team.flag
 
         const result: (Creep | Structure | Flag)[] = []
-        const creep = team.creeps.find((c: any) => c.room.name === scanRoomName)
+        const creep = team.creeps.find((c: Creep) => c.room.name === scanRoomName)
 
         if (room && creep) {
             // 要塞核心在射程内时直击核心 (跳过其余目标选择, 打掉核心即胜利)
@@ -302,14 +302,14 @@ const TeamBattle = {
                 filter: (s) => s.structureType === STRUCTURE_INVADER_CORE,
             })[0];
             if (core && team.creeps.some((c) => c.pos.getRangeTo(core.pos) <= 3)) {
-                (team as any)['_targets'] = [core];
+                team._targets = [core];
                 return;
             }
 
             if (preferFlag) {
                 const targets = [...team.flag.pos.lookFor(LOOK_STRUCTURES)].filter((s) => s.structureType !== STRUCTURE_ROAD)
                 if (targets.length) {
-                    (team as any) ['_targets'] = [targets[0]]
+                    team._targets = [targets[0]!]
                     return
                 }
             }
@@ -331,7 +331,7 @@ const TeamBattle = {
             }
 
             const getCanAttackCreeps = () => {
-                const creeps: Creep[] = room.findEnemyCreeps().filter((e: any) => e.owner.username !== 'Source Keeper')
+                const creeps: Creep[] = room.findEnemyCreeps().filter((e: Creep) => e.owner.username !== 'Source Keeper')
                 team._attackable_creeps = creeps
                 canAttackCreeps = TeamCache.getCreepsInFloodFill(creep, creeps, team.creeps.length >= 3)
             }
@@ -354,7 +354,7 @@ const TeamBattle = {
         if (result.length === 0 && team.flag) {
             result.push(team.flag)
         }
-        ;(team as any) ['_targets'] = result
+        team._targets = result
     },
 
 
@@ -362,8 +362,8 @@ const TeamBattle = {
      * 自动攻击
      */
     autoAttack(team: Team) {
-        let targets = team._targets?.filter((s: any) => 'hits' in s) as (Creep | Structure)[]
-        ;(team as any) ['_attackTargets'] = []
+        let targets = (team._targets?.filter((s) => 'hits' in s) ?? []) as (Creep | Structure)[]
+        team._attackTargets = []
 
         const clearPathCache = (creep: Creep) => {
             if (creep.pos.isNearEdge(2)) return false
@@ -372,8 +372,8 @@ const TeamBattle = {
         }
 
 
-        team.creeps.forEach((creep: any) => {
-            if ((creep.memory as any)._teamOrderTick === Game.time) return
+        team.creeps.forEach((creep: Creep) => {
+            if ((creep.memory as CreepMemory & { _teamOrderTick?: number })._teamOrderTick === Game.time) return
             // 不是目标房间靠近就打
             if (creep.room.name !== team.targetRoom) {
                 targets = this.getAttackTargets(creep)!
@@ -401,13 +401,13 @@ const TeamBattle = {
                 // 目标评分：血量越低分越高，有治疗部件分越高，有伤害部件分越高
                 let target: Creep | Structure
                 const targetCreeps: Creep[] = []
-                const targetStructures: any[] = []
-                targetsInThreeRange.forEach((s: any) => {
+                const targetStructures: (Structure & { _range?: number })[] = []
+                targetsInThreeRange.forEach((s: Creep | Structure) => {
                     if (s instanceof Creep) {
                         targetCreeps.push(s)
                     } else {
                         targetStructures.push(s)
-                        ;(s as any) ['_range'] = creep.pos.getRangeTo(s)
+                        ;(s as Structure & { _range?: number })._range = creep.pos.getRangeTo(s)
                     }
                 })
 
@@ -430,7 +430,7 @@ const TeamBattle = {
                         return getScore(best) > getScore(cur) ? best : cur;
                     })
                 } else {
-                    target = targetStructures.reduce((pre, cur) => ((pre as any) ['_range']! < (cur as any) ['_range']! ? pre : cur))
+                    target = targetStructures.reduce((pre, cur) => ((pre._range ?? Infinity) < (cur._range ?? Infinity) ? pre : cur))
                 }
 
                 // 与目标相邻且有 owner 属性
@@ -515,7 +515,7 @@ const TeamBattle = {
                 ordered = true
             }
 
-            if (ordered) (creep.memory as any)._teamOrderTick = Game.time
+            if (ordered) (creep.memory as CreepMemory & { _teamOrderTick?: number })._teamOrderTick = Game.time
         })
     },
 
@@ -532,22 +532,22 @@ const TeamBattle = {
             return
         }
 
-        const roomsSet = new Set(team.creeps.map((creep: any) => creep.room))
+        const roomsSet = new Set(team.creeps.map((creep: Creep) => creep.room))
         if (team.flag.room) roomsSet.add(team.flag.room)
-        const rooms: Room[] = Array.from(roomsSet as Set<any>)
+        const rooms: Room[] = Array.from(roomsSet)
         const hostiles: Creep[] = []
         for (const room of rooms) {
             hostiles.push(
-                ...room.findEnemyCreeps().filter((e: any) => {
+                ...room.findEnemyCreeps().filter((e: Creep) => {
                     if (!e.getActiveBodyparts(RANGED_ATTACK) && !e.getActiveBodyparts(ATTACK)) {
                         return false;
                     }
-                    return team.creeps.every((c: any) => c.pos.crossRoomGetRangeTo(e.pos) <= range + 5)
+                    return team.creeps.every((c: Creep) => c.pos.crossRoomGetRangeTo(e.pos) <= range + 5)
                 }),
             )
         }
 
-        ;(team as any)['_avoidObjs'] = hostiles.map((e) => ({
+        team.cache._avoidObjs = hostiles.map((e) => ({
             pos: e.pos,
             range: range + (e.getActiveBodyparts(RANGED_ATTACK) ? 3 : 1),
         }))

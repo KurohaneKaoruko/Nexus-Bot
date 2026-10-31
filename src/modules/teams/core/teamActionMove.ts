@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 /**
  * TeamAction 域模块: 移动执行: 直线/四足推进/聚焦/松动推进/推进目标更新。
@@ -68,12 +67,13 @@ const teamActionObjMoveExec: Pick<
 
         let creeps: Creep[] = []
         if (team.creeps.length === 4) {
-            creeps = [team.creeps[0], team.creeps[2], team.creeps[1], team.creeps[3]]
+            creeps = [team.creeps[0], team.creeps[2], team.creeps[1], team.creeps[3]].filter((c): c is Creep => !!c)
         } else if (team.creeps.length === 3) {
-            creeps = [team.creeps[0], team.creeps[2], team.creeps[1]]
+            creeps = [team.creeps[0], team.creeps[2], team.creeps[1]].filter((c): c is Creep => !!c)
         } else {
             creeps = team.creeps
         }
+        if (creeps.length === 0) return
 
         if (reverse) creeps.reverse();
 
@@ -93,43 +93,49 @@ const teamActionObjMoveExec: Pick<
             return;
         }
 
-        let headMove = isLine || creeps[0].pos.isRoomEdge! ();
+        const headCreep = creeps[0];
+        if (!headCreep) return;
+        let headMove = isLine || headCreep.pos.isRoomEdge();
         for (let i = 1; !headMove && (i < creeps.length); i++) {
-            if (creeps[i].pos.isNearTo! (creeps[i-1])) {
-                headMove = creeps[i].pos.isRoomEdge! ();
+            const cur = creeps[i];
+            const prev = creeps[i - 1];
+            if (!cur || !prev) break;
+            if (cur.pos.isNearTo(prev)) {
+                headMove = cur.pos.isRoomEdge();
             } else break;
         }
 
         let moved = [false, false, false, false];
         if (headMove) {
-            if (headDirection) creepDirections[creeps[0].id!] = headDirection
-            combatMoveTo(creeps[0], pos, { ignoreCreeps: false });
+            if (headDirection) creepDirections[headCreep.id] = headDirection
+            combatMoveTo(headCreep, pos, { ignoreCreeps: false });
             moved[0] = true;
         }
 
         for (let i = 1; i < creeps.length; i++) {
-            let creep = creeps[i];
-            let prevCreep = creeps[i - 1];
+            const creep = creeps[i];
+            const prevCreep = creeps[i - 1];
+            if (!creep || !prevCreep) continue;
 
             if (isLine) {
-                const dir = creep!.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
+                const dir = creep.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
                 if (dir) {
-                    creepDirections[creep!.id] = dir
-                    combatMove(creep!, dir);
+                    creepDirections[creep.id] = dir
+                    combatMove(creep, dir);
                 }
                 continue;
             }
 
-            if (!creep!.pos.isNearTo(prevCreep)) {
-                const dir = creep!.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
-                if (dir) creepDirections[creep!.id] = dir
-                combatMoveTo(creep!, prevCreep, { ignoreCreeps: false });
+            if (!creep.pos.isNearTo(prevCreep)) {
+                const dir = creep.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
+                if (dir) creepDirections[creep.id] = dir
+                combatMoveTo(creep, prevCreep, { ignoreCreeps: false });
                 moved[i] = true;
             } else if (moved[i - 1]) {
-                const dir = creep!.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
+                const dir = creep.pos.getDirectionTo(prevCreep) as DirectionConstant | 0
                 if (dir) {
-                    creepDirections[creep!.id] = dir
-                    combatMove(creep!, dir);
+                    creepDirections[creep.id] = dir
+                    combatMove(creep, dir);
                 }
                 moved[i] = true;
             }
@@ -174,8 +180,10 @@ const teamActionObjMoveExec: Pick<
         if (!direction) {
             if (creeps.length !== 2) return
             // 2 人小队看一下第二个爬是否在边界，如果是就移动到周围不是边界的空位
-            if (creeps[0].pos.isNearTo! (creeps[1]) && creeps[1].pos.isRoomEdge! ()) {
-                this.moveOuterBorder(creeps[1], creeps[0])
+            const c0 = creeps[0];
+            const c1 = creeps[1];
+            if (c0 && c1 && c0.pos.isNearTo(c1) && c1.pos.isRoomEdge()) {
+                this.moveOuterBorder(c1, c0)
             }
             return
         }
@@ -228,19 +236,19 @@ const teamActionObjMoveExec: Pick<
         if (creeps.length >= 3) {
             creeps.forEach((creep) => combatMove(creep, direction))
         } else if (creeps.length === 1) {
-            combatMove(creeps[0], direction)
+            const solo = creeps[0]
+            if (solo) combatMove(solo, direction)
         } else {
             // 二人小队，如果是躲避或者逃跑，反过来移动
+            const lead = creeps[0];
+            const tail = creeps[1];
+            if (!lead || !tail) return
             if (team.status === 'avoid' || team.status === 'flee') {
-                combatMove(creeps[1], direction)
-                if (creeps[0]) {
-                    combatMove(creeps[0], creeps[0].pos.getDirectionTo(creeps[1]))
-                }
+                combatMove(tail, direction)
+                combatMove(lead, lead.pos.getDirectionTo(tail))
             } else {
-                combatMove(creeps[0], direction)
-                if (creeps[1]) {
-                    combatMove(creeps[1], creeps[1].pos.getDirectionTo(creeps[0]))
-                }
+                combatMove(lead, direction)
+                combatMove(tail, tail.pos.getDirectionTo(lead))
             }
         }
         return;
@@ -257,8 +265,8 @@ const teamActionObjMoveExec: Pick<
      */
     QuadMoveTo(team: Team, targetPos: RoomPosition): void {
         // 获取移动方向
-        let d = this.getTeamMoveDirection(team, [{pos:targetPos}]);
-        return this.move(team, d);
+        const d = this.getTeamMoveDirection(team, [{pos:targetPos}]);
+        if (d) this.move(team, d);
     },
 
 
@@ -288,10 +296,11 @@ const teamActionObjMoveExec: Pick<
                 const room = Game.rooms[roomName]
                 if (!room) return emptyCostMatrix
 
-                if (!(Game as any) ['_username_costs']) (Game as any) ['_username_costs'] = {}
+                const gameCosts = Game as typeof Game & { _username_costs?: Record<string, CostMatrix> };
+                gameCosts._username_costs ??= {};
                 const id = roomName + username
 
-                if (!((Game as any) ['_username_costs'] as any) [id]) {
+                if (!gameCosts._username_costs[id]) {
                     const costs = new PathFinder.CostMatrix()
 
                     const structures = TeamCache.getStructures(roomName);
@@ -305,10 +314,10 @@ const teamActionObjMoveExec: Pick<
                     })
 
 
-                    ;((Game as any) ['_username_costs'] as any) [id] = costs
+                    gameCosts._username_costs[id] = costs
                 }
 
-                return ((Game as any) ['_username_costs'] as any) [id]
+                return gameCosts._username_costs[id]
             },
         })
 
@@ -323,7 +332,7 @@ const teamActionObjMoveExec: Pick<
     focusTarget(team: Team, originPos: RoomPosition) {
         let targets: (Creep | Structure)[] = []
         if (team['_attackTargets']?.length) {
-            targets = (team as any) ['_attackTargets']
+            targets = team['_attackTargets'] ?? []
         } else if (team['_targets']?.length) {
             targets = team['_targets'].filter((s) => 'hits' in s) as (Creep | Structure)[]
         }
@@ -385,7 +394,8 @@ const teamActionObjMoveExec: Pick<
     execMoveExtended(team: Team, anchor: RoomPosition | undefined): boolean {
         const shape = shapeOfCount(team.creeps.length);
         if (!shape) return false;
-        const goal = team['_targets']?.[0]?.pos ?? anchor;
+        const firstGoal = team['_targets']?.[0];
+        const goal = (firstGoal && 'pos' in firstGoal ? firstGoal.pos : undefined) ?? anchor;
 
         // ── 动态组合 (窄门/墙角防卡死): 严格阵型受卡累计到阈值后, 切散装推进
         // (成员各自寻路, 单爬可穿窄门/绕角); 窗口到期自动重试阵型, 有空间即恢复 ──
@@ -421,7 +431,8 @@ const teamActionObjMoveExec: Pick<
 
         // ── 全员同房 ──
         if (TeamUtils.inSameRoom(team)) {
-            const inTargetRoom = team.creeps[0].room.name === team.targetRoom;
+            const leadCreep = team.creeps[0];
+            const inTargetRoom = leadCreep?.room.name === team.targetRoom;
 
             // 目标房内：成阵 → 集火整队推进（execAttack 同步开火）
             if (inTargetRoom) {
@@ -497,7 +508,9 @@ const teamActionObjMoveExec: Pick<
      * 并按 teamID 散列沿推进方向垂直向错开多队集结点（±6 格内）。
      */
     stagingAnchorOf(teamName: string, creeps: Creep[], targetRoom: string | undefined): RoomPosition {
-        const roomName = creeps[0].room.name!;
+        const firstCreep = creeps[0];
+        if (!firstCreep) return new RoomPosition(25, 25, targetRoom ?? '');
+        const roomName = firstCreep.room.name;
         const clamp = (v: number) => Math.max(1, Math.min(48, v));
         const xs = creeps.map(c => c.pos.x), ys = creeps.map(c => c.pos.y);
         let cx = clamp(Math.round(xs.reduce((a, b) => a + b, 0) / xs.length));
@@ -569,7 +582,7 @@ const teamActionObjMoveExec: Pick<
 
         const lockTicks = 3
         const lockedUntil = team.cache?.focusTargetLockUntil || 0
-        const lockedId = team.cache?.focusTargetId as Id<any> | undefined
+        const lockedId = team.cache?.focusTargetId as Id<Creep | Structure> | undefined
         let lockedPos: RoomPosition | undefined
         if (hasAttackTargets && lockedId && Game.time < lockedUntil) {
             const lockedObj = Game.getObjectById(lockedId)
@@ -581,12 +594,10 @@ const teamActionObjMoveExec: Pick<
         }
         let desiredPos = lockedPos || focusPos
         if (hasAttackTargets && desiredPos.isRoomEdge()) desiredPos = TeamUtils.pushInsideRoomPos(desiredPos, 1)
-        const desiredId = lockedPos ? lockedId : ((focusTarget as any)?.id as Id<any> | undefined)
+        const desiredId = lockedPos ? lockedId : ((focusTarget as { id?: Id<Creep | Structure> } | null | undefined)?.id)
 
         // candidates：当前 tick 可推进/可攻击的有效目标（排除 flag），用于判断当前 targetPos 是否仍有效
-        const candidates = (((team as any) ['_targets'] || []) as any[]).filter((t) => t && 'hits' in t && t.pos) as {
-            pos: RoomPosition
-        }[]
+        const candidates = (team._targets ?? []).filter((t): t is Creep | Structure => !!t && 'hits' in t && !!t.pos)
         const candidatePosSet = new Set<number>(candidates.map((t) => t.pos?.hashCode()).filter((v) => v !== undefined) as number[])
 
         if (!currentTargetPos) {
