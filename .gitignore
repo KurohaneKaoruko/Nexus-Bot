@@ -4,6 +4,7 @@ AGENTS.md
 dist/
 dist-race/
 node_modules/
+race-daemon.log
 race-runs.jsonl
 .secret.json
 target/
