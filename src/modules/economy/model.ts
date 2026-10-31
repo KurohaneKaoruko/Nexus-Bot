@@ -91,16 +91,16 @@ export function accumulateTick(ctx: TickContext, world: WorldView): void {
 			accumulators.starvationTicks += 1;
 		}
 	}
-	for (const room of Object.values(world.rooms)) {
-		for (const creep of room.creeps) {
-			if (creep.unitCode !== "C") {
-				continue;
-			}
-			if (Game.creeps[creep.name]?.memory.taskId !== undefined) {
-				accumulators.carryBusyTicks += 1;
-			} else {
-				accumulators.carryIdleTicks += 1;
-			}
+	// 名册口径 (docs/24 §24.5.2): 搬运忙闲计数遍历 units——外房搬运件 (跨房 carry)
+	// 的忙闲同样构成经济脉象, 视野口径漏计会低估运力
+	for (const creep of Object.values(world.units)) {
+		if (creep.unitCode !== "C") {
+			continue;
+		}
+		if (Game.creeps[creep.name]?.memory.taskId !== undefined) {
+			accumulators.carryBusyTicks += 1;
+		} else {
+			accumulators.carryIdleTicks += 1;
 		}
 	}
 
@@ -118,15 +118,10 @@ export function recordActionRates(ctx: TickContext, results: readonly ActionResu
 	if (!world) {
 		return;
 	}
-	// 单位索引含 remoteUnits (远程采集件在非己方房, world.rooms 不收):
+	// 单位索引走名册 units (docs/24 §24.5.2): 远程采集件在非己方房, rooms 不收——
 	// 漏索引会把远程采集/交付整体丢出账本, 诊断口径系统性失真
 	const unitIndex = new Map<string, { roomName: string; bodyWork: number }>();
-	for (const room of Object.values(world.rooms)) {
-		for (const creep of room.creeps) {
-			unitIndex.set(creep.name, { roomName: creep.roomName, bodyWork: creep.bodyWork });
-		}
-	}
-	for (const creep of world.remoteUnits ?? []) {
+	for (const creep of Object.values(world.units)) {
 		unitIndex.set(creep.name, { roomName: creep.roomName, bodyWork: creep.bodyWork });
 	}
 	for (const result of results) {

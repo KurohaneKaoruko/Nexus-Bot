@@ -337,43 +337,52 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			if (!targets) {
 				return;
 			}
-			for (const room of Object.values(world.rooms)) {
-				for (const creep of room.creeps) {
-					const unit = unitFromCodeOf(creep.unitCode);
-					if (!unit) {
-						continue;
-					}
-					const target = effectiveTarget(ctx, unit, targets);
-					// 错峰窗口按批规模放大 (race-speedrun 6.1): 窗口 = 定编 × 生产
-					// 周期, 替补触发点错峰 ≥ 整代替补的孵化时长, 消灭「整代到期 →
-					// 孵化槽排队 → 在岗阶梯下滑」潮 (40k 实证 t28.5-29.9k 全代重孵)
-					if (
-						creep.ticksToLive >=
-						replacementLead(ctx, unit, room.roomName, creep.name, target)
-					) {
-						continue;
-					}
-					const overlapping = REPLACEMENT_KEY_UNITS.includes(unit)
-						? staffed(unit) <= target
-						: staffed(unit) < target;
-					if (overlapping) {
-						// 替补等级跟随被替类型常驻档: 换代是编制维持的一部分,
-						// 恒殿后 L11 会被涓流期孵化槽饿死——同龄批次集中到期时
-						// 死亡速率 > 孵化速率, 人口崩塌 (sim t12k 22→7 实锤)
-						const unitLevel =
-							SPAWN_CONFIG.standingPriorityByUnit[unit] ?? SPAWN_CONFIG.standingPriority;
-						// 冲级档升级替补越位 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
-						// 只作用于替补请求——缺编建立期维持 standing 序 (carrier 先于 upgrader,
-						// 能量通道先建, boot 绿门不漂移); 换代期升级体抢在 carrier churn 前
-						// 上槽, 消灭「单只死→补 1500t」空窗 (40k 实证 +8.9% / L4 提前 4925t)
-						addRequest(
-							unit,
-							anyRush && unit === "upgrader"
-								? Math.min(unitLevel, SPAWN_CONFIG.rushUpgradeSpawnPriority)
-								: unitLevel,
-							`replacement:${unit}`,
-						);
-					}
+			// 名册口径 (docs/24 §24.5.2): 替补窗口在旧 rooms 房序遍历上并入外房
+			// remoteUnits (尾序)——外矿/侦查件常驻外房, 视野口径漏检使外死件
+			// 永不触发替补。请求顺序影响孵化槽排队序, 保持旧序不漂移门读数;
+			// 归房按 homeRoom (孵化簿记的母房), lead 计算不随驻地漂移
+			const homeOf = (name: string): string | undefined =>
+				ctx.memory.units[name]?.homeRoom ?? Game.creeps[name]?.memory.homeRoom;
+			const candidates = [
+				...Object.values(world.rooms).flatMap((room) => room.creeps),
+				...world.remoteUnits,
+			];
+			for (const creep of candidates) {
+				const unit = unitFromCodeOf(creep.unitCode);
+				if (!unit) {
+					continue;
+				}
+				const homeRoomName = homeOf(creep.name) ?? creep.roomName;
+				const target = effectiveTarget(ctx, unit, targets);
+				// 错峰窗口按批规模放大 (race-speedrun 6.1): 窗口 = 定编 × 生产
+				// 周期, 替补触发点错峰 ≥ 整代替补的孵化时长, 消灭「整代到期 →
+				// 孵化槽排队 → 在岗阶梯下滑」潮 (40k 实证 t28.5-29.9k 全代重孵)
+				if (
+					creep.ticksToLive >=
+					replacementLead(ctx, unit, homeRoomName, creep.name, target)
+				) {
+					continue;
+				}
+				const overlapping = REPLACEMENT_KEY_UNITS.includes(unit)
+					? staffed(unit) <= target
+					: staffed(unit) < target;
+				if (overlapping) {
+					// 替补等级跟随被替类型常驻档: 换代是编制维持的一部分,
+					// 恒殿后 L11 会被涓流期孵化槽饿死——同龄批次集中到期时
+					// 死亡速率 > 孵化速率, 人口崩塌 (sim t12k 22→7 实锤)
+					const unitLevel =
+						SPAWN_CONFIG.standingPriorityByUnit[unit] ?? SPAWN_CONFIG.standingPriority;
+					// 冲级档升级替补越位 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
+					// 只作用于替补请求——缺编建立期维持 standing 序 (carrier 先于 upgrader,
+					// 能量通道先建, boot 绿门不漂移); 换代期升级体抢在 carrier churn 前
+					// 上槽, 消灭「单只死→补 1500t」空窗 (40k 实证 +8.9% / L4 提前 4925t)
+					addRequest(
+						unit,
+						anyRush && unit === "upgrader"
+							? Math.min(unitLevel, SPAWN_CONFIG.rushUpgradeSpawnPriority)
+							: unitLevel,
+						`replacement:${unit}`,
+					);
 				}
 			}
 		});

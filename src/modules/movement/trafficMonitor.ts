@@ -64,29 +64,27 @@ export function updateCongestion(ctx: TickContext, world: WorldView): void {
 	const traffic = ctx.memory.traffic;
 	const seen = new Set<string>();
 
-	for (const room of Object.values(world.rooms)) {
-		for (const creep of room.creeps) {
-			seen.add(creep.name);
-			const record = traffic.blocked[creep.name];
-			if (!record) {
-				lastPositions.set(creep.name, { x: creep.x, y: creep.y });
-				continue;
-			}
-			const previous = lastPositions.get(creep.name);
+	for (const creep of Object.values(world.units)) {
+		seen.add(creep.name);
+		const record = traffic.blocked[creep.name];
+		if (!record) {
 			lastPositions.set(creep.name, { x: creep.x, y: creep.y });
-			if (previous && previous.x === creep.x && previous.y === creep.y) {
-				record.count += 1;
-				const key = `${room.roomName}:${creep.x}:${creep.y}`;
-				const hotspot = traffic.hotspots[key] ?? { freq: 0, lastTick: ctx.tick };
-				hotspot.freq += 1;
-				hotspot.lastTick = ctx.tick;
-				traffic.hotspots[key] = hotspot;
-			} else {
-				record.count = 0;
-				moveRateWindow.movedTicks += 1;
-			}
-			moveRateWindow.intentTicks += 1;
+			continue;
 		}
+		const previous = lastPositions.get(creep.name);
+		lastPositions.set(creep.name, { x: creep.x, y: creep.y });
+		if (previous && previous.x === creep.x && previous.y === creep.y) {
+			record.count += 1;
+			const key = `${creep.roomName}:${creep.x}:${creep.y}`;
+			const hotspot = traffic.hotspots[key] ?? { freq: 0, lastTick: ctx.tick };
+			hotspot.freq += 1;
+			hotspot.lastTick = ctx.tick;
+			traffic.hotspots[key] = hotspot;
+		} else {
+			record.count = 0;
+			moveRateWindow.movedTicks += 1;
+		}
+		moveRateWindow.intentTicks += 1;
 	}
 
 	// 消失单位的位置缓存与超期意图记录淘汰
