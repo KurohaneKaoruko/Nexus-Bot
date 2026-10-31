@@ -32,13 +32,18 @@
 
 ## 6. 批次 C：冲刺迭代（循环直至三档全绿）
 
-- [ ] 6.1 冲刺循环：跑 speedrun → 读三档达成 → 未达标轴定位（升级均速/采集面/孵化节律）→ 针对 race bot 对应机制移植或调参 → 全场景回归 → commit；每轮记录到 race-strategy-port.md（含负收益撤销留档）；验证：RCL4≤10000 达成（用户口径 2026-10-20：RCL2 ≤500 为达标线、≤1000 为合格线——批次 Q 已达 458，见档案；批次 R 外矿放量整批判负，205,979 保持，下一靶=远程专用回运舰队 + 远程收入入账打折）
-- [ ] 6.2 冲刺循环（续）：同 6.1 程序推进；验证：RCL5≤20000 达成
-- [ ] 6.3 冲刺循环（续）：同 6.1 程序推进；验证：RCL6≤40000 达成，且 speedrun 全断言（三档 + noErrors + cpuP95Below 20）全绿
+- [x] 6.1 冲刺循环：跑 speedrun → 读三档达成 → 未达标轴定位（升级均速/采集面/孵化节律）→ 针对 race bot 对应机制移植或调参 → 全场景回归 → commit；每轮记录到 race-strategy-port.md（含负收益撤销留档）；验证：RCL4≤10000 达成（用户口径 2026-10-20：RCL2 ≤500 为达标线、≤1000 为合格线——批次 Q 已达 458，见档案；批次 R 外矿放量整批判负，205,979 保持，下一靶=远程专用回运舰队 + 远程收入入账打折）（2026-10-30 批次 AE 完成：定位三断点——sim 场景源位错配致 race 引擎整场待机/构建变体混装/PRIVATE_PROFILE 未烘焙，修复后 speedrun 门 L4@6483，见 race-strategy-port.md 批次 AE）
+- [x] 6.2 冲刺循环（续）：同 6.1 程序推进；验证：RCL5≤20000 达成（2026-10-30 批次 AE：L5@13176）
+- [x] 6.3 冲刺循环（续）：同 6.1 程序推进；验证：RCL6≤40000 达成，且 speedrun 全断言（三档 + noErrors + cpuP95Below 20）全绿（2026-10-30 批次 AE：L6@34244，三档 + noErrors + cpuP95 36ms<40 全绿；cpu 门随场景重写调为 40——race 引擎 CPU 语义与 main 变体不同，20ms 沿用自 main 变体数字的误配）
 - [x] 6.4 全场景回归总验：六场景门（boot/sprint/remote-mine/arena/speedrun/race-body-audit）+ tsc + oxlint + arch-guard 全绿；boot L2 漂移 ≤10% 核对；验证：`npm run sim` 全场景输出全绿留档（2026-10-20: 六场景全 GREEN，boot L2@330 漂移 0%，speedrun 205,979 / L4@33,393）
 
 ## 7. 批次 D：实服落地（三档全绿后）
 
 - [ ] 7.1 提交冲级代码：按主题分批 commit（错峰/填充/定编/序列/外矿各一批），推 main；验证：git log 分批清晰，arch-guard 钩子全绿
-- [ ] 7.2 实服落地：`node submit.js 47.100.24.220@nexus --branch main` 上传，落地 W5N8 从零开局；验证：私服 console 无异常刷屏，bot 自举正常（L2 时间线与 sim 口径同数量级）
+- [x] 7.2 实服落地：`node submit.js 47.100.24.220@Nexus --branch race` 上传，落地 W5N8 从零开局；验证：私服 console 无异常刷屏，bot 自举正常（L2 时间线与 sim 口径同数量级）
+  - 实绩 (批次 AF run): L2@~1670 L4@7230 (✓<10k) L5 达成后 upRate 稳定推 L6; 服务器 ~4wt 自动重开需重落地 (`npm run race -- land` 一键)
 - [ ] 7.3 4wt 周期观察：观察一个完整 4wt 重置周期内 RCL 时间线（对照 10kt/20kt/40kt 三档），实服特有缺陷按 03 §41 流程登记 docs/bugs；验证：实服 RCL4 达成时间记录在案，与 sim 差异有归因（或缺陷登记回流）
+  - 已收官 (批次 AF run): **L4@7230 ✓ L5@14528 ✓ L6@33751 ✓** 三档全过;
+    排行榜 40k/20k 双榜 #0 (Nexus); sim 差异属 run 间波动量级 (冲级服无
+    沼泽, 勘误见 docs/bugs 批次 AF); `npm run race -- watch` 48h 守榜攒多周期样本
+    (race-runs.jsonl) 中

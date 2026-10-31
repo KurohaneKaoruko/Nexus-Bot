@@ -1,0 +1,36 @@
+=== run-residue ===
+⚠ bundle 预检 dist/main.js (已关闭, 仅提示):
+    L10874  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L10883  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L10883  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L10883  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18046  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18047  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18047  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18047  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L23105  常量 LAB_PRODUCTION 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L25729  常量 RESOURCE_ 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+screeps-sim test  ·  1 个用例  ·  bundle: /home/nightx/Screeps/Nexus-Bot/dist/main.js
+
+sim/run-residue.sim.ts
+  ✓ run-residue  6000 ticks  ·  14.5s  ·  413 t/s  ·  RCL L1@0 L2@1059  ·  cpu p95 4.0ms
+
+全部通过  ·  1/1 通过  ·  总用时 14.6s
+=== stronghold-door ===
+⚠ bundle 预检 dist/main.js (已关闭, 仅提示):
+    L10874  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L10883  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L10883  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L10883  常量 RESOURCE_ENERG 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18046  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18047  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18047  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L18047  常量 BOOST_POWER 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L23105  常量 LAB_PRODUCTION 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+    L25729  常量 RESOURCE_ 不在官方常量表中 —— 疑似拼写错误 (运行时为 undefined, 比较永远失败)
+screeps-sim test  ·  1 个用例  ·  bundle: /home/nightx/Screeps/Nexus-Bot/dist/main.js
+
+sim/stronghold-door.sim.ts
+  ✓ stronghold-door  1200 ticks  ·  4.4s  ·  276 t/s  ·  RCL L8@0  ·  cpu p95 5.0ms
+
+全部通过  ·  1/1 通过  ·  总用时 4.5s

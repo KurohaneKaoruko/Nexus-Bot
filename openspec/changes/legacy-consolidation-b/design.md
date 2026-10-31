@@ -90,7 +90,7 @@
 
 1. **组 1 收口对账**：arch:guard --report 逐条归类 88 条 → 台账 + 检查点；发现无主条目即处置（接管计划/豁免/待删登记）。
 2. **组 2 C 波**：每对象四步（复核实测 → 三口径凭据 → 删除+连带清理 → 对账），切片顺序：external/mine 链（最大且最确定）→ 死导出/孤儿读口（makeCombatHealHandler、qos/accessor/ai 逐符号扫描）→ PC mode 函数级复核 → 台账行齐。删除提交独立可回退；revert 即恢复。
-3. **组 3 B 波一**：按拆分表逐文件（movement → agentSystem → TeamAction → actionBroker → 63Planner → baseFunction → rosManor → spawnDirector），每切片全场景门逐位 + 导出面 diff 空；`mine/state.ts` 白名单登记随 C 波完成自动出清。
+3. **组 3 B 波一**：按拆分表逐文件（movement → agentSystem → TeamAction → actionBroker → baseFunction → rosManor → spawnDirector），每切片全场景门逐位 + 导出面 diff 空；`mine/state.ts` 白名单登记随 C 波完成自动出清。
 4. **组 4 B 波二**：ts-nocheck 域序清零（planner 13 → visuals 3 → teams 3 → movement 2 → proto 5 → 其余 5）→ any 域序收敛（检查点单调推进）。
 5. **组 5 总验收**：八门逐位 + p95 对比 + 双守护绿 + 台账/文档同步 + 旧变更 tasks 处置注记（A 波成果归档口径）。
 6. **回滚**：每切片单提交；C 波删除 revert 恢复文件与白名单行；B 波拆分 revert 恢复单文件；Memory 不动版本（D2）使回滚无迁移负担。

@@ -40,7 +40,6 @@
 | `modules/agents/agentSystem.ts`（1648） | `runCreep`（484 行）按 task kind 拆 handler 单元（scout/harvest/carry+fill_spawn/upgrade/build/repair/claim/reserve/defend/retreat）+ 公共取料/送货辅助独立 `logistics` 模块 + 远程采集族（remoteHarvest/remoteCarry/relay 接力）独立 `remote` 模块 + rush-courier 族（runCourierCreep/submitCourier*）独立 `courier` 模块 | `runAgents` 签名与所有权登记主循环 |
 | `modules/teams/core/TeamAction.ts`（1284） | 队形集结（Gather 族）/ 移动执行（move/QuadMoveTo/LinearMove）/ 代价矩阵（getMoveAbleCostMatrix 族）/ 路径缓存（checkCachePath 族）四域（移动执行域 798 有效行超 600 上限，域内二分为 move+direction 两文件——边界内最小调整，2026-10-29 实现注记） | `TeamAction` 命名空间整体导出（调用方零改动） |
 | `modules/agents/actionBroker.ts`（997） | 类型契约（ActionKind/Payload/Result/Deps 接口族）/ creep 管线执行器（case 表 combatMove 之前）/ structure+flag 执行器（executeStructureAction/executeFlagAction 及 case 表）/ broker 核心与共享单例（createBroker/getSharedBroker/executeNow） | 全部导出名与 `ActionBroker` 接口不变 |
-| `modules/planner/dynamic/63Planner.ts`（898） | `ensurePlannerState` 与 `autoPlanner63` 各规划阶段按步骤拆分 | 两导出的签名 |
 | `proto/Room/function/baseFunction.ts`（724） | 按成员函数职责域拆（结构扫描/能量路由/道路联动等，以类聚合拆 mixin 单元，`AddList` 类纯函数随迁） | `export default class BaseFunction` 聚合面不变（proto/Room/index.ts 的 extend 链零改动） |
 | `modules/planner/dynamic/rosManor.ts`（717） | 庄园几何计算按内聚判据拆（槽位偏移表/庄园核/候选评估） | `computeManor`/`MANOR_SPAWN_CHEBYSHEV` 导出面不变 |
 | `modules/spawning/spawnDirector.ts`（619） | 主排程（runSpawnDirector）/ directSpawn 面板 / race 远程定编族（raceRemoteDeficitOf/raceRemoteRequests）拆分 | 三组导出签名不变 |

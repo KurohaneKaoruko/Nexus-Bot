@@ -4,7 +4,7 @@
 
 `legacy-consolidation` 的 A 波（旧执行体与旧任务源退役）已完成 19/33 任务：`exec()` 双轨、roleRegistry、mission pool 六池、`economy/units` 三族、词表死角色均已退场，任务板 + broker 成为唯一执行/供给路径。但变更止步于 A 波，剩余三块工作悬置：
 
-- **B 波（结构治理）未动**：>600 有效行文件仍有 9 个（`movement/index.ts` 2483、`agentSystem.ts` 1648、`TeamAction.ts` 1284、`actionBroker.ts` 997、`63Planner.ts` 898、`baseFunction.ts` 724、`rosManor.ts` 717、`spawnDirector.ts` 619、`mine/state.ts` 605）；`@ts-nocheck` 31 文件、显式 `any` 684 处（`as any` 471）。其中 `actionBroker`/`spawnDirector`/`baseFunction` 是 A 波后新超限的，旧 spec 拆分表未覆盖。
+- **B 波（结构治理）未动**：>600 有效行文件仍有 8 个（`movement/index.ts` 2483、`agentSystem.ts` 1648、`TeamAction.ts` 1284、`actionBroker.ts` 997、`baseFunction.ts` 724、`rosManor.ts` 717、`spawnDirector.ts` 619、`mine/state.ts` 605）；`@ts-nocheck` 31 文件、显式 `any` 684 处（`as any` 471）。其中 `actionBroker`/`spawnDirector`/`baseFunction` 是 A 波后新超限的，旧 spec 拆分表未覆盖。
 - **C 波（休眠退役）未动**：`modules/external/mine/*` 六文件 + `outMine.ts`/`externalMine.ts`/`externalScheduler.ts`（合计 ~2900 行）休眠链仍在仓；PC 休眠模式、孤儿读口、死导出待清。且 A 波的数据面演进让旧 C 波清单**事实漂移**——`Memory.OutMineData` 已是 mineralWork/道路链的活簿记（power/deposit/highway 书 + RoadData），`HighwayMineVisual` 已有 console 人操消费方——直接按旧清单删会砍断活链，必须先复核再退役。
 - **A 波收口（旧 5.2）未对账**：豁免清单已从 60 涨到 88（race 主链化新增 28 条冲级直通豁免），需按「非赛 ≤60 + 赛区隔离区登记」口径完成对账。
 
@@ -15,7 +15,7 @@
 - **A 波收口对账**（承接旧 5.2）：豁免清单 88 条逐条归口（28 条冲级赛直通隔离区 + 60 条非赛条目按 ≤60 闸门核对三类归口）、checkpoint 推进、台账行与提交一一对应。
 - **C 波先行——休眠与不可达退役**（复核修正版清单）：external/mine 休眠链整链退役（连带 proto extend 行、`room.interface.d.ts` outMine 系声明、`registerOutMineIncomeProvider` 存根）；`OutMineData` 活簿记与 `mine` console 人操入口**保留**（仅删扫描证死的子键，无死键则不升版本）；PC `mode/assist|operate` 按「仅服务人工操作」显式定性（豁免登记或零触发部分退役）；qos/accessor 孤儿读口、`core/ai` 零引用导出、`makeCombatHealHandler` 等死导出按零引用扫描程序清理。
 - **波序改定：C 波先于 B 波**——先删休眠代码再拆文件/收类型，避免对将死代码做拆分与类型修复（`mine/state.ts` 605 行因此豁免拆分登记）；休眠链运行期不可达，删除对回归门逐位一致无扰动，改序安全。
-- **B 波一——巨型文件拆分**（行为零变化）：按当前基线钉死的拆分表执行——movement 六模块、agentSystem 按 task kind 拆 handler + logistics/remote/courier 模块、TeamAction 四域、63Planner 按规划阶段、actionBroker 拆类型契约/creep 执行器/structure+flag 执行器/broker 核心、rosManor/spawnDirector/baseFunction 按内聚判据——至 structure-guard 白名单外清零。
+- **B 波一——巨型文件拆分**（行为零变化）：按当前基线钉死的拆分表执行——movement 六模块、agentSystem 按 task kind 拆 handler + logistics/remote/courier 模块、TeamAction 四域、actionBroker 拆类型契约/creep 执行器/structure+flag 执行器/broker 核心、rosManor/spawnDirector/baseFunction 按内聚判据——至 structure-guard 白名单外清零。
 - **B 波二——类型门禁清零**：`@ts-nocheck` 31→0（speedrun 隔离区不计）、显式 `any` 684 单调降至收敛值，域序固定 planner→visuals→teams→movement→proto→console→core→utils。
 - **总验收**：全场景门 8 门逐位一致 + cpu p95 不劣化 + 双守护绿 + 台账/文档同步 + 旧变更遗留任务处置注记。
 

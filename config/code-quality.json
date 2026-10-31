@@ -1,8 +1,8 @@
 {
-	"tsNocheck": 35,
-	"any": 781,
-	"asAny": 550,
-	"lineLimitOver": 9,
+	"tsNocheck": 0,
+	"any": 287,
+	"asAny": 200,
+	"lineLimitOver": 0,
 	"depViolations": 0,
-	"date": "2026-10-27"
+	"date": "2026-10-31"
 }

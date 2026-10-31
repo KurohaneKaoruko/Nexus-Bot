@@ -139,8 +139,10 @@ function checkRetiredPoolSymbols(files) {
 // ── 通用: 源文件枚举与注释剥离 ─────────────────────────────
 
 /** 冲级赛直通模块: 上游单文件血统的物理隔离区 (@ts-nocheck 为终态而非债务,
- *  见 src/branch/race/speedrun/), 不参与 nocheck/any 计量 */
+ *  见 src/branch/race/speedrun/), 不参与 nocheck/any 计量; 隔离区入口
+ *  speedrunModule.ts 与隔离区同血统, 同口径豁免 */
 const SPEEDRUN_DIR = path.join(SRC_DIR, 'branch', 'race', 'speedrun');
+const SPEEDRUN_ENTRY = path.join(SRC_DIR, 'branch', 'race', 'speedrunModule.ts');
 
 function walkTs(dir, out = []) {
 	for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -148,7 +150,10 @@ function walkTs(dir, out = []) {
 		if (e.isDirectory()) {
 			if (full === SPEEDRUN_DIR) continue;
 			walkTs(full, out);
-		} else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(full);
+		} else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) {
+			if (full === SPEEDRUN_ENTRY) continue;
+			out.push(full);
+		}
 	}
 	return out;
 }

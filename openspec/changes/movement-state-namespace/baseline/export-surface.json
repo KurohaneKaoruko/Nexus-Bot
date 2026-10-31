@@ -1,0 +1,207 @@
+{
+	"source": "src/modules/movement/index.ts",
+	"generatedAt": "2026-10-29T11:48:34.593Z",
+	"exports": {
+		"betterMoveApi": [
+			{
+				"name": "squadMove",
+				"kind": "shorthand",
+				"params": [
+					"squad: any",
+					"target: any"
+				]
+			},
+			{
+				"name": "squadMoveTo",
+				"kind": "shorthand",
+				"params": [
+					"squad: any",
+					"firstArg: any",
+					"secondArg: any",
+					"opts: any"
+				]
+			},
+			{
+				"name": "preTickBetterMove",
+				"kind": "shorthand",
+				"params": []
+			},
+			{
+				"name": "endTickResolve",
+				"kind": "shorthand",
+				"params": [
+					"userIsWorkTile: any"
+				]
+			},
+			{
+				"name": "cancelMoveIntent",
+				"kind": "shorthand",
+				"params": [
+					"creep: any"
+				]
+			},
+			{
+				"name": "hasMoveIntent",
+				"kind": "shorthand",
+				"params": [
+					"creep: any"
+				]
+			},
+			{
+				"name": "isSwapIntent",
+				"kind": "shorthand",
+				"params": [
+					"a: any",
+					"b: any"
+				]
+			},
+			{
+				"name": "getMoveIntentStep",
+				"kind": "shorthand",
+				"params": [
+					"creep: any"
+				]
+			},
+			{
+				"name": "getDirection",
+				"kind": "shorthand",
+				"params": [
+					"fromPos: any",
+					"toPos: any"
+				]
+			},
+			{
+				"name": "direction2Pos",
+				"kind": "shorthand",
+				"params": [
+					"pos: any",
+					"target: any"
+				]
+			},
+			{
+				"name": "getSquadCostMatrix",
+				"kind": "function",
+				"params": [
+					"roomName: any",
+					"ignoreDestructibleStructures: any"
+				]
+			},
+			{
+				"name": "setPathClearDelay",
+				"kind": "function",
+				"params": [
+					"number: any"
+				]
+			},
+			{
+				"name": "setHostileCostMatrixClearDelay",
+				"kind": "function",
+				"params": [
+					"number: any"
+				]
+			},
+			{
+				"name": "deleteCostMatrix",
+				"kind": "function",
+				"params": [
+					"roomName: any"
+				]
+			},
+			{
+				"name": "deletePath",
+				"kind": "function",
+				"params": [
+					"_fromPos: any",
+					"_toPos: any",
+					"_opts: any"
+				]
+			},
+			{
+				"name": "deletePathInRoom",
+				"kind": "function",
+				"params": [
+					"roomName: any"
+				]
+			},
+			{
+				"name": "addAvoidRooms",
+				"kind": "function",
+				"params": [
+					"roomName: any"
+				]
+			},
+			{
+				"name": "deleteAvoidRooms",
+				"kind": "function",
+				"params": [
+					"roomName: any"
+				]
+			},
+			{
+				"name": "addAvoidExits",
+				"kind": "function",
+				"params": [
+					"fromRoomName: any",
+					"toRoomName: any"
+				]
+			},
+			{
+				"name": "deleteAvoidExits",
+				"kind": "function",
+				"params": [
+					"fromRoomName: any",
+					"toRoomName: any"
+				]
+			},
+			{
+				"name": "print",
+				"kind": "function",
+				"params": []
+			},
+			{
+				"name": "clear",
+				"kind": "arrow",
+				"params": []
+			}
+		]
+	},
+	"prototypePatches": [
+		{
+			"target": "Creep.prototype.move",
+			"value": "wrapFn(betterMove, \"move\")"
+		},
+		{
+			"target": "PowerCreep.prototype.move",
+			"value": "wrapFn(betterMove, \"move\")"
+		},
+		{
+			"target": "Creep.prototype.moveTo",
+			"value": "wrapFn(betterMoveTo, \"moveTo\")"
+		},
+		{
+			"target": "PowerCreep.prototype.moveTo",
+			"value": "wrapFn(betterMoveTo, \"moveTo\")"
+		},
+		{
+			"target": "Creep.prototype.cancelOrder",
+			"value": "betterCancelOrder"
+		},
+		{
+			"target": "PowerCreep.prototype.cancelOrder",
+			"value": "betterCancelOrder"
+		},
+		{
+			"target": "Creep.prototype.pull",
+			"value": "wrapFn(betterPull, \"pull\")"
+		},
+		{
+			"target": "RoomPosition.prototype.findSquadPathTo",
+			"value": "wrapFn(findSquadPathTo, \"findSquadPathTo\")"
+		}
+	],
+	"registration": {
+		"movementStart": "src/main.ts:35 (nexus.use first)",
+		"movementEnd": "src/main.ts:63 (after commit producers, before InvariantWatch/Visuals)",
+		"window": "MovementStart preTickBetterMove -> commit producers -> MovementEnd endTickResolve"
+	}
+}

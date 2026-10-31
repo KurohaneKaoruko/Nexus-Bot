@@ -1,0 +1,12 @@
+▶ race-body-audit (参考: ✓ L1@0 L2@458 p95 9ms)
+Error: Node v24.19.0 无法直接加载 TS 文件 (需要 ≥ 22.6): /home/nightx/Screeps/Nexus-Bot/sim/race-body-audit.sim.ts
+  升级 Node, 或改用 .sim.mjs / .sim.js
+    at loadCases (file:///home/nightx/Screeps/Nexus-Bot/node_modules/.pnpm/screeps-sim@file+..+Screeps-Simulation_ca050d7ec091dea4f17246d0230e646a/node_modules/screeps-sim/runner/main.mjs:142:10)
+    at async runTests (file:///home/nightx/Screeps/Nexus-Bot/node_modules/.pnpm/screeps-sim@file+..+Screeps-Simulation_ca050d7ec091dea4f17246d0230e646a/node_modules/screeps-sim/runner/main.mjs:342:17)
+    at async file:///home/nightx/Screeps/Nexus-Bot/node_modules/.pnpm/screeps-sim@file+..+Screeps-Simulation_ca050d7ec091dea4f17246d0230e646a/node_modules/screeps-sim/bin/screeps-sim.mjs:21:4
+  ✗ 运行失败: Command failed: npx screeps-sim test sim/race-body-audit.sim.ts --no-bundle-check
+
+════════ 汇总 ════════
+  RED   race-body-audit  (运行失败)
+
+✗ 存在行为/性能红线
