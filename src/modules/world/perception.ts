@@ -15,9 +15,11 @@ import {
 	type ControllerBufferSummary,
 	type CreepSummary,
 	type DamageableSummary,
+	type HostileCreepSummary,
 	type RoomObservation,
 	type StoreSummary,
 	type TowerSummary,
+	type VisibleRoomObservation,
 	type WorldView,
 } from "@/core/world";
 import { unitCode } from "@/constant/UnitConstant";
@@ -30,6 +32,97 @@ const NON_BLOCKING_STRUCTURES: ReadonlySet<string> = new Set(["road", "container
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+}
+
+/** 敌方单位摘要 (己方房观察与 visible 快照共用) */
+function summarizeHostile(creep: Creep & { owner: { username: string } }, _roomName: string): HostileCreepSummary {
+	const alivePart = (type: BodyPartConstant): number =>
+		creep.body.filter((part) => part.type === type && part.hits > 0).length;
+	return {
+		id: creep.id,
+		name: creep.name,
+		owner: creep.owner.username,
+		isNpc: creep.owner.username === "Invader",
+		x: creep.pos.x,
+		y: creep.pos.y,
+		hits: creep.hits,
+		hitsMax: creep.hitsMax,
+		bodyAttack: alivePart("attack"),
+		bodyRanged: alivePart("ranged_attack"),
+		bodyHeal: alivePart("heal"),
+		bodyTough: alivePart("tough"),
+		bodyMove: alivePart("move"),
+		boostedParts: creep.body.filter((part) => part.boost !== undefined).length,
+	};
+}
+
+/** 非己方可见房轻量快照: 外矿/驻留驱动所需面 (docs/24 §24.5.1), creeps 由调用方填充 */
+function summarizeVisibleRoom(room: Room): VisibleRoomObservation {
+	const controller = room.controller;
+	return {
+		roomName: room.name,
+		sources: room.find(FIND_SOURCES).map((source) => ({
+			id: source.id,
+			roomName: room.name,
+			x: source.pos.x,
+			y: source.pos.y,
+			energy: source.energy,
+			energyCapacity: source.energyCapacity,
+		})),
+		piles: room.find(FIND_DROPPED_RESOURCES, {
+			filter: (r) => r.resourceType === RESOURCE_ENERGY,
+		}).map((pile) => ({
+			id: pile.id,
+			roomName: room.name,
+			x: pile.pos.x,
+			y: pile.pos.y,
+			amount: pile.amount,
+		})),
+		stores: room
+			.find(FIND_STRUCTURES, {
+				filter: (s): s is StructureContainer =>
+					s.structureType === STRUCTURE_CONTAINER,
+			})
+			.map((s) => ({
+				id: s.id,
+				structureType: s.structureType,
+				roomName: room.name,
+				x: s.pos.x,
+				y: s.pos.y,
+				energy: s.store.energy,
+				energyCapacity: s.store.getCapacity(RESOURCE_ENERGY),
+			})),
+		sites: room.find(FIND_MY_CONSTRUCTION_SITES).map((site) => ({
+			id: site.id,
+			structureType: site.structureType,
+			roomName: room.name,
+			x: site.pos.x,
+			y: site.pos.y,
+		})),
+		hostiles: room.find(FIND_HOSTILE_CREEPS).map((creep) => summarizeHostile(creep, room.name)),
+		...(controller
+			? {
+					controller: {
+						x: controller.pos.x,
+						y: controller.pos.y,
+						...(controller.owner ? { owner: controller.owner.username } : {}),
+						...(controller.reservation
+							? {
+									reservation: {
+										username: controller.reservation.username,
+										ticksToEnd: controller.reservation.ticksToEnd,
+									},
+								}
+							: {}),
+					},
+				}
+			: {}),
+		invaderCore:
+		(room.find(FIND_STRUCTURES, {
+					filter: (s) => s.structureType === STRUCTURE_INVADER_CORE,
+				}).length) > 0,
+		creeps: [],
+	};
 }
 
 /** 己方单位摘要工厂 (己方房/可见外矿房共用) */
@@ -219,26 +312,7 @@ export const Perception: TickModule = {
 				}
 			}
 			const creeps = room.find(FIND_MY_CREEPS).map((creep) => summarizeCreep(creep, roomName));
-			const hostiles = room.find(FIND_HOSTILE_CREEPS).map((creep) => {
-				const alivePart = (type: BodyPartConstant): number =>
-					creep.body.filter((part) => part.type === type && part.hits > 0).length;
-				return {
-					id: creep.id,
-					name: creep.name,
-					owner: creep.owner.username,
-					isNpc: creep.owner.username === "Invader",
-					x: creep.pos.x,
-					y: creep.pos.y,
-					hits: creep.hits,
-					hitsMax: creep.hitsMax,
-					bodyAttack: alivePart("attack"),
-					bodyRanged: alivePart("ranged_attack"),
-					bodyHeal: alivePart("heal"),
-					bodyTough: alivePart("tough"),
-					bodyMove: alivePart("move"),
-					boostedParts: creep.body.filter((part) => part.boost !== undefined).length,
-				};
-			});
+			const hostiles = room.find(FIND_HOSTILE_CREEPS).map((creep) => summarizeHostile(creep, roomName));
 			const controllerBuffer = room.controller
 				? observeControllerBuffer(room, room.controller, stores, structureBlocked)
 				: undefined;
@@ -308,8 +382,23 @@ export const Perception: TickModule = {
 			ctx.memory.rooms[roomName] = intel;
 		}
 
-		// 可见非己方房中的己方单位 (外矿链路, bugs/P1-18 断点④): world.rooms 只收
-		// 己方房, 外矿采集/侦查/预订件在 rooms 里没有归属——不收集则分配与驱动失联
+		// 名册与可见房 (docs/24 §24.5.1): 全部本方单位以 Game.creeps 键序入册;
+		// 驻留非己方房 (外矿/侦查/预订, bugs/P1-18 断点④) 建轻量 visible 快照。
+		// 数单位一律读 units 键, 「某房里有谁」才读 rooms/visible 的 creeps。
+		const units: Record<string, CreepSummary> = {};
+		const visible: Record<string, VisibleRoomObservation> = {};
+		for (const name in Game.creeps) {
+			const creep = Game.creeps[name];
+			if (!creep) {
+				continue;
+			}
+			// 己方房单位在房观察构建段已 summarize——复用同一对象 (摘要等价, 避免双份)
+			const inOwned = rooms[creep.room.name];
+			units[name] =
+				inOwned?.creeps.find((c) => c.name === name) ?? summarizeCreep(creep, creep.room.name);
+		}
+		// remoteUnits 保持旧口径 (Game.rooms 遍历序, 分配器拼接顺序不漂移):
+		// 过渡期字段, 1.5 收口后由 units+visible 全量替换
 		const remoteUnits: CreepSummary[] = [];
 		for (const roomName in Game.rooms) {
 			if (rooms[roomName] !== undefined) {
@@ -320,11 +409,18 @@ export const Perception: TickModule = {
 				continue;
 			}
 			for (const creep of room.find(FIND_MY_CREEPS)) {
-				remoteUnits.push(summarizeCreep(creep, roomName));
+				const summary = units[creep.name] ?? summarizeCreep(creep, roomName);
+				remoteUnits.push(summary);
+				let vis = visible[roomName];
+				if (!vis) {
+					vis = summarizeVisibleRoom(room);
+					visible[roomName] = vis;
+				}
+				vis.creeps.push(summary);
 			}
 		}
 
-		const view: WorldView = { tick: ctx.tick, rooms, remoteUnits };
+		const view: WorldView = { tick: ctx.tick, rooms, visible, units, remoteUnits };
 
 		const previous = ctx.world.current;
 

@@ -183,10 +183,36 @@ export interface RoomObservation {
 export interface WorldView {
 	tick: number;
 	rooms: Record<string, RoomObservation>;
-	/** 可见非己方房中的己方单位 (外矿采集/侦查/预订件):
-	 *  world.rooms 只收己方房, 这些单位不进任何房观察——没有此清单时
-	 *  任务分配与 agent 驱动都看不见它们 (bugs/P1-18 断点④: 跨房爬到达即失联)。 */
+	/** 本 tick 可见的非己方房轻量快照 (外矿房 + 有本方单位驻留的房), docs/24 §24.5.1 */
+	visible: Record<string, VisibleRoomObservation>;
+	/** 全部本方单位 (Game.creeps 一次遍历), 以名字为键; 数单位一律用此名册 */
+	units: Record<string, CreepSummary>;
+	/** 可见非己方房中的己方单位 (P1-18 修复遗留口径; 由 units+visible 吸收, 过渡期保留) */
 	remoteUnits: CreepSummary[];
+}
+
+/** 单位驱动上下文: 己方房全量观察或驻留外房轻量快照 (docs/24 §24.5.3) */
+export type RoomContext = RoomObservation | VisibleRoomObservation;
+
+/** 非己方可见房轻量快照: 只含外矿/驻留驱动所需面, 不做全量观察 */
+export interface VisibleRoomObservation {
+	roomName: string;
+	sources: SourceSummary[];
+	piles: PileSummary[];
+	/** 仅 container 级存取点 */
+	stores: StoreSummary[];
+	/** 仅本方工地 */
+	sites: SiteSummary[];
+	hostiles: HostileCreepSummary[];
+	controller?: {
+		x: number;
+		y: number;
+		owner?: string;
+		reservation?: { username: string; ticksToEnd: number };
+	};
+	invaderCore: boolean;
+	/** 本方单位 (与 units 同一批对象, 驱动与外矿房内计数用) */
+	creeps: CreepSummary[];
 }
 
 /** 跨 Tick 感知状态: 当 Tick 快照 + 本 Tick 发现的死亡单位与失守房间 */
@@ -201,19 +227,14 @@ export function createWorldHolder(): WorldHolder {
 	return { current: null, dead: [], lostRooms: [] };
 }
 
-/** 本 Tick 全部存活的本方单位名 */
+/** 本 Tick 全部存活的本方单位名 (名册口径, docs/24 §24.5.2: 数单位用 units 键) */
 export function aliveNames(world: WorldView | null): Set<string> {
 	const names = new Set<string>();
 	if (!world) {
 		return names;
 	}
-	for (const room of Object.values(world.rooms)) {
-		for (const creep of room.creeps) {
-			names.add(creep.name);
-		}
-	}
-	for (const creep of world.remoteUnits) {
-		names.add(creep.name);
+	for (const name of Object.keys(world.units)) {
+		names.add(name);
 	}
 	return names;
 }
