@@ -5,7 +5,7 @@
 import type { TickContext } from "@/core";
 import type { ActionBroker } from "@/modules/agents/actionBroker";
 import type { TaskBoard } from "@/modules/tasks";
-import { runCreep } from "@/modules/agents/agentHandlers";
+import { runCreep, runForeignTask } from "@/modules/agents/agentHandlers";
 import { runCourierCreep } from "@/modules/agents/agentCourier";
 import { tryRelayHandoff } from "@/modules/agents/agentRemote";
 import { clearBlocked, congestionAction } from "@/modules/movement/trafficMonitor";
@@ -25,9 +25,12 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 	if (!world) {
 		return;
 	}
+	/** 本 Tick 已驱动过的单位 (接力对的双方不重复进入默认驱动) */
+	const processed = new Set<string>();
+	// 驱动序保持重构前口径 (rooms 房序 + remoteUnits 序): 交通解算对意图提交
+	// 序敏感, 遍历序改变会平移门读数; 两段并集恰为名册 units 的可驱动全集
+	// (不可见外房单位无 Game 对象本就不可驱动), docs/24 §24.5.3。
 	for (const room of Object.values(world.rooms)) {
-		/** 本 Tick 已驱动过的单位 (接力对的双方不重复进入默认驱动) */
-		const processed = new Set<string>();
 		for (const creep of room.creeps) {
 			if (processed.has(creep.name)) {
 				continue;
@@ -39,11 +42,6 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 			}
 			// 快递爬: 无任务租约的角色驱动 (specs/rush-courier)
 			if (creep.unitCode === UNIT_CODES["rush-courier"]) {
-				// 孵化中不产出计划 (bugs/P0-16c): 出生前提交的计划全部
-				// actor-missing-or-spawning 无效, 白耗仲裁与告警
-				if (creep.spawning) {
-					continue;
-				}
 				acquire(creep.name, "nexus-agent", ctx.tick);
 				runCourierCreep(ctx, broker, room, creep);
 				continue;
@@ -106,9 +104,11 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 		}
 	}
 
-	// 外矿单位驱动 (bugs/P1-18 断点④): 可见非己方房的己方爬不进 world.rooms,
-	// 上面循环驱动不到——按其任务归属房取 observation 后走同一 runCreep。
-	// 只驱动带有效租约的任务件 (无租约外矿件不产出计划, 等待分配器续派)。
+	// 外房驻留单位 (bugs/P1-18 断点④): 可见非己方房的己方爬不进 world.rooms,
+	// 上面循环驱动不到。上下文按任务锚点房取 observation (本矿), runCreep 的
+	// remote 分支按 task 定位目标; 锚点也为外房 (scout/reserve/claim/retreat
+	// 直挂目标房, 缺陷一修复后可存活) 时无本方房上下文可取, 走免上下文的
+	// runForeignTask 直驱。
 	for (const creep of world.remoteUnits) {
 		if (creep.spawning) {
 			continue;
@@ -132,13 +132,13 @@ export function runAgents(ctx: TickContext, broker: ActionBroker, board: TaskBoa
 			delete live.memory.taskId;
 			continue;
 		}
-		// 任务归属房 (本矿) 的 observation: runCreep 的 remote 分支按 task 定位目标
-		const homeRoom = world.rooms[task.roomName];
-		if (!homeRoom) {
-			continue;
-		}
 		board.heartbeat(taskId, creep.name, ctx.tick);
 		acquire(creep.name, "nexus-agent", ctx.tick);
-		runCreep(ctx, broker, board, homeRoom, creep, task);
+		const homeRoom = world.rooms[task.roomName];
+		if (homeRoom) {
+			runCreep(ctx, broker, board, homeRoom, creep, task);
+		} else {
+			runForeignTask(ctx, broker, board, creep, task);
+		}
 	}
 }

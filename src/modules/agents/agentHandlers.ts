@@ -27,10 +27,10 @@ export function runCreep(
 ): void {
 	switch (task.kind) {
 		case "scout": {
-			// 侦查: 到达目标房即获视野 (下 tick planRemoteHarvest 产出采集任务接替);
-			// 到达即 complete 终结任务——此前只删指针不终结, 任务靠 lease 过期回
-			// available 又被认领, 且规划器每拍 upsert 续命成永生任务 (实服 4wt
-			// 重开残留 6 条 scout 任务 + 视野口径漏计 → 无限补孵 20 只, bugs/实服)
+			// 母房锚点 scout: 到达判定维持原口径 (单位本体进房才 complete)——
+			// 邻房视野可由其他外矿件先行点亮, 「见视野即完成」会让在途 scout
+			// 提前释放、孵化队列重排 (boot 门 L3 +897t 实证)。视野兜底只在
+			// 外房直挂形态 (runForeignTask) 生效, 那里无母房上下文、卡边即永挂
 			const target = task.targetPos?.roomName;
 			if (!target) return;
 			if (creep.roomName === target) {
@@ -334,6 +334,97 @@ export function runCreep(
 			return;
 		}
 		case "claim": {
+			runForeignTask(ctx, broker, board, creep, task);
+			return;
+		}
+		case "reserve": {
+			runForeignTask(ctx, broker, board, creep, task);
+			return;
+		}
+		case "retreat": {
+			runForeignTask(ctx, broker, board, creep, task);
+			return;
+		}
+		case "repair": {
+			const target = room.damageables.find((structure) => structure.id === task.targetId);
+			if (!target) {
+				return; // 结构消失: 任务由规划器终结
+			}
+			// 满载迟滞: 拿满才修; 源枯竭时带余量修
+			const live = Game.creeps[creep.name];
+			const targetAnchor = { x: target.x, y: target.y };
+			if (live?.memory.mode === "work") {
+				if (creep.carryEnergy === 0) {
+					live.memory.mode = "fetch";
+					fetchEnergy(ctx, broker, room, creep, task, undefined, targetAnchor);
+					return;
+				}
+				submitMoveOrAction(ctx, broker, creep, task, "repair", "work", target, RANGE_REPAIR);
+				return;
+			}
+			if (
+				(creep.carryEnergy > 0 && creep.freeCapacity === 0) ||
+				(creep.carryEnergy > 0 && !hasFetchTarget(ctx, room, creep, undefined))
+			) {
+				if (live) {
+					live.memory.mode = "work";
+				}
+				submitMoveOrAction(ctx, broker, creep, task, "repair", "work", target, RANGE_REPAIR);
+				return;
+			}
+			fetchEnergy(ctx, broker, room, creep, task, undefined, targetAnchor);
+			return;
+		}
+		default:
+			return;
+	}
+}
+
+/**
+ * 外房锚点任务直驱 (docs/24 §24.5.3): 任务挂靠非己方房的 scout/reserve/claim/retreat
+ * 无本方房上下文可取——四分支不读房观察 (目标全部取任务侧 targetPos/Game 对象),
+ * 从 runCreep 提取为免上下文版本。房上下文驱动的其余分支一律不适用于外房锚点。
+ */
+export function runForeignTask(
+	ctx: TickContext,
+	broker: ActionBroker,
+	board: TaskBoard,
+	creep: CreepSummary,
+	task: NexusTask,
+): void {
+	switch (task.kind) {
+		case "scout": {
+			// 侦查: 到达目标房即获视野 (下 tick planRemoteHarvest 产出采集任务接替);
+			// 到达即 complete 终结任务——此前只删指针不终结, 任务靠 lease 过期回
+			// available 又被认领, 且规划器每拍 upsert 续命成永生任务 (实服 4wt
+			// 重开残留 6 条 scout 任务 + 视野口径漏计 → 无限补孵 20 只, bugs/实服)
+			const target = task.targetPos?.roomName;
+			if (!target) return;
+			// 到达兜底 (缺陷三, 外房直挂形态专属): 目标房进视野即算完成——
+			// 直挂 scout 无母房上下文, 边界卡位时任务会永挂 in_progress;
+			// 母房锚点形态不走此路径 (视野可被其他外矿件先行点亮, 提前
+			// 完成会重排孵化链, boot 门 L3 +897t 实证)
+			if (creep.roomName === target || Game.rooms[target] !== undefined) {
+				board.complete(task.id, creep.name, ctx.tick);
+				const live = Game.creeps[creep.name];
+				if (live) delete (live.memory as Record<string, unknown>).taskId;
+				return;
+			}
+			broker.submit({
+				id: `${creep.name}-sc-${ctx.tick}`,
+				tick: ctx.tick,
+				taskId: task.id,
+				actorName: creep.name,
+				kind: "move",
+				targetPos: { x: 25, y: 25, roomName: target },
+				priority: task.priority,
+				pipeline: "move",
+				reason: "scout-room",
+				dedupeKey: `${creep.name}:move:${task.id}`,
+			});
+			return;
+		}
+		case "claim": {
 			// 扩张: 走到目标房控制器 → claim (目标房取任务侧, 不随 creep 当前房漂移)
 			const targetRoom = task.targetPos?.roomName;
 			if (!targetRoom) return;
@@ -464,36 +555,6 @@ export function runCreep(
 			if (anchor && dist(creep.x, creep.y, anchor.x, anchor.y) > RETREAT_CONFIG.anchorRadius) {
 				submitMoveTo(ctx, broker, creep, task, anchor);
 			}
-			return;
-		}
-		case "repair": {
-			const target = room.damageables.find((structure) => structure.id === task.targetId);
-			if (!target) {
-				return; // 结构消失: 任务由规划器终结
-			}
-			// 满载迟滞: 拿满才修; 源枯竭时带余量修
-			const live = Game.creeps[creep.name];
-			const targetAnchor = { x: target.x, y: target.y };
-			if (live?.memory.mode === "work") {
-				if (creep.carryEnergy === 0) {
-					live.memory.mode = "fetch";
-					fetchEnergy(ctx, broker, room, creep, task, undefined, targetAnchor);
-					return;
-				}
-				submitMoveOrAction(ctx, broker, creep, task, "repair", "work", target, RANGE_REPAIR);
-				return;
-			}
-			if (
-				(creep.carryEnergy > 0 && creep.freeCapacity === 0) ||
-				(creep.carryEnergy > 0 && !hasFetchTarget(ctx, room, creep, undefined))
-			) {
-				if (live) {
-					live.memory.mode = "work";
-				}
-				submitMoveOrAction(ctx, broker, creep, task, "repair", "work", target, RANGE_REPAIR);
-				return;
-			}
-			fetchEnergy(ctx, broker, room, creep, task, undefined, targetAnchor);
 			return;
 		}
 		default:
