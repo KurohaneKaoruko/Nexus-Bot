@@ -125,3 +125,18 @@
   `[2281648,2295520,2272884,2289314]`, 与基线逐位一致零漂移
 - 附带修复: `newRun` 保留 `Memory.Nexus` 子树 (引擎清 Memory 时不再击穿主代码
   校准产物, 布局记录跨 run 存活)
+
+## 2026-10-30 补记: 冲刺门三断点修复后的新口径
+
+- **sim 构建基线勘误**: 旧「20k 基线 1,072,701 / 逐位验收」数字是
+  SPEEDRUN_MODE 构建 (未烘焙 PRIVATE_PROFILE, gcl>=6 自动门在 sim
+  GCL1 下未触发) 的口径。race 变体自本日起恒烘焙 SPEEDRUN_PROFILE=1
+  (rolldown define, variant=race 即激活), speedrun-upstream 场景
+  L4@5863 L5@12317 L6@32334 (旧 sim 口径 6364/13322/34818)。
+- **场景与产物分离**: race 变体产物独立 dist-race/main.js, sim 冺刺
+  场景 (speedrun/race-body-audit/speedrun-upstream) 经用例级 bundle
+  字段路由; dist/main.js 专属 main 变体, 互不覆盖。
+- **speedrun 场景 = 私服新世界复刻**: 上游地形 + 源 (21,13)/(30,29) +
+  ctrl(18,24)/spawn(26,24), race 引擎 + reanchor 实测
+  L4@6483 / L5@13176 / L6@34244, 三档门全绿。详见
+  docs/bugs/race-strategy-port.md 批次 AE。

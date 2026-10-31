@@ -356,7 +356,7 @@ rejected ──(rejectedRetryTicks 后，ban 除外)──► candidate
 
 ## 24.12 附带发现（不在本期范围）
 
-- `agents/agentSystem.ts:1172` 用 `in` 判断 `Set` 成员（`creep.unitCode in NEXUS_TASK_DRIVEN_CODES`），结果恒为 false，所有无任务指针的单位都会落入原型 `exec()`。主线 harvester / carrier 孵化时写了 `memory.role`（`spawnDirector.ts:476`），空闲时会跑旧角色执行器。修正会改变空闲单位行为、影响已校准的家内经济，需单独用 sim 对照。
+- `agents/agentSystem.ts:1172` 用 `in` 判断 `Set` 成员（`creep.unitCode in NEXUS_TASK_DRIVEN_CODES`），结果恒为 false，所有无任务指针的单位都会落入原型 `exec()`。主线 harvester / carrier 孵化时写了 `memory.role`（`spawnDirector.ts:476`），空闲时会跑旧角色执行器。修正会改变空闲单位行为、影响已校准的家内经济，需单独用 sim 对照。（2026-10-29 更新：B4 已由前序执行链收口解决——旧 `exec()` 双轨与 `NEXUS_TASK_DRIVEN_CODES` 已删除，无任务单位只记空转诊断并跳过；本条保留为历史取证。）
 - `strategy/expansion.ts` 的 `findExpandTarget` 以 `E${x}N${y±1}` 拼房名，不区分 W/S；同函数预定判断两个分支都 `return name`。Phase 5 扩张设计时重写。
 
 ## 24.13 数据所有权（三循环数据所有权增补，`02-architecture-charter.md §22`）

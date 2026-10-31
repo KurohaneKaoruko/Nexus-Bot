@@ -24,13 +24,13 @@
 
 | # | 缺陷 | 证据 | 影响 |
 |---|---|---|---|
-| B1 | **Broker 之外发出的移动意图全部丢失** | BetterMove 接管 `move` / `moveTo`，调用只登记意图（`movement/index.ts:1957`）；`Broker.run` 开头 `preTickBetterMove()` 清空意图（`agents/index.ts:56` → `movement/index.ts:3295`），随后 `endTickResolve()` 只解算剩下的意图（`agents/index.ts:68`）。同阶段模块按注册序执行（`core/scheduler.ts:43-51`） | 机制已走查确认；行为后果为推断，需 sim 取证：① 原型 `exec()` 在 agents 阶段运行，意图在 commit 阶段开头被清掉——manager / transporter / miner 及所有走 `exec()` 的空闲单位不移动；② `Teams`（`TeamController`）与 `PowerCreeps` 是 commit 阶段且注册在 `Broker` 之后（`main.ts`），意图登记在解算之后、下 tick 被清——编队与 Power Creep 不移动。同样注册在 Broker 之后的 `Nukes`、`InterShard`、`Expansion` 不发移动意图（`teams/index.ts:33`、`intershard/index.ts:16`、`external/expand/ExpandModule.ts:15-18`），不受影响；扩张单位不动的原因是缺执行器（B5），修 B1 不会让它们动起来。Rosmarin 在 tick 开头清、tick 末尾解算（Rosmarin `src/modules/MoveModule.ts:44-48`） |
+| B1 | **Broker 之外发出的移动意图全部丢失** ✅ 已修复（`m0-movement-commit-window`） | 旧实现由 `Broker.run` 在 commit 开头 `preTickBetterMove()`、在同一个 `run` 内 `endTickResolve()`，Teams / PowerCreeps 注册在后导致意图跨 tick 丢失。现改为 `MovementStart`（perception / P0，入口首位）tick 开头清空，`MovementEnd`（commit / P0，所有 commit 移动生产模块之后、Visuals 之前）统一结算并采样拥堵；`Broker.run` 只保留提交与记账（`agents/movementWindow.ts`、`main.ts` 注册序）。 | Teams / PowerCreeps 晚段移动意图当 tick 生效；六场景矩阵与 m0 前逐位一致，`stronghold-door` 走独立窗口不变；编队 / Power Creep 的实服行为在 M7 复验。 |
 | B2 | **单位离开己方房即被当作死亡** | 感知只快照己方房（`world/perception.ts:88`）；`aliveNames` 只数快照（`core/world.ts:193`）；`runSpawnDirector` 删 `units` 与 `Memory.creeps`（`spawnDirector.ts:220-229`） | 跨房单位丢失 `memory.role` / `targetRoom` 等；外部房的单位不被驱动。详见 `13-external-mining-migration.md` §24.3 A、§24.5 |
 | B3 | **两套孵化器同时在跑** | 旧任务池：`features.ts:45-46` → `MissionUpdate` / `SpawnWork` → `spawnControl.ts:294`（另有 `:126`、`:181`、`:328` 应急）；主线：`spawnDirector.ts:476`。`features.ts:41` 注释称「已退役」，与代码不符 | 旧池孵化的单位名形如 `H#XXXX`（`utils/naming.ts:42-44`），主线在岗计数与替补窗口看不到它们；旧池按 `role` 与 `home || homeRoom`（`utils/creepTickIndex.ts:81`）能看到主线单位。两者在同一 tick 可能对同一 spawn 下单（推断） |
-| B4 | **`in` 判断 `Set` 成员恒为 false** | `agentSystem.ts:1172`：`creep.unitCode in NEXUS_TASK_DRIVEN_CODES` | 所有无任务指针的单位（含主线 harvester / carrier / defender）落入原型 `exec()`。叠加 B1，它们空闲时的移动意图同样被清空（推断，见 B1） |
+| B4 | **`in` 判断 `Set` 成员恒为 false** ✅ 已由前序执行链收口解决 | `agentSystem.ts:51-56`：无 taskId 只 `reportIdleUnit()` 后 `continue`；全仓扫描无 `NEXUS_TASK_DRIVEN_CODES` / `unitCode in ...`，唯一 `in` 目标是 `UNIT_CODES` 普通对象（`visuals/roomVisuals.ts:21`）。 | 旧 `exec()` 双轨已删除，无任务单位不再回退旧执行器；m0 未改动该路径。 |
 | B5 | **已孵化但没有执行器的角色** | `roleRegistry`（`prototype/Creep/runtime/registry.ts:29-51`）缺：scout、reserver、claimer、cleaner、dismantle、logistic、attack-claimer、aid-*、up-*、power-*、deposit-harvest / transfer / attack / ranged、out-*（deposit-heal 有执行器，`registry.ts:41`） | 仍有活路径在孵化其中若干（`teams/flags/warSpawn.ts`、`ExpandController.ts:218-236`、`mineMission.ts:121-211`），孵出后只记 `missing-handler` 并闲置（清单来自分域走查，逐个角色的孵化入口未全部复核） |
 | B6 | **nuke 旗帜让整个 RoomFeatures 模块抛错** | `Flag/function/baseFunction.ts:46,49` 调 `room.NukerCanLaunchTo` / `NukerLaunchTo`，二者只在 `types/room.interface.ts:71,78` 声明，没有实现 | 一面 `nuke-*` 旗帜 → 每 tick TypeError → 同模块的 `MissionUpdate` / `SpawnWork` / 其余旗帜处理被跳过；连续失败触发熔断 100 tick（`errorBoundary.ts:34,78`）。`teams/NukeModule.ts` 正好会创建这种旗帜 |
-| B7 | **`isWorkTile` 读小写 `Memory.nexus`** | `agents/index.ts:25`；持久化根是 `Memory.Nexus` | 恒返回 true，采集工位锁不生效，矿工可被推离工位 |
+| B7 | **`isWorkTile` 读小写 `Memory.nexus`** ✅ 已由 PR #2 修复 | `agents/movementWindow.ts` 的 `isWorkTile` 保持 `Memory.Nexus`（大写）；m0 仅从 `agents/index.ts` 搬移，不改变语义。 | 工位锁已生效；本变更不重复修改该根键。 |
 | B8 | **结构缓存从不刷新** | `core/structureCache.ts` 依赖 `room.update()` 重建索引，全仓无调用方；Rosmarin 每 10 tick 调用（`framework/runner/RoomRunner.ts:14`） | 新建的 lab / tower / extension 等在 global reset 前对 `room.lab` 等 getter 不可见；`labWork` 等包装域依赖它 |
 | B9 | **schema 校准会整体重建 `Memory.Nexus`** | `core/store/calibration.ts:94-104`（版本不可识别）、`:140-150`（迁移抛错）；`:88-92` 是根缺失时的初始化，不算重建 | 新 schema 与旧 accessor 共用 `Memory.Nexus`（`accessor.ts:13`），重建会连带抹掉 StructData、MissionPools、TeamData、OutMineData、RoomData 等旧数据。也没有从 Rosmarin 根键迁移的逻辑 |
 | B10 | **QoS 恒为 normal** | `updateQoS` / `noteTickCpu` 无调用方（`core/qos.ts:55,92`） | 旧代码里按 QoS 等级的降级、应急冻结、CPU 熔断全部不生效；只剩 `every` / `minBucket` 节流 |
@@ -38,7 +38,7 @@
 | B12 | **布局数据分在两处** | 规划器写 `Memory.Nexus.layout`（`planner/memory.ts:9-15`）；旧读方读 `LayoutData`（`economy/coreDepot.ts`、`spawning/mission/updaters/workMission.ts`、`Flag/function/layoutVisual.ts`、`external/externalRoad.ts`），无人写入 | 中央仓位查询返回空；旗帜布局可视化读空；外矿路网路线无法规划 |
 | B13 | **claim 链路不通** | `strategy/expansion.ts` 房名拼接不分 W/S、预定判断两分支同为 `return name`；扩张目标只从有视野的邻房中选（`expansion.ts:34-35`）；主线把 claim 映射到不带 CLAIM 的 universal（`spawnDirector.ts:66`），`claimer` 不在 `isSpawnUnit`；claimer 进入目标房后不再被驱动（B2）。（`claimController` 直接调用、绕过 Broker（`agentSystem.ts:731`）本身能生效，不是阻断原因，列为 M5 的架构项） | 主线扩张不会成功占领（推断） |
 
-**校准提示**：P1-14 的 workforce 校准（docs/bugs、workforce-logistics）是在 B1 / B3 / B4 存在的条件下做的。修复其中任一项都会改变家内经济的实际行为，修复后需要按校准纪律成套复测，而不是沿用旧结论。
+**校准提示**：P1-14 的 workforce 校准（docs/bugs、workforce-logistics）是在 B1 / B3 / B4 存在的条件下做的。B1 / B4 已修复（m0 / 前序执行链），B3 仍在；修复项会改变家内经济的实际行为，修后需要按校准纪律成套复测，而不是沿用旧结论。
 
 ## 25.3 分域现状
 
@@ -100,13 +100,13 @@
 
 | 能力 | 状态 | 证据 | 说明 |
 |---|---|---|---|
-| 自动布局 | 包装 | `planner/index.ts` → `layoutPlanner.ts:1218` → `autoPlanner.ts` | B12 |
-| 静态布局 / 63 规划 / mini 布局 | 死代码（控制台） | `console/function/layout.ts:278-282`；`layoutPlanner.ts:1303`（`buildMini`） | 首房自动启动的提供方已注册但无人调用；mini 房间模式档位存在（`strategy/roomModeAccess.ts:136-150`），但其 facilities / market 开关不被 `runIndustry` 读取（§25.3.6） |
+| 自动布局（ros 默认） | 包装 | `planner/index.ts` → `layoutPlanner.ts` → `rosPlanner.ts` | `auto` 为唯一默认动态布局；B12 布局存储仍待收口 |
+| 布局选项 | 主线（仅 auto / mini / race） | `console/function/layout.ts`；`layoutPlanner.ts`（`buildDynamic` / `buildMini` / `buildStatic`） | 63auto、rosemary、clover、hoho、tea、scorpior 已删除；race 为冲级静态模板（需布局中心），mini 保留给迷你房模式 |
 | 控制器缓冲、源旁 extension | 主线 | `controllerBuffer.ts`、`sourceExtensions.ts` | |
 | 工地放置与建造顺序 | 包装 | `planner/index.ts:97-119` → `layoutPlanner.ts:1079` | 旧放置点仍在：`creepSource.ts:295`、`miner.ts` |
 | 城墙 / rampart 布局 | 包装 | `layoutPlanner.ts:172` | |
 | RCL7+ 关键建筑 rampart | 缺失 | Rosmarin `prototype/Room/feature/autoBuild.ts:32-44` | |
-| BetterMove / MoveMatch | 包装 | `movement/index.ts:3317-3324`，由 Broker 驱动 | B1、B7 |
+| BetterMove / MoveMatch | 包装 | `movement/index.ts`（装配层：原型 patch + `betterMoveApi` 导出）；算法域 `movementState` / `movementGeometry` / `movementCostRoute` / `movementPathCache` / `movementIntentSquad` / `movementTraffic` / `movementApi`（`movement-state-namespace` 变更完成拆分，LINE_WHITELIST 已摘除）；`agents/movementWindow.ts` 窗口 | B1 已由 m0 修复；B7 已由 PR #2 修复；拆分由 `movement-state-namespace` 承接 |
 | 交通监测 | 主线 | `movement/trafficMonitor.ts` | |
 | 跨房寻路 / 路径缓存 | 旧代码在跑 | BetterMove 进程内缓存 | |
 
@@ -119,7 +119,7 @@
 | 维修城墙到维护线 | 主线 | `defense/planners.ts:98-140` | 主线没有「刷高墙」：Rosmarin `up-repair` 与 `upSpawn` 缺失。旧 worker 的 `exec()` 路径仍有部分刷墙能力：`getWallMission` 扫描城墙，上限 `getWallHitsMaxThreshold`（`workMission.ts:358-394`），LayoutData 为空时退回关键建筑坐标（`:185-200`） |
 | 旧主动防御（defend-* 孵化、防御 cost matrix、`defend` 标记写入） | 缺失 | Rosmarin `prototype/Room/feature/roomDefense.ts` | B11 |
 | 防核 | 实际缺失 | 旧 `getWallMission` 的核弹优先级只在 worker 的 `exec()` 路径 | 主线防御没有核弹处理 |
-| 战争编队（`TEAM_` 旗帜） | 包装 | `teams/index.ts:23-24` → `TeamController` / `TeamBattle.ts` | 不移动（推断，见 B1） |
+| 战争编队（`TEAM_` 旗帜） | 包装 | `teams/index.ts:17-24` → `TeamController` / `TeamBattle.ts` | B1 已由 m0 修复，晚段移动当 tick 结算；编队行为待 M7 复验 |
 | 旗帜攻击（AIO / CLEAN / ACLAIM / DIS / LOOT） | 旧代码在跑 | `features.ts:56` → `warSpawn.ts:57-64` | 只有 aio 有执行器，其余孵出即闲置（B5） |
 | 单兵战斗角色（double-* / one-ranged / defend-*） | 死代码（控制台） | `industry/console/spawn.ts:15` | |
 | 主线扩张（claim） | 主线，不通 | B13 | |
@@ -139,7 +139,7 @@
 | 市场 | 包装 | `autoMarket.ts` | 仅 QoS normal 运行（B10 下恒运行）；不读房间模式的 market 开关 |
 | terminal 发送 | 包装 + 缺失 | `terminalControl.ts:52`；唯一生产方是控制台 | 自动平衡（ResourceManage）缺失 |
 | power spawn | 包装 | `powerSpawnControl.ts:20` | |
-| Power Creep | 包装 | `industry/powerCreep/index.ts` | 不移动，只能在原地范围内用技能（推断，见 B1） |
+| Power Creep | 包装 | `industry/powerCreep/index.ts` | B1 已由 m0 修复，`pcMoveTo` 晚段移动当 tick 结算；待工业 / M7 复验 |
 | observer | 包装 | `observeControl.ts:74` | 只服务旧高速路扫描；Intel 不用它 |
 | 核弹发射 | 缺失（且触发 B6） | Rosmarin `prototype/Room/structure/nukerControl.ts` | |
 | link 网络 | 包装 | `linkControl.ts` | |
@@ -192,7 +192,7 @@
 
 | 步 | 内容 | 依赖 / 说明 |
 |---|---|---|
-| **M0 止血** | B1 移动时序（tick 开头清意图、所有 commit 模块之后解算）与 B4（`in` 改 `.has()`）**同一变更**；B2 名册（= 外矿迁移一期第 1 节，`13-external-mining-migration.md`）；B6 nuke 旗帜（先防护：无实现时跳过并告警）；B7 小写根；B9 校准只重建 schema 子系统、保留旧域；B8 结构缓存定期刷新；B12 布局存储统一（旧读方改读 `Memory.Nexus.layout`，或由规划器同步写 `LayoutData`） | 每项单独变更、单独 sim 对照（B1 与 B4 合并对照：只修 B1 时，无任务的主线单位仍走旧 `exec()` 并开始移动，测到的是会被随后修 B4 撤销的过渡态）。B1 / B4 会改变家内经济实际行为，修后按校准纪律复测（§25.2 校准提示） |
+| **M0 止血** | B1 移动时序已由 `m0-movement-commit-window` 完成（`MovementStart` / `MovementEnd`）；B4 已由前序执行链收口解决；B7 已由 PR #2 修复；B6 nuke 旗帜跳过防护已由 PR #5 落地（完整发射仍缺）；B2 名册、B8 结构缓存、B9 校准、B12 布局存储仍按独立变更推进。 | 每项单独变更、单独 sim 对照。B1 修复后六场景与 m0 前逐位一致；`run-residue` / `stronghold-door` 绿；编队 / Power Creep 行为在后续场景复验；B3 仍需处理。 |
 | **M1 孵化单轨** | 主线 `spawnDirector` 接管全部角色（含 manager / transporter / miner，编队与扩张走 `directSpawn`），退役 `SpawnWork` 任务池与旧体型。前置两项：① `bodyFactory` 覆盖 `directSpawn` 用到的角色（目前 `directSpawn` 用旧 `GetRoleBodys` / `GenerateBodys`，`spawnDirector.ts:522`；`bodyFactory.buildBody` 对 aio、aid-*、team-* 等返回 null，`bodyFactory.ts:132-180`），再退旧体型；② 往旧池写单的生产方逐个改道或下线：`teams/flags/warSpawn.ts:110/146/172/214/267`、`mineMission.ts:121-122/143/165/196/203`、`external/externalMine.ts`、`industry/console/spawn.ts:11/23/30` | M0 之后。退役前把旧池里仍有意义的孵化规则（boost 预约、应急降档）逐条对照迁入 |
 | **M2 角色入任务板** | manager / transporter / miner 改为主线任务种类（中央搬运、元素矿采集）；旧 carrier 的请求匹配并入 quota；`exec()` 回退只留给尚未迁移的角色 | M1 |
 | **M3 外矿** | `13-external-mining-migration.md` 一到四期 | 一期第 1 节属 M0；其余在 P1-14 门禁之后；二期路网若复用 `externalRoad.ts` 的路线规划，依赖 M0 的 B12 |

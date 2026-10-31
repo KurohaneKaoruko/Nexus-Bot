@@ -194,6 +194,11 @@ src/
   spawning mission 孵化主链 (proto 提供原型方法挂载驱动 (原 modules/prototype))
 - 外矿同名-role / 扩张 claim 已按任务板主线化 (kind scout/claim)
 - 类型债: nocheck 152 → 33 件 (-78%), 错误 4109 → ~660 (-84%)
+- legacy 整固完成态 (legacy-consolidation-b, 2026-10-31): 巨型文件拆分收口
+  (movement/agentSystem/TeamAction/baseFunction/rosManor/spawnDirector/actionBroker,
+  >600 有效行白名单外 0)、类型门禁清零 (ts-nocheck 0 / 显式 any 287 含 as any 200)、
+  休眠链退场 (external/mine 整链删除, 定性保留项见 10-legacy-removal-ledger 台账);
+  exec() 双轨/词表死角色/mission pool 六池退役已完成, 任务板 + broker 为唯一执行/供给路径
 - 开发历程详见 git log
 
 ---

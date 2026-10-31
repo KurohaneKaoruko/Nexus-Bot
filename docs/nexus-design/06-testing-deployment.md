@@ -14,13 +14,14 @@
 | `npm test` | `scripts/run-tests.mjs`（单元/集成测试，不含 sim） |
 | `npm run sim` | 构建后跑 `screeps-sim test`，场景见 `sim/` |
 | `npm run submit` | `scripts/submit.js` 上传目标服务器 |
+| `npm run race` | 私服冲级运维统一入口（`scripts/race.js`，子命令 land/status/board/watch） |
 | `npm run console` | 交互式控制台（`scripts/console.js`） |
 | `npm run arch:guard` / `arch:report` / `arch:update` | 架构守卫扫描（依赖方向 / 白名单） |
 
 部署目标显式区分：
 
 - `sim`：本地/浏览器模拟，适合快速重现基础行为；
-- `test`：私服 `47.100.24.220`，用于集成与长时间稳定性（**每 4wt 自动重开，需重新落地**，落地脚本 `scripts/land.js`）；
+- `test`：私服 `47.100.24.220`，用于集成与长时间稳定性（**每 4wt 自动重开，需重新落地**：`npm run race -- land`，守榜守护 `npm run race -- watch`）；
 - `main`：实际长期运行的目标分支。
 
 凭据、私服地址和上传 Token 走 `scripts/secret.js` 与开发者本地环境，不要提交至 Git。
