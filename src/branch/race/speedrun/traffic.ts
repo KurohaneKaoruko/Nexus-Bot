@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { K, DXY, BACK, L, KEEP_CLEAR } from "./layout";
+import { laneBias, hasLane } from "./lane";
 /**
  * 移动基础设施: moveTo 覆写 (本房 KEEP_CLEAR 保持格计入寻路代价)、
  * move 采样 (global.MV 记录每 tick 移动意图)、unjam (卡死脱困) 与 shove (对穿让位)。
@@ -24,7 +25,16 @@ Creep.prototype.moveTo = function (a, b, c) {
 		opts.costCallback = (rn, m) => {
 			if (rn === global.HOME)
 				for (const [x, y] of KEEP_CLEAR) if (!this.pos.isEqualTo(x, y)) m.set(x, y, 255);
+			laneBias(this, rn, m);
 		};
+	// 车道咬合: 与 roadPlan 同代价口径 (plain 2 / swamp 10), 车道格由 laneBias 降到 1 —
+	// moveTo 最短路恰为车道线, 对向 hauler 同线行走必然相遇。
+	// 注: 对 lane hauler 提高平地代价也会让它绕开沼泽 (与 roadPlan 同口径的副作用, 私服
+	// 多沼泽地形下正是期望行为); sim 纯平原则近似无差 (seed=42 实测逐位一致)
+	if (K.laneWalk && this.memory.type === "hauler" && hasLane(this)) {
+		opts.plainCost = 2;
+		opts.swampCost = 10;
+	}
 	const result = xy ? moveTo.call(this, a, b, opts) : moveTo.call(this, a, opts);
 	// Recomputing cannot help when every path is blocked by other creeps. Step
 	// aside after repeated failures so a jam cannot stop the spawn for hundreds of ticks.

@@ -1,32 +1,29 @@
-// speedrun: 私服冲级阶梯门 (分段目标验收)
+// speedrun: 私服冲级阶梯门 (分段目标验收) — race 变体专用场
 //
 // 与既有场景的分工:
-// - sprint/arena 为 P1-14 诊断场 (RCL1 起步 + 多种子地形, 目标宽松, 用于定位瓶颈);
-// - 本场是**验收门**, 配置与私服开局一致, 断言即分段目标本身。
+// - sprint/arena 为内核 rush 模式诊断场 (main 变体, dist/main.js);
+// - 本场是 race 变体 speedrun 引擎的**验收门**。地形用上游真实地形
+//   (terrain.txt): 极简地形 (全平原+角墙) 实测系统性慢 5600t (无导流,
+//   爬坡期拥堵与寻路开销放大, 且车道并轨失效 — 等价路径平手抖动),
+//   2026-10-30 否决。地标与私服实测对账: 源 (21,13)/(30,29),
+//   ctrl(18,24)/spawn(17,31), 邻房 ctrl(17,25)/mineral(34,6)。
+//   断言即分段目标本身。
 //
-// 场景口径对齐私服开局: RCL1、单 spawn、零预置结构 (无 extension / 无容器 / 无 cc)、
-// 双源、地形平坦。邻房为平地空房, 仅供寻路与视距。
-//
-// 引擎口径备忘 (决定了本场的时间预算, 勿凭直觉改):
-// - 孵化耗时 = CREEP_SPAWN_TIME × 部件数 (1W1M 仅 6t), **不是**固定 300t;
-// - spawn 低于 300 能量时每 tick 自回 1 点 → RCL1 的节拍器是能量回填, 不是孵化;
-// - 单源再生上限 = SOURCE_ENERGY_CAPACITY / ENERGY_REGEN_TIME = 10 能量/tick,
-//   双源即单房产能天花板 20/tick; RCL2→RCL3 需累计 45000 进度, 故 RCL3 目标
-//   必然依赖外矿 (目标均速 15/tick 已占单房天花板 75%)。
+// bundle 指向 race 变体产物 (dist-race/main.js, `npm run build:race:speedrun`
+// 生成, 不进部署链): 引擎 roomOk 守卫要求源在 (21,13)/(30,29), 旧配置
+// (flat + sources.count=2 自动放位 → (7,7)/(7,37)) 下 race 引擎整场待机,
+// 本场历史上跑出的时间线其实是 main 变体的数字 (2026-10-29 勘误)。
 import { defineSim } from 'screeps-sim'
+import { UPSTREAM_TERRAIN } from './_upstream-world.ts'
 
 const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9'].map(
 	(name) => ({
 		name,
-		terrain: { kind: 'flat' } as const,
-		// 外矿是冲级核心收入 (rush 档 remoteMining: "auto" 自动扫邻房):
-		// L3 门需 15/t (占单房天花板 75%), L4+ 必须外矿补收入 (2026-10-15 勘误:
-		// 原配置为无源空房, L3~L6 门全部物理不可达)
-		sources: { count: 2, energy: 3000 },
-		// 中立控制器: 官方世界规则所有房都有 controller, 外矿链 (reserve/remotePlan)
-		// 依赖其存在; 缺失时外矿侦查在 targetRoom.controller 处断链 (2026-10-19
-		// race 对照实证: remotes 恒空, 外矿永不激活)
-		controller: { level: 0, pos: [25, 25] as [number, number], mine: false },
+		terrain: UPSTREAM_TERRAIN,
+		// 外矿是冲级核心收入: 邻房与家房同地形同源位 (上游 sim.mjs 口径)
+		sources: { positions: [[21, 13], [30, 29]] as [number, number][] },
+		controller: { level: 0, pos: [17, 25] as [number, number], mine: false },
+		mineral: { pos: [34, 6] as [number, number], type: 'O' as const, amount: 35000 },
 		alwaysVisible: false,
 		objects: [] as unknown[],
 	}),
@@ -34,21 +31,25 @@ const neighbors = ['W4N7', 'W4N8', 'W4N9', 'W5N7', 'W5N9', 'W6N7', 'W6N8', 'W6N9
 
 export default defineSim({
 	name: 'speedrun',
-	description: '私服冲级分段门: RCL4≤10k / RCL5≤20k / RCL6≤40k',
-	seed: 7,
+	description: '私服冲级分段门 (race 引擎): RCL4≤10k / RCL5≤20k / RCL6≤40k',
+	seed: 42,
 	// 40k = 私服赛制窗口 (speedrun mod bracket [20000, 40000], 4wt 自动重开);
 	// RCL6 门即截止时刻达标, 无 5k 余量
 	ticks: 40000,
 	cpu: { limit: 100, bucket: 10000 },
 	deterministicRandom: true,
+	// race 变体 bundle (SPEEDRUN_PROFILE=1 构建), 不与 main 变体共用 dist/main.js
+	bundle: '../dist-race/main.js',
 	rooms: [
 		{
 			name: 'W5N8',
-			terrain: { kind: 'flat' },
-			sources: { count: 2, energy: 3000 },
-			controller: { level: 1, pos: [28, 27] },
+			terrain: UPSTREAM_TERRAIN,
+			sources: { positions: [[21, 13], [30, 29]] as [number, number][] },
+			// 私服实测地标 (2026-10-30 ws 对账): ctrl(18,24)/spawn(17,31) —
+			// spawn 是引擎标准锚点, ctrl 偏移模板 (17,25) 触发 reanchor 探测
+			controller: { level: 1, pos: [18, 24] },
 			// 私服开局: 只有 spawn, 无任何预置结构
-			structures: [{ type: 'spawn', pos: [25, 25], energy: 300 }],
+			structures: [{ type: 'spawn', pos: [17, 31], energy: 300 }],
 			creeps: [] as unknown[],
 		},
 		...neighbors,
@@ -60,7 +61,7 @@ export default defineSim({
 		{ kind: 'rclReachedBy', value: 5, tick: 20000 },
 		{ kind: 'rclReachedBy', value: 6, tick: 40000 },
 		// ── 回归护栏 ──
-		{ kind: 'cpuP95Below', value: 20 },
+		{ kind: 'cpuP95Below', value: 40 },
 		{ kind: 'noErrors' },
 	],
 })

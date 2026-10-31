@@ -209,7 +209,9 @@ export default defineConfig(() => {
 	}
 	console.log(`[build] 入口: ${input} (分支: ${variant})`);
 
-	const outputFile = 'dist/main.js';
+	// race 变体产物独立目录 dist-race/main.js (sim 场景专用, 不进部署链):
+	// collectDir 按输出目录整目录上传, race 产物若留在 dist/ 会随 main 一起上传
+	const outputFile = variant === 'race' ? 'dist-race/main.js' : 'dist/main.js';
 	const distDir = path.dirname(path.resolve(process.cwd(), outputFile));
 	const enableSourceMap = process.env.SOURCE_MAP !== '0';
 	const enableObfuscation = process.env.OBFUSCATE !== '0';
@@ -237,15 +239,15 @@ export default defineConfig(() => {
 		checks: {
 			pluginTimings: false
 		},
-		// SPEEDRUN_PROFILE=1: 私服 GCL<6 账号也强制启用 PRIVATE_PROFILE (冲级构建专用,
-		// race 变体入口挂同一 speedrun 引擎, 与 SPEEDRUN_PROFILE 开关无关)
+		// race 变体恒烘焙 SPEEDRUN_PROFILE=1: 私服 GCL1 账号的 PRIVATE_PROFILE
+		// 必须无条件生效 (speedrun 服 GCL 恒 1, 自动门 gcl>=6 永不触发)。
 		// SPEEDRUN_KNOBS='{"swap":1,...}': 构建期烧死实验旋钮 (不触碰 __K, 不影响 PRIVATE_PROFILE)
 		transform: {
 			target: 'node8.9.3',
 			...(variant === 'race'
 				? {
 						define: {
-							SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE === '1'),
+							SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE !== '0'),
 							...(process.env.SPEEDRUN_KNOBS
 								? { SPEEDRUN_KNOBS: process.env.SPEEDRUN_KNOBS }
 								: {}),

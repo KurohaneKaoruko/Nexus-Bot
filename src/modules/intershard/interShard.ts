@@ -1,9 +1,9 @@
 
 export type InterShardCommand =
-    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.set'; payload: any }
-    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.pause'; payload: any }
-    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.resume'; payload: any }
-    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.remove'; payload: any };
+    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.set'; payload: InterShardExpandPlanSummary }
+    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.pause'; payload: InterShardExpandPlanSummary }
+    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.resume'; payload: InterShardExpandPlanSummary }
+    | { id: string; seq: number; time: number; fromShard: string; toShard: string; type: 'expand.remove'; payload: InterShardExpandPlanSummary };
 
 export type InterShardExpandPlanSummary = {
     id: string;
@@ -31,7 +31,7 @@ export type InterShardCreepTransfer = {
     name: string;
     nonce: string;
     ttl: number;
-    memory: any;
+    memory: CreepMemory;
 };
 
 export type InterShardRoot = {
@@ -68,21 +68,21 @@ const loadLocalRoot = (): InterShardRoot => {
     const parsed = raw ? safeJsonParse(raw) : null;
     const root: InterShardRoot = { v: 1, seq: 0 };
     if (!parsed || typeof parsed !== 'object') return root;
-    if ((parsed as any).v !== 1) return root;
-    const p: any = parsed;
+    if ((parsed as { v?: unknown }).v !== 1) return root;
+    const p = parsed as Record<string, unknown>;
     if (typeof p.seq === 'number') root.seq = p.seq;
-    if (p.outbox && typeof p.outbox === 'object') root.outbox = p.outbox;
-    if (p.cmdAcks && typeof p.cmdAcks === 'object') root.cmdAcks = p.cmdAcks;
-    if (p.plans && typeof p.plans === 'object') root.plans = p.plans;
-    if (p.status && typeof p.status === 'object') root.status = p.status;
-    if (p.expandCreepCounts && typeof p.expandCreepCounts === 'object') root.expandCreepCounts = p.expandCreepCounts;
-    if (p.creepTransfers && typeof p.creepTransfers === 'object') root.creepTransfers = p.creepTransfers;
-    if (p.transferAcks && typeof p.transferAcks === 'object') root.transferAcks = p.transferAcks;
+    if (p.outbox && typeof p.outbox === 'object') root.outbox = p.outbox as NonNullable<InterShardRoot['outbox']>;
+    if (p.cmdAcks && typeof p.cmdAcks === 'object') root.cmdAcks = p.cmdAcks as NonNullable<InterShardRoot['cmdAcks']>;
+    if (p.plans && typeof p.plans === 'object') root.plans = p.plans as NonNullable<InterShardRoot['plans']>;
+    if (p.status && typeof p.status === 'object') root.status = p.status as NonNullable<InterShardRoot['status']>;
+    if (p.expandCreepCounts && typeof p.expandCreepCounts === 'object') root.expandCreepCounts = p.expandCreepCounts as NonNullable<InterShardRoot['expandCreepCounts']>;
+    if (p.creepTransfers && typeof p.creepTransfers === 'object') root.creepTransfers = p.creepTransfers as NonNullable<InterShardRoot['creepTransfers']>;
+    if (p.transferAcks && typeof p.transferAcks === 'object') root.transferAcks = p.transferAcks as NonNullable<InterShardRoot['transferAcks']>;
     return root;
 };
 
 export function getKnownShardNames(): string[] {
-    const limits = (Game.cpu as any)?.shardLimits;
+    const limits = Game.cpu.shardLimits;
     const fromLimits = limits && typeof limits === 'object' ? Object.keys(limits) : [];
     const unique = new Set<string>(fromLimits.length ? fromLimits : ['shard0', 'shard1', 'shard2', 'shard3']);
     unique.add(Game.shard.name);
@@ -134,16 +134,16 @@ export function readInterShardRemoteRoot(shardName: string): InterShardRoot {
     const parsed = raw ? safeJsonParse(raw) : null;
     const root: InterShardRoot = { v: 1, seq: 0 };
     if (!parsed || typeof parsed !== 'object') return root;
-    if ((parsed as any).v !== 1) return root;
-    const p: any = parsed;
+    if ((parsed as { v?: unknown }).v !== 1) return root;
+    const p = parsed as Record<string, unknown>;
     if (typeof p.seq === 'number') root.seq = p.seq;
-    if (p.outbox && typeof p.outbox === 'object') root.outbox = p.outbox;
-    if (p.cmdAcks && typeof p.cmdAcks === 'object') root.cmdAcks = p.cmdAcks;
-    if (p.plans && typeof p.plans === 'object') root.plans = p.plans;
-    if (p.status && typeof p.status === 'object') root.status = p.status;
-    if (p.expandCreepCounts && typeof p.expandCreepCounts === 'object') root.expandCreepCounts = p.expandCreepCounts;
-    if (p.creepTransfers && typeof p.creepTransfers === 'object') root.creepTransfers = p.creepTransfers;
-    if (p.transferAcks && typeof p.transferAcks === 'object') root.transferAcks = p.transferAcks;
+    if (p.outbox && typeof p.outbox === 'object') root.outbox = p.outbox as NonNullable<InterShardRoot['outbox']>;
+    if (p.cmdAcks && typeof p.cmdAcks === 'object') root.cmdAcks = p.cmdAcks as NonNullable<InterShardRoot['cmdAcks']>;
+    if (p.plans && typeof p.plans === 'object') root.plans = p.plans as NonNullable<InterShardRoot['plans']>;
+    if (p.status && typeof p.status === 'object') root.status = p.status as NonNullable<InterShardRoot['status']>;
+    if (p.expandCreepCounts && typeof p.expandCreepCounts === 'object') root.expandCreepCounts = p.expandCreepCounts as NonNullable<InterShardRoot['expandCreepCounts']>;
+    if (p.creepTransfers && typeof p.creepTransfers === 'object') root.creepTransfers = p.creepTransfers as NonNullable<InterShardRoot['creepTransfers']>;
+    if (p.transferAcks && typeof p.transferAcks === 'object') root.transferAcks = p.transferAcks as NonNullable<InterShardRoot['transferAcks']>;
     return root;
 }
 
@@ -160,7 +160,7 @@ export function pushInterShardCommand(cmd: Omit<InterShardCommand, 'id' | 'seq' 
     root.seq = seq;
     root.outbox ??= {};
     const q = root.outbox[cmd.toShard] || (root.outbox[cmd.toShard] = []);
-    q.push({ ...(cmd as any), id, seq, time: Game.time, fromShard: Game.shard.name });
+    q.push({ ...cmd, id, seq, time: Game.time, fromShard: Game.shard.name } as InterShardCommand);
     // 容量约束 (任务 8.6): 每 shard 待发队列钳制——超限丢最旧并上屏
     // (正常吞吐下 ack 清理在 1-2 tick 内触发, 此处是 API 滥用兜底)
     if (q.length > INTERSHARD_ROOT_CAPS.outboxPerShard) {
@@ -296,11 +296,12 @@ export function cleanupCreepTransfers(): void {
                 delete map[name];
                 continue;
             }
-            if ((payload as any).ttl != null && (payload as any).ttl < Game.time) {
+            const transfer = payload as Partial<InterShardCreepTransfer>;
+            if (transfer.ttl != null && transfer.ttl < Game.time) {
                 delete map[name];
                 continue;
             }
-            const nonce = (payload as any).nonce;
+            const nonce = transfer.nonce;
             if (nonce && acks && acks[name] === nonce) {
                 delete map[name];
             }
@@ -319,7 +320,7 @@ export function cleanupInterShardLocalRoot(): void {
                 delete local.plans[id];
                 continue;
             }
-            const ttl = (p as any).ttl;
+            const ttl = p.ttl;
             if (typeof ttl === 'number' && ttl < now) {
                 delete local.plans[id];
                 if (local.status) delete local.status[id];
@@ -332,14 +333,14 @@ export function cleanupInterShardLocalRoot(): void {
                 delete local.status[id];
                 continue;
             }
-            const ttl = (st as any).ttl;
+            const ttl = st.ttl;
             if (typeof ttl === 'number' && ttl < now) {
                 delete local.status[id];
                 continue;
             }
-            if (!local.plans?.[id] && (st as any).state !== 'removed') {
+            if (!local.plans?.[id] && st.state !== 'removed') {
                 // 避免 status 漂浮：无计划且非 removed，超过一段时间就删除
-                const time = (st as any).time;
+                const time = st.time;
                 if (typeof time === 'number' && now - time > 2000) {
                     delete local.status[id];
                 }

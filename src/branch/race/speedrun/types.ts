@@ -180,7 +180,16 @@ const TYPES = {
 			delete c.memory.towing;
 		}
 		if (c.memory.swapped && c.memory.swapped < Game.time) delete c.memory.swapped;
-		if (K.swap && c.memory.full && c.store.energy && !c.memory.swapped && swapLoad(c, home)) return;
+		// swapMinDist: 接力只在长管线上开 — 短线掉头+再装货的折腾吃掉省下的脚程
+		if (
+			K.swap &&
+			(c.memory.dist || 0) >= K.swapMinDist &&
+			c.memory.full &&
+			c.store.energy &&
+			!c.memory.swapped &&
+			swapLoad(c, home)
+		)
+			return;
 		if (c.store.energy === 0 && c.memory.swapped !== Game.time) c.memory.full = false;
 		if (c.store.getFreeCapacity() === 0) c.memory.full = true;
 		// dieMargin: a dying hauler must reach home before it dies, or its load drops in a remote room and decays
@@ -225,8 +234,9 @@ const TYPES = {
 					.find((r) => r.resourceType === RESOURCE_ENERGY);
 				if (altPile && (!mainPile || altPile.amount > mainPile.amount)) p = other;
 			}
-			if (c.room.name !== p.roomName || !c.pos.inRangeTo(p, 1))
+			if (c.room.name !== p.roomName || !c.pos.inRangeTo(p, 1)) {
 				return c.moveTo(p, { range: 1, reusePath: RP() });
+			}
 			const pile = c.room
 				.lookForAt(LOOK_RESOURCES, p)
 				.find((r) => r.resourceType === RESOURCE_ENERGY);
@@ -285,8 +295,9 @@ const TYPES = {
 					: c.moveTo(b, { range: 1, reusePath: 20 });
 			}
 		}
-		if (c.room.name !== home)
+		if (c.room.name !== home) {
 			return c.moveTo(pos(BOX.x, BOX.y, home), { range: 2, reusePath: RP() });
+		}
 		if (K.chain) return laneUnload(c, room, home);
 		const bx = boxes(room).filter((b) => b.free > 0);
 		// boxes full: help the filler, or park out of the way so the filler can reach the boxes

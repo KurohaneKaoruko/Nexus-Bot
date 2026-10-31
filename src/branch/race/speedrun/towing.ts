@@ -126,8 +126,13 @@ function homeward(room, home) {
 	return g[room.name];
 }
 function swapLoad(c, home) {
+	// 只在外矿段接力: home 房是全部管线的卸货咽喉, 在这里换手只会推迟交付
+	if (c.room.name === home) return false;
 	const [hx, hy] = homeward(c.room, home);
 	const mine = c.pos.getRangeTo(hx, hy);
+	// 部分承接门槛 0.8 (上游实测口径): 同线混编车身 (cap 随 RCL 分批孵化) 全额
+	// 门槛在 300→250 车对上永不满足, 相遇即错过; 任意比例承接又会把整载拆成
+	// 「小车 100 回家 + 大车 200 折返补货」的往返浪费 (sim 确定性慢 487t)
 	const o = c.pos.findInRange(FIND_MY_CREEPS, 1, {
 		filter: (o) =>
 			o.memory.type === "hauler" &&
@@ -135,13 +140,16 @@ function swapLoad(c, home) {
 			!o.memory.swapped &&
 			o.store.energy === 0 &&
 			o.store.getFreeCapacity() >= 0.8 * c.store.energy &&
+			// 对向相邻: 空车从 home 方向来, 必在 home 侧 (比发起方离 home 出口近)
 			o.pos.getRangeTo(hx, hy) < mine &&
-			o.ticksToLive > 50,
+			// 接得住还要送得回: 剩余寿命盖过接货点到 home 出口的脚程, 否则货烂在半路
+			o.ticksToLive > o.pos.getRangeTo(hx, hy) + K.dieMargin,
 	})[0];
 	if (!o) return false;
 	if (c.transfer(o, RESOURCE_ENERGY, Math.min(c.store.energy, o.store.getFreeCapacity())) !== OK)
 		return false;
-	// energy is fungible: each keeps its own source, only the load jumps forward
+	// energy is fungible: each keeps its own source, only the load jumps forward.
+	// 发起方即使留残货也立刻折返 (到源头补满), 省下的回程脚程才是接力收益
 	Object.assign(c.memory, { full: false, swapped: Game.time });
 	Object.assign(o.memory, { full: true, swapped: Game.time });
 	L("swaps", 1);
