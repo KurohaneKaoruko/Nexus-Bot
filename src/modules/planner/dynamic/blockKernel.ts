@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 分块地形分析内核: 并查集分块 + 可建筑面可达性统计 (纯数组运算, 无 RoomArray 依赖)。
  */
@@ -10,13 +9,26 @@ type KernelResult = {
 	size: Int16Array
 }
 
+/** 可达性列表元素: 距墙层数与坐标 (复用优先队列节点池) */
+export type ReachNode = { k: number; x?: number | undefined; y?: number | undefined }
+
+/** ArrayLike 索引取值 (noUncheckedIndexedAccess 下的定长表访问) */
+const numAt = (a: ArrayLike<number | string>, i: number): number => {
+	const v = a[i];
+	return typeof v === 'number' ? v : 0;
+}
+
 /** 并查集查找 (带路径压缩) */
-export const kernelFind = (parent: number[] | Int32Array, x: number): number => {
+export const kernelFind = (parent: Int32Array, x: number): number => {
 	let root = x;
-	while (parent[root] !== root) root = parent[root];
+	let p = numAt(parent, x);
+	while (p !== root) {
+		root = p;
+		p = numAt(parent, root);
+	}
 	let cur = x;
-	while (parent[cur] !== cur) {
-		const next = parent[cur];
+	while (cur !== root) {
+		const next = numAt(parent, cur);
 		parent[cur] = root;
 		cur = next;
 	}
@@ -24,7 +36,7 @@ export const kernelFind = (parent: number[] | Int32Array, x: number): number => 
 };
 
 /** 并查集合并 (小根挂大根) */
-export const kernelUnion = (parent: number[] | Int32Array, a: number, b: number): number => {
+export const kernelUnion = (parent: Int32Array, a: number, b: number): number => {
 	const ra = kernelFind(parent, a);
 	const rb = kernelFind(parent, b);
 	if (ra === rb) return ra;
@@ -67,27 +79,27 @@ export const resetManorStamp = (): void => {
 
 /** 构建指定块的 manor 掩码: 块成员标记 + 单格孤立剔除 + 贴边清零 */
 export const buildKernelManorMask = (
-	parent: number[] | Int32Array,
+	parent: Int32Array,
 	root: number,
-	walkable: ArrayLike<number>,
+	walkable: ArrayLike<number | string>,
 	manorMask: Uint8Array,
 	memberList?: number[]
 ) => {
 	manorMask.fill(0);
 	if (memberList && memberList.length > 0) {
 		for (let i = 0; i < memberList.length; i++) {
-			manorMask[memberList[i]!] = 1;
+			manorMask[numAt(memberList, i)] = 1;
 		}
 		for (let i = 0; i < memberList.length; i++) {
-			const idx = memberList[i];
-			if (!manorMask[idx!]) continue;
+			const idx = numAt(memberList, i);
+			if (!manorMask[idx]) continue;
 			let manorCnt = 0;
 			let wallCnt = 0;
 			forEach4Index(idx, (n) => {
 				if (manorMask[n]) manorCnt += 1;
 				if (!walkable[n]) wallCnt += 1;
 			});
-			if (manorCnt === 1 && wallCnt === 0) manorMask[idx!] = 0;
+			if (manorCnt === 1 && wallCnt === 0) manorMask[idx] = 0;
 		}
 	} else {
 		const rootId = kernelFind(parent, root);
@@ -116,9 +128,10 @@ export const buildKernelManorMask = (
 		}
 	}
 	while (qHead < qTail) {
-		const idx = fastQueue[qHead++];
-		fastVisitStamp[idx!] = 0;
-		if (manorMask[idx!] || !walkable[idx!]) continue;
+		const idx = numAt(fastQueue, qHead);
+		qHead += 1;
+		fastVisitStamp[idx] = 0;
+		if (manorMask[idx] || !walkable[idx]) continue;
 		let manorCnt = 0;
 		let wallCnt = 0;
 		forEach4Index(idx, (n) => {
@@ -126,7 +139,7 @@ export const buildKernelManorMask = (
 			if (!walkable[n]) wallCnt += 1;
 		});
 		if (manorCnt >= 2 || (manorCnt === 1 && wallCnt >= 2)) {
-			manorMask[idx!] = 1;
+			manorMask[idx] = 1;
 			forEach4Index(idx, (n) => {
 				if (!manorMask[n] && walkable[n] && fastVisitStamp[n] !== stamp) {
 					fastVisitStamp[n] = stamp;
@@ -137,9 +150,9 @@ export const buildKernelManorMask = (
 	}
 
 	for (let i = 0; i < BORDER_INDEXES.length; i++) {
-		const b = BORDER_INDEXES[i];
-		if (!walkable[b!]) continue;
-		manorMask[b!] = 0;
+		const b = numAt(BORDER_INDEXES, i);
+		if (!walkable[b]) continue;
+		manorMask[b] = 0;
 		forEach8Index(b, (n) => {
 			manorMask[n] = 0;
 		});
@@ -154,9 +167,9 @@ export const buildKernelManorMask = (
  */
 export const collectKernelManorReachability = (
 	manorMask: Uint8Array,
-	walkable: ArrayLike<number>,
-	innerList?: { k: number; x?: number; y?: number }[],
-	allList?: { k: number; x?: number; y?: number }[]
+	walkable: ArrayLike<number | string>,
+	innerList?: ReachNode[],
+	allList?: ReachNode[]
 ): number => {
 	const stamp = nextFastStamp();
 	let negativeLen = 0;
@@ -179,12 +192,12 @@ export const collectKernelManorReachability = (
 	while (currentDist < -1 && negativeLen > 0) {
 		let nextLen = 0;
 		for (let i = 0; i < negativeLen; i++) {
-			const idx = currentFrontier[i];
+			const idx = numAt(currentFrontier, i);
 			forEach8Index(idx, (n) => {
 				if (fastVisitStamp[n] === stamp) return;
 				fastVisitStamp[n] = stamp;
 				if (manorMask[n] && walkable[n] && allList) {
-					allList.push(newNode(currentDist + 2, (n / 50) | 0, n % 50));
+					allList.push(newNode<ReachNode>(currentDist + 2, (n / 50) | 0, n % 50));
 				}
 				nextFrontier[nextLen++] = n;
 			});
@@ -192,7 +205,7 @@ export const collectKernelManorReachability = (
 		currentDist += 1;
 		if (currentDist === -1) {
 			for (let i = 0; i < nextLen; i++) {
-				const idx = nextFrontier[i];
+				const idx = numAt(nextFrontier, i);
 				fastQueue[wallQueueLen] = idx;
 				fastQueueDist[wallQueueLen++] = -1;
 			}
@@ -206,17 +219,18 @@ export const collectKernelManorReachability = (
 	let innerCnt = 0;
 	let qHead = 0;
 	while (qHead < wallQueueLen) {
-		const idx = fastQueue[qHead];
-		const dist = fastQueueDist[qHead++];
+		const idx = numAt(fastQueue, qHead);
+		const dist = numAt(fastQueueDist, qHead);
+		qHead += 1;
 		forEach4Index(idx, (n) => {
 			if (fastVisitStamp[n] === stamp) return;
 			fastVisitStamp[n] = stamp;
 			fastQueue[wallQueueLen] = n;
-			fastQueueDist[wallQueueLen++] = dist! + 1;
+			fastQueueDist[wallQueueLen++] = dist + 1;
 			if (!manorMask[n] || !walkable[n]) return;
-			const item = newNode(dist! + 2, (n / 50) | 0, n % 50);
+			const item = newNode<ReachNode>(dist + 2, (n / 50) | 0, n % 50);
 			if (allList) allList.push(item);
-			if (dist! + 1 >= 0) {
+			if (dist + 1 >= 0) {
 				innerCnt += 1;
 				if (innerList) innerList.push(item);
 			}
@@ -228,14 +242,14 @@ export const collectKernelManorReachability = (
 
 /** 统计指定块内层数 (带缓存) */
 export const blockPutAbleCountKernel = (
-	parent: number[] | Int32Array,
+	parent: Int32Array,
 	root: number,
-	walkable: ArrayLike<number>,
+	walkable: ArrayLike<number | string>,
 	cache: Int16Array,
 	memberList?: number[]
 ): number => {
 	const rootId = kernelFind(parent, root);
-	if (cache[rootId]! >= 0) return cache[rootId];
+	if (numAt(cache, rootId) >= 0) return numAt(cache, rootId);
 
 	buildKernelManorMask(parent, rootId, walkable, fastKernelManorMask, memberList);
 	const innerCnt = collectKernelManorReachability(fastKernelManorMask, walkable);
@@ -266,36 +280,37 @@ export const computeBlockKernel = (
 	startPoints.sort((a, b) => routeDist[b]! - routeDist[a]!);
 
 	for (let si = 0; si < startPoints.length; si++) {
-		const currentPos = startPoints[si];
-		if (blocked && blocked[currentPos!]) {
+		const currentPos = numAt(startPoints, si);
+		if (blocked && blocked[currentPos]) {
 			kernelUnion(parent, currentPos, 0);
 			continue;
 		}
-		if (visited[currentPos!]) continue;
+		if (visited[currentPos]) continue;
 
 		let cnt = 0;
 		const posSeq: number[] = [];
 		const stack: number[] = [currentPos, 0, 0];
 
 		while (stack.length) {
-			const mode = stack.pop() as number;
-			const phase = stack.pop() as number;
-			const idx = stack.pop() as number;
+			const mode = numAt(stack, stack.length - 1);
+			const phase = numAt(stack, stack.length - 2);
+			const idx = numAt(stack, stack.length - 3);
+			stack.length -= 3;
 			if (phase === 0) {
 				if (visited[idx]) continue;
 				visited[idx] = 1;
 				stack.push(idx, 1, mode);
-				const currentValue = score[idx];
+				const currentValue = numAt(score, idx);
 				if (mode === 0) {
 					forEach8Index(idx, (n) => {
-						const v = score[n];
-						if (v! > currentValue! && currentValue! < 6) stack.push(n, 0, 0);
-						else if (v! > 0 && v! < currentValue!) stack.push(n, 0, 1);
+						const v = numAt(score, n);
+						if (v > currentValue && currentValue < 6) stack.push(n, 0, 0);
+						else if (v > 0 && v < currentValue) stack.push(n, 0, 1);
 					});
 				} else {
 					forEach4Index(idx, (n) => {
-						const v = score[n];
-						if (v! > 0 && v! < currentValue!) stack.push(n, 0, 1);
+						const v = numAt(score, n);
+						if (v > 0 && v < currentValue) stack.push(n, 0, 1);
 					});
 				}
 				continue;
@@ -321,8 +336,8 @@ export const computeBlockKernel = (
 	}
 
 	for (let i = 0; i < BORDER_INDEXES.length; i++) {
-		const b = BORDER_INDEXES[i];
-		if (!walkable[b!]) continue;
+		const b = numAt(BORDER_INDEXES, i);
+		if (!walkable[b]) continue;
 		const p = kernelFind(parent, b);
 		sizeMap[p] = 0;
 		forEach8Index(b, (n) => {
@@ -335,17 +350,18 @@ export const computeBlockKernel = (
 
 	const queue = new PriorityQueue(true);
 	for (let p = 0; p < 2500; p++) {
-		if (sizeMap[p]! > 0) queue.push(newNode(sizeMap[p], 0, 0, p));
+		const size = numAt(sizeMap, p);
+		if (size > 0) queue.push(newNode(size, 0, 0, p));
 	}
 	const putAbleCache = new Int16Array(2500);
 	putAbleCache.fill(-1);
 
 	while (!queue.isEmpty()) {
-		const nd = (queue.pop() as unknown) as { k: number; v: number } | undefined;
+		const nd = queue.pop();
 		if (!nd) break;
 		const k = nd.k;
-		const pos = nd.v;
-		if (sizeMap[pos] !== k) {
+		const pos = nd.v as number;
+		if (numAt(sizeMap, pos) !== k) {
 			reclaimNode(nd);
 			continue;
 		}
@@ -359,21 +375,21 @@ export const computeBlockKernel = (
 		const stamp = nextFastStamp();
 		let nearRootLen = 0;
 		for (let i = 0; i < seq.length; i++) {
-			const e = seq[i];
+			const e = numAt(seq, i);
 			forEach8Index(e, (n) => {
 				if (!walkable[n] || fastMergeCellStamp[n] === stamp) return;
 				fastMergeCellStamp[n] = stamp;
 				const cp = kernelFind(parent, n);
 				if (cp === pos) return;
-				const cs = sizeMap[cp];
-				if (cs! <= 0 || cs! >= 300) return;
+				const cs = numAt(sizeMap, cp);
+				if (cs <= 0 || cs >= 300) return;
 				if (fastMergeRootStamp[cp] !== stamp) {
 					fastMergeRootStamp[cp] = stamp;
 					fastMergeRootCount[cp] = 1;
 					fastMergeRootList[nearRootLen++] = cp;
 					return;
 				}
-				fastMergeRootCount[cp] = (fastMergeRootCount[cp] ?? 0) + 1;
+				fastMergeRootCount[cp] = numAt(fastMergeRootCount, cp) + 1;
 			});
 		}
 
@@ -381,13 +397,13 @@ export const computeBlockKernel = (
 		let nearCnt = 0;
 		let maxRatio = 0;
 		for (let i = 0; i < nearRootLen; i++) {
-			const currentPos = fastMergeRootList[i];
-			const near = fastMergeRootCount[currentPos!];
+			const currentPos = numAt(fastMergeRootList, i);
+			const near = numAt(fastMergeRootCount, currentPos);
 			if (near <= 0) continue;
-			const currentSize = sizeMap[currentPos!];
+			const currentSize = numAt(sizeMap, currentPos);
 			if (currentSize <= 0) continue;
 			const ratio = near / Math.sqrt(Math.min(currentSize, k));
-			const better = ratio === maxRatio ? targetPos < 0 || currentSize < sizeMap[targetPos]! : ratio > maxRatio;
+			const better = ratio === maxRatio ? targetPos < 0 || currentSize < numAt(sizeMap, targetPos) : ratio > maxRatio;
 			if (better) {
 				targetPos = currentPos;
 				maxRatio = ratio;
@@ -395,8 +411,8 @@ export const computeBlockKernel = (
 			}
 		}
 		for (let i = 0; i < nearRootLen; i++) {
-			const currentPos = fastMergeRootList[i];
-			const near = fastMergeRootCount[currentPos!];
+			const currentPos = numAt(fastMergeRootList, i);
+			const near = numAt(fastMergeRootCount, currentPos);
 			if (near > nearCnt) {
 				targetPos = currentPos;
 				nearCnt = near;
@@ -407,26 +423,26 @@ export const computeBlockKernel = (
 			continue;
 		}
 
-		const minSize = sizeMap[targetPos];
-		if (minSize! <= 0) {
+		const minSize = numAt(sizeMap, targetPos);
+		if (minSize <= 0) {
 			reclaimNode(nd);
 			continue;
 		}
 
-		const targetPutAble = minSize! > 140 ? blockPutAbleCountKernel(parent, targetPos, walkable, putAbleCache, posSeqMap[targetPos]) : 0;
+		const targetPutAble = minSize > 140 ? blockPutAbleCountKernel(parent, targetPos, walkable, putAbleCache, posSeqMap[targetPos]) : 0;
 		const posPutAble = k > 140 ? blockPutAbleCountKernel(parent, pos, walkable, putAbleCache, posSeqMap[pos]) : 0;
 		if (Math.max(targetPutAble, posPutAble) < 140) {
 			const mergedRoot = kernelUnion(parent, pos, targetPos);
-			const cnt = (k + minSize!) | 0;
+			const cnt = (k + minSize) | 0;
 			if (pos !== mergedRoot) sizeMap[pos] = 0;
 			else sizeMap[targetPos] = 0;
 			sizeMap[mergedRoot] = cnt;
 			const targetSeq = posSeqMap[targetPos] || [];
 			const currentSeq = posSeqMap[pos] || [];
-			const merged = Array.from({ length: targetSeq.length + currentSeq.length });
+			const merged: number[] = Array.from({ length: targetSeq.length + currentSeq.length });
 			let mergedIdx = 0;
-			for (let i = 0; i < targetSeq.length; i++) merged[mergedIdx++] = targetSeq[i];
-			for (let i = 0; i < currentSeq.length; i++) merged[mergedIdx++] = currentSeq[i];
+			for (let i = 0; i < targetSeq.length; i++) merged[mergedIdx++] = numAt(targetSeq, i);
+			for (let i = 0; i < currentSeq.length; i++) merged[mergedIdx++] = numAt(currentSeq, i);
 			posSeqMap[mergedRoot] = merged;
 			if (pos !== mergedRoot) posSeqMap[pos] = [];
 			else posSeqMap[targetPos] = [];

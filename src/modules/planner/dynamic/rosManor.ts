@@ -1,14 +1,16 @@
-// @ts-nocheck
 /**
  * ros 动态布局主流程: 候选块评估 (spawn 锚定限幅/槽位锚定/墙圈阈值) +
  * 枢纽/lab/道路/spawn/extension 落位与 POI 道路连通。
  * 经 layoutPlanner 的 'auto' 布局类型激活 (自动布局主线)。
  */
-import { newNode } from '@/utils/priorityQueue'
+import { PriorityQueue, newNode } from '@/utils/priorityQueue'
 import { RoomArray } from '@/utils/roomArray'
-import { squareDistance } from '../shared/plannerUtils'
+import { squareDistance, numAt } from '../shared/plannerUtils'
 import type { PlannerPoint, XY, StructMap } from '../shared/plannerUtils'
 import { findLabAnchorByTs } from './labAnchor'
+import type { ReachNode } from './blockKernel'
+import { placeSpawnAndExtensions } from './rosManorSpawn'
+import { connectContainerRoads } from './rosManorRoads'
 import {
 	ManagerPlanner,
 	objects,
@@ -20,26 +22,17 @@ import {
 	interpolation,
 	nearWallWithInterpolation,
 	visited,
-	queMin as queMinBuf,
+	queMin as queMinImport,
 	setRoomObjectCache,
 } from './rosBuffers'
+// 可空缓冲的函数内非空视图 (resetBuffers 后由调用链保证非空)
+const roomObjectCacheNN = () => roomObjectCache ?? new RoomArray();
+const queMinNN = () => queMinImport ?? new PriorityQueue(true);
 
 declare const Game: {
 	flags?: Record<string, { pos: { x: number; y: number; roomName: string } }>
 }
-declare const RoomPosition: new (x: number, y: number, roomName: string) => XY & { roomName: string }
-declare const PathFinder: {
-	search: (
-		origin: XY & { roomName?: string },
-		goal: { pos: XY & { roomName?: string }; range: number } | Array<{ pos: XY & { roomName?: string }; range: number }>,
-		opts: { roomCallback: () => any; maxRooms: number; plainCost?: number; swampCost?: number }
-	) => { path: XY[]; incomplete?: boolean }
-	CostMatrix: new () => { set: (x: number, y: number, cost: number) => void; get: (x: number, y: number) => number }
-}
 declare const CONTROLLER_STRUCTURES: Record<string, number[]>
-declare const OBSTACLE_OBJECT_TYPES: string[]
-declare const TERRAIN_MASK_WALL: number
-declare const TERRAIN_MASK_SWAMP: number
 
 /** 可放建筑平面最小面积门槛 */
 const minPlaneCnt = 160;
@@ -75,23 +68,24 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	}
 	const blockArray = ManagerPlanner.computeBlock(roomName, blocked);
 	const unionFind = blockArray[0];
-	const sizeMap = blockArray[1];
-	const wallMap = {};
-	const rootMembers = {};
+	const sizeMap: Record<number, number> = blockArray[1];
+	const wallMap: Record<number, ReachNode[]> = {};
+	const rootMembers: Record<number, number[]> = {};
 	for (let i = 0; i < 2500; i++) {
 		const root = unionFind.find(i);
-		if (sizeMap[root]! > 0) {
-			if (!(rootMembers as any)[root]) (rootMembers as any)[root] = [];
+		if ((sizeMap[root] ?? 0) > 0) {
+			if (!rootMembers[root]) rootMembers[root] = [];
 			rootMembers[root].push(i);
 		}
 	}
 	const roomWalkable = blockArray[2];
+	const roomWalkableNN = () => roomWalkable ?? new RoomArray();
 	const nearWall = blockArray[3];
 	const putAbleCacheMap = blockArray[4];
 	const allCacheMap = blockArray[5];
 
-	const roomManor = interpolation;
-	const roomStructs = nearWallWithInterpolation;
+	const roomManor = interpolation ?? new RoomArray();
+	const roomStructs = nearWallWithInterpolation ?? new RoomArray();
 
 	roomManor.init();
 	roomStructs.init();
@@ -100,19 +94,20 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	nearWall.init();
 
 	// let queMin = new PriorityQueue(true)
-	queMinBuf.clear();
+	const queMinLocal = queMinNN();
+	queMinLocal.clear();
 	// let visited = new RoomArray()
 
 	let finalPos = undefined;
 	let wallCnt = 1e9;
-	let innerPutAbleList = [];
+	let innerPutAbleList: ReachNode[] = [];
 	// 兜底方案：记录不检查阈值的备选
 	let fallbackPos = undefined;
 	let fallbackWallCnt = 1e9;
-	let fallbackWalls = null;
+	let fallbackWalls: ReachNode[] | null = null;
 
-	let centerX = undefined;
-	let centerY = undefined;
+	let centerX: number | undefined = undefined;
+	let centerY: number | undefined = undefined;
 	let slotCenter = null;
 
 	let centerPos = fixedCenter;
@@ -129,8 +124,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	// 过滤会全部出局 → 阶梯降级到无锚 → 布局被远处大块吸走, ext 铺到 spawn 15+ 格外。
 	// 锚定模式下改为「限幅半径内全部块的 putable 聚合 ≥ gate」判定, 块只贡献自己的
 	// putable 段; 非锚定维持单块口径 (历史行为)。
-	let anchorPool: Array<{ k: number; x?: number; y?: number }> | null = null;
-	let anchorAllPool: Array<{ k: number; x?: number; y?: number }> | null = null;
+	let anchorPool: ReachNode[] | null = null;
+	let anchorAllPool: ReachNode[] | null = null;
 	if (existSpawnPos && manorRadius > 0) {
 		const sx = existSpawnPos.x;
 		const sy = existSpawnPos.y;
@@ -141,7 +136,7 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		for (const rootKey of Object.keys(sizeMap)) {
 			const rootSize = Number(rootKey);
 			if (sizeMap[rootSize]! < 40) continue;
-			ManagerPlanner.getBlockPutAbleCnt(roomWalkable, visited, queMinBuf, unionFind, rootSize, putAbleCacheMap, allCacheMap, rootMembers);
+			ManagerPlanner.getBlockPutAbleCnt(roomWalkableNN(), unionFind, rootSize, putAbleCacheMap, allCacheMap, rootMembers);
 			for (const entry of putAbleCacheMap[rootSize] || []) {
 				if (within(entry, manorRadius)) anchorPool.push(entry);
 			}
@@ -158,17 +153,15 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		// spawn 常落在锚点旁的小口袋块里，强同块会把锚定全部误杀（诊断日志实证）
 
 		ManagerPlanner.getBlockPutAbleCnt(
-			roomWalkable,
-			visited,
-			queMinBuf,
+			roomWalkableNN(),
 			unionFind,
 			posNum,
 			putAbleCacheMap,
 			allCacheMap,
 			rootMembers
 		);
-		const currentPutAbleListCached = putAbleCacheMap[posNum];
-		const allListCached = allCacheMap[posNum];
+		const currentPutAbleListCached: ReachNode[] = putAbleCacheMap[posNum] ?? [];
+		const allListCached: ReachNode[] = allCacheMap[posNum] ?? [];
 		// 锚定模式：以 spawn 为中心限幅（切比雪夫半径，降级阶梯逐级放宽），防止墙圈/manor
 		// 沿开阔地单向突出长条。只过滤本地副本，不动跨候选共享的缓存数组。
 		// 远离 spawn 的块经限幅后 putable 不足 minPlaneCnt 自然出局，块选择隐式偏向 spawn 侧
@@ -188,10 +181,11 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		// 取本块内评分最高（k 最大）的可建筑者为本块中心；无可用槽位中心则整块出局（他块/自然流程兜底）
 		slotCenter = null;
 		if (!centerPos && existSpawnPos) {
-			const putK = new Map();
+			const putK = new Map<number, number>();
 			for (let pi = 0; pi < currentPutAbleLen; pi++) {
-				const e = currentPutAbleList![pi]!;
-				putK.set(e.x * 50 + e.y, e.k);
+				const e = currentPutAbleList[pi];
+				if (!e) continue;
+				putK.set((e.x ?? 0) * 50 + (e.y ?? 0), e.k);
 			}
 			let bestK = -1;
 			for (const [dx, dy] of SPAWN_SLOT_OFFSETS) {
@@ -213,9 +207,10 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		let gt1Cnt = 0;
 		const gt2List = [];
 		for (let pi = 0; pi < currentPutAbleLen; pi++) {
-			const e = currentPutAbleList![pi]!;
-			const ex = e.x;
-			const ey = e.y;
+			const e = currentPutAbleList[pi];
+			if (!e) continue;
+			const ex = e.x ?? 0;
+			const ey = e.y ?? 0;
 			sumX += ex;
 			sumY += ey;
 			if (e.k > 1) gt1Cnt += 1;
@@ -228,17 +223,19 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		if (gt2List.length < 30) {
 			for (let pi = 0; pi < gt2List.length; pi++) {
 				const a = gt2List[pi];
+				if (!a) continue;
 				for (let j = pi + 1; j < gt2List.length; j++) {
 					const b = gt2List[j];
-					const dist = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+					if (!b) continue;
+					const dist = Math.abs((a.x ?? 0) - (b.x ?? 0)) + Math.abs((a.y ?? 0) - (b.y ?? 0));
 					if (dist > maxDist) maxDist = dist;
 				}
 			}
 		}
 
 		let currentWallCnt = 0;
-		let currentWalls = null;
-		const walls = [];
+		let currentWalls: ReachNode[] | null = null;
+		const walls: ReachNode[] = [];
 		if (gt1Cnt > 30 || maxDist > 5) {
 			// 高频路径改为索引队列/数组标记，避免 PriorityQueue + callback 额外开销
 			fastStampToken += 1;
@@ -248,16 +245,18 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 				fastManorStamp.fill(0);
 			}
 			const stamp = fastStampToken;
-			const walkArr = roomWalkable.arr as number[];
-			for (let pi = 0; pi < allList!.length!; pi++) {
-				const e = allList![pi]!;
-				fastManorStamp[e.x * 50 + e.y] = stamp;
+			const walkArr = roomWalkableNN().arr;
+			for (let pi = 0; pi < allList.length; pi++) {
+				const e = allList[pi];
+				if (!e) continue;
+				fastManorStamp[(e.x ?? 0) * 50 + (e.y ?? 0)] = stamp;
 			}
 			// 直接扫描 manor 边界，避免整图 flood-fill
-			for (let pi = 0; pi < allList!.length!; pi++) {
-				const e = allList![pi]!;
-				const x = e.x;
-				const y = e.y;
+			for (let pi = 0; pi < allList.length; pi++) {
+				const e = allList[pi];
+				if (!e) continue;
+				const x = e.x ?? 0;
+				const y = e.y ?? 0;
 				const idx = x * 50 + y;
 				if (!walkArr[idx]) continue;
 				let isBoundary = false;
@@ -295,7 +294,7 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 			innerPutAbleList = currentInnerPutAbleList;
 			wallCnt = currentWallCnt;
 			finalPos = posNum;
-			(wallMap as any)[posNum] = currentWalls;
+			wallMap[posNum] = currentWalls;
 			if (centerPos) {
 				centerX = centerPos.x;
 				centerY = centerPos.y;
@@ -316,28 +315,27 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	}
 
 	// 兜底：如果没有满足阈值的方案，使用备选方案
-	if (!finalPos && fallbackPos) {
+	if (!finalPos && fallbackPos !== undefined) {
 		finalPos = fallbackPos;
+		const finalPosNum = finalPos;
 		wallCnt = fallbackWallCnt;
-		(wallMap as any)[finalPos] = fallbackWalls;
+		wallMap[finalPos] = fallbackWalls ?? [];
 		// 重新计算 innerPutAbleList
 		ManagerPlanner.getBlockPutAbleCnt(
-			roomWalkable,
-			visited,
-			queMinBuf,
+			roomWalkableNN(),
 			unionFind,
 			finalPos,
 			putAbleCacheMap,
 			allCacheMap,
 			rootMembers
 		);
-		innerPutAbleList = putAbleCacheMap[finalPos];
+		innerPutAbleList = putAbleCacheMap[finalPos] ?? [];
 		// 锚定模式下与主路径同口径限幅（fallback 重读的缓存数组同样过滤）
 		if (centerPos && existSpawnPos && manorRadius > 0) {
 			const sx = existSpawnPos.x;
 			const sy = existSpawnPos.y;
-			innerPutAbleList = innerPutAbleList.filter((e: { x: number; y: number }) =>
-				Math.max(Math.abs(e.x - sx), Math.abs(e.y - sy)) <= manorRadius);
+			innerPutAbleList = innerPutAbleList.filter((e: ReachNode) =>
+				Math.max(Math.abs((e.x ?? 0) - sx), Math.abs((e.y ?? 0) - sy)) <= manorRadius);
 		}
 		if (centerPos) {
 			centerX = centerPos.x;
@@ -347,8 +345,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 			let sumY = 0;
 			for (let i = 0; i < innerPutAbleList.length; i++) {
 				const e = innerPutAbleList[i];
-				sumX += e.x;
-				sumY += e.y;
+				sumX += e?.x ?? 0;
+				sumY += e?.y ?? 0;
 			}
 			centerX = sumX / innerPutAbleList.length;
 			centerY = sumY / innerPutAbleList.length;
@@ -357,25 +355,27 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 
 	if (!finalPos || !putAbleCacheMap[finalPos]) return;
 
-	const walls = (wallMap as any)[finalPos];
+	const walls = wallMap[finalPos];
 
 	roomManor.init();
 	const finalAllCache = allCacheMap[finalPos];
 	// 锚定模式下与 innerPutAbleList 同口径限幅（-1 背景区域同样收缩，墙圈带 +3 同步）
-	let boundedAllCache = finalAllCache;
+	let boundedAllCache: ReachNode[] = finalAllCache ?? [];
 	if (centerPos && existSpawnPos && manorRadius > 0) {
 		const sx = existSpawnPos.x;
 		const sy = existSpawnPos.y;
-		boundedAllCache = finalAllCache!.filter!((e: { x: number; y: number }) =>
-			Math.max(Math.abs(e.x - sx), Math.abs(e.y - sy)) <= manorRadius + 3);
+		boundedAllCache = (finalAllCache ?? []).filter((e: ReachNode) =>
+			Math.max(Math.abs((e.x ?? 0) - sx), Math.abs((e.y ?? 0) - sy)) <= manorRadius + 3);
 	}
-	for (let i = 0; i < boundedAllCache!.length!; i++) {
-		const e = boundedAllCache![i]!;
-		roomManor.set(e.x, e.y, -1);
+	for (let i = 0; i < boundedAllCache.length; i++) {
+		const e = boundedAllCache[i];
+		if (!e) continue;
+		roomManor.set(e.x ?? 0, e.y ?? 0, -1);
 	}
 	for (let i = 0; i < innerPutAbleList.length; i++) {
 		const e = innerPutAbleList[i];
-		roomManor.set(e.x, e.y, e.k);
+		if (!e) continue;
+		roomManor.set(e.x ?? 0, e.y ?? 0, e.k);
 	}
 
 	let storageX = 0;
@@ -384,10 +384,10 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 
 	for (let i = 0; i < innerPutAbleList.length; i++) {
 		const e = innerPutAbleList[i];
-		if (e.k <= 2) continue;
-		const x = e.x;
-		const y = e.y;
-		const distance = squareDistance(centerX, centerY, x, y);
+		if (!e || e.k <= 2) continue;
+		const x = e.x ?? 0;
+		const y = e.y ?? 0;
+		const distance = squareDistance(centerX ?? 0, centerY ?? 0, x, y);
 		if (storageDistance > distance) {
 			storageDistance = distance;
 			storageX = x;
@@ -402,8 +402,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	// 槽位模式：枢纽直接落定槽位中心——spawn 恰好位于中心环槽位上，
 	// storage/terminal/factory/link 围合仍以该点为中心
 	if (!centerPos && slotCenter) {
-		storageX = centerX;
-		storageY = centerY;
+		storageX = centerX ?? storageX;
+		storageY = centerY ?? storageY;
 	}
 
 	const manorArr = roomManor.arr as (number | string)[];
@@ -415,7 +415,11 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 	const structMap: StructMap = {};
 	for (const e in CONTROLLER_STRUCTURES) structMap[e] = [];
 	if (!structMap['road']) structMap['road'] = [];
-	const walkableArr = roomWalkable.arr as number[];
+	const pushStruct = (kind: string, pos: [number, number]) => {
+		const list = structMap[kind];
+		if (list) list.push(pos);
+	};
+	const walkableArr = roomWalkableNN().arr;
 	const roadSet = new Uint8Array(2500);
 	const pushRoad = (x: number, y: number) => {
 		if (x < 0 || x > 49 || y < 0 || y > 49) return;
@@ -423,25 +427,25 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		if (!walkableArr[idx]) return;
 		if (roadSet[idx]) return;
 		roadSet[idx] = 1;
-		structMap['road'].push!([x, y]);
+		pushStruct('road', [x, y]);
 	};
 
 	// 落地手置 spawn 占位：本体计入 spawn 编制首位；roadSet 标记使 POI 道路规划绕行该格
 	const existSpawn = existSpawnPos;
 	if (existSpawn) {
 		roadSet[existSpawn.x * 50 + existSpawn.y] = 1;
-		structMap['spawn'].push!([existSpawn.x, existSpawn.y]);
+		pushStruct('spawn', [existSpawn.x, existSpawn.y]);
 	}
 
 	// 资源点布局
-	structMap['link'] = roomObjectCache.link;
-	structMap['container'] = roomObjectCache.container;
-	structMap['extractor'] = roomObjectCache.extractor;
+	structMap['link'] = roomObjectCacheNN().link ?? [];
+	structMap['container'] = roomObjectCacheNN().container ?? [];
+	structMap['extractor'] = roomObjectCacheNN().extractor ?? [];
 	//中心布局
-	structMap['storage'].push!([storageX - 1, storageY]);
-	structMap['terminal'].push!([storageX, storageY + 1]);
-	structMap['factory'].push!([storageX + 1, storageY]);
-	structMap['link'].push!([storageX, storageY - 1]);
+	pushStruct('storage', [storageX - 1, storageY]);
+	pushStruct('terminal', [storageX, storageY + 1]);
+	pushStruct('factory', [storageX + 1, storageY]);
+	pushStruct('link', [storageX, storageY - 1]);
 	for (let i = -1; i <= 1; i++) {
 		for (let j = -1; j <= 1; j++) {
 			pushRoad(storageX + i + j, storageY + i - j); //仿射变换 [sin,cos,cos,-sin]
@@ -454,13 +458,13 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		labChangeDirection = true;
 	}
 
-	const vis = {};
+	const vis: Record<string, number> = {};
 	for (let i = 0; i < 2; i++) {
 		for (let j = 0; j < 2; j++) {
-			(vis as any)[i + '_' + j] = 1; // 优先放置中间的label
+			vis[i + '_' + j] = 1; // 优先放置中间的label
 			const jj = labChangeDirection ? j : 1 - j;
-			const structs = labs[i + 1].charAt!(j + 1);
-			if (structs == '☢') structMap['lab'].push!([labX + i, labY + jj]);
+			const structs = labs[i + 1]?.charAt(j + 1);
+			if (structs === '☢') pushStruct('lab', [labX + i, labY + jj]);
 			else pushRoad(labX + i, labY + jj);
 		}
 	}
@@ -469,15 +473,17 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		for (let j = -1; j < 3; j++) {
 			if ((vis as any)[i + '_' + j]) continue;
 			const jj = labChangeDirection ? j : 1 - j;
-			const structs = labs[i + 1].charAt!(j + 1);
-			if (structs == '☢') structMap['lab'].push!([labX + i, labY + jj]);
+			const structs = labs[i + 1]?.charAt(j + 1);
+			if (structs === '☢') pushStruct('lab', [labX + i, labY + jj]);
 			else pushRoad(labX + i, labY + jj);
 		}
 	}
 
-	for (let i = 0; i < walls.length; i++) {
-		const e = walls[i];
-		structMap['rampart'].push!([e.x, e.y]);
+	const wallList = walls ?? [];
+	for (let i = 0; i < wallList.length; i++) {
+		const e = wallList[i];
+		if (!e) continue;
+		pushStruct('rampart', [e.x ?? 0, e.y ?? 0]);
 	}
 
 	for (const struct in CONTROLLER_STRUCTURES) {
@@ -522,16 +528,17 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 			setModel(x + 2, y + 2);
 		}
 	}
-	visited.init();
-	const visitedArrForPath = visited.arr as number[];
+	const visitedPath = visited ?? new RoomArray();
+	visitedPath.init();
+	const visitedArrForPath = visitedPath.arr;
 	visitedArrForPath[storageX * 50 + storageY] = 1;
 
-	queMinBuf.push(newNode(1, storageX, storageY));
-	const costRoad = routeDistanceLocal; //重复使用
+	queMinLocal.push(newNode(1, storageX, storageY));
+	const costRoad = routeDistanceLocal ?? new RoomArray(); //重复使用
 	costRoad.init();
-	const roomStructArrForPath = roomStructs.arr as (number | string)[];
-	const costRoadArrForPath = costRoad.arr as number[];
-	queMinBuf.whileNoEmpty((nd) => {
+	const roomStructArrForPath = roomStructs.arr;
+	const costRoadArrForPath = costRoad.arr;
+	queMinLocal.whileNoEmpty((nd) => {
 		for (let dx = -1; dx <= 1; dx++) {
 			for (let dy = -1; dy <= 1; dy++) {
 				if (!dx && !dy) continue;
@@ -543,7 +550,7 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 				const nVal = typeof nValRaw === 'number' ? nValRaw : 0;
 				if (!visitedArrForPath[nidx] && nVal > 0) {
 					visitedArrForPath[nidx] = 1;
-					queMinBuf.push(newNode(nd!.k! + nVal, x, y));
+					queMinLocal.push(newNode(nd!.k! + nVal, x, y));
 				}
 			}
 		}
@@ -554,11 +561,11 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		const e = structMap['road'][i];
 		roomStructs.set(e![0]!, e![1]!, 'road'); //这里把之前的road覆盖上去防止放在之前里road上了
 	}
-	const costArr = costRoad.arr as number[];
-	const roomStructArr = roomStructs.arr as (number | string)[];
+	const costArr = costRoad.arr;
+	const roomStructArr = roomStructs.arr;
 	nearMinCostCache.fill(65535);
-	const getNearMinCost = (x: any, y: any, idx: any) => {
-		const cached = nearMinCostCache[idx];
+	const getNearMinCost = (x: number, y: number, idx: number): number => {
+		const cached = nearMinCostCache[idx] ?? 65535;
 		if (cached !== 65535) return cached;
 		let minVal = 65535;
 		for (let dx = -1; dx <= 1; dx++) {
@@ -567,8 +574,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 				const nx = x + dx;
 				const ny = y + dy;
 				if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
-				const nVal = costArr[nx * 50 + ny];
-				if (nVal! > 0 && minVal > nVal!) minVal = nVal!;
+				const nVal = numAt(costArr, nx * 50 + ny);
+				if (nVal > 0 && minVal > nVal) minVal = nVal;
 			}
 		}
 		const res = minVal === 65535 ? 0 : minVal;
@@ -597,105 +604,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		}
 	}
 
-	let spawnPos = [];
-	let extensionPos = [];
-	for (let x = 0; x < 50; x++) {
-		for (let y = 0; y < 50; y++) {
-			const idx = x * 50 + y;
-			const val = roomStructArr[idx];
-			if (typeof val !== 'number' || val <= 0) continue;
-			const dist = getNearMinCost(x, y, idx) || 100;
-			// let dist = Math.sqrt(Math.pow(x-storageX,2)+Math.pow(y-storageY,2))
-			if (val == 12) {
-				// 8 && 12 上面有写，注意！！！
-				spawnPos.push([x, y, dist]);
-			} else {
-				extensionPos.push([x, y, dist]);
-			}
-		}
-	}
-	const cmpFunc = (a: any, b: any) => (a[2] == b[2] ? (a[1] == b[1] ? a[0] - b[0] : a[1] - b[1]) : a[2] - b[2]);
-	spawnPos = spawnPos.sort(cmpFunc);
-	extensionPos = extensionPos.sort(cmpFunc);
-	const putList = [];
-	const structOrder = ['spawn', 'nuker', 'powerSpawn', 'tower', 'observer'];
-	// 落地手置 spawn 收编：本体已在上方占位为 spawn 首位，这里把该格从其余结构规划中剔除
-	// （撞上 lab/tower 等已规划位则移除原条目，下工地阶段按已有结构自然跳过）
-	if (existSpawn) {
-		const sx = existSpawn.x;
-		const sy = existSpawn.y;
-		for (const st in structMap) {
-			if (st === 'road' || st === 'spawn') continue;
-			const arr = structMap[st];
-			for (let i = (arr?.length ?? 0) - 1; i >= 0; i--) {
-				if (arr?.[i]?.[0] === sx && arr?.[i]?.[1] === sy) arr?.splice(i, 1);
-			}
-		}
-		// 计划 spawn 与本体保持切比雪夫 ≥2（相邻格可、贴脸不可）
-		spawnPos = spawnPos.filter((e) => Math.max(Math.abs(e[0]! - sx), Math.abs(e[1]! - sy)) >= 2);
-		extensionPos = extensionPos.filter((e) => !(e[0] === sx && e[1] === sy));
-		putList.push([sx, sy, 'spawn']);
-	}
-	// 计划 spawn 相互之间、以及与本体之间均保距 ≥2（贪心：距离序先到先得，贴脸候选让位）
-	const spacedSpawnPos: any = [];
-	for (const cand of spawnPos) {
-		const clash = structMap['spawn'].some!((s) => Math.max(Math.abs(s[0] - cand[0]!), Math.abs(s[1] - cand[1]!)) < 2)
-			|| spacedSpawnPos.some((s) => Math.max(Math.abs(s[0] - cand[0]!), Math.abs(s[1] - cand[1]!)) < 2);
-		if (!clash) spacedSpawnPos.push(cand);
-	}
-	spawnPos = spacedSpawnPos;
-	let spawnIdx = 0;
-	let extIdx = 0;
-	for (let si = 0; si < structOrder.length; si++) {
-		const struct = structOrder[si];
-		const cnt = CONTROLLER_STRUCTURES[struct!][8] - (struct === 'spawn' && existSpawn ? 1 : 0);
-		for (let i = 0; i < cnt; i++) {
-			const e = spawnIdx < spawnPos.length ? spawnPos[spawnIdx++] : extensionPos[extIdx++];
-			if (!e) continue;
-			structMap[struct!].push([e[0], e[1]]);
-			putList.push([e[0], e[1], struct]);
-		}
-	}
-	const remainPos = extensionPos.slice(extIdx);
-	for (let i = spawnIdx; i < spawnPos.length; i++) remainPos.push(spawnPos[i]);
-	extensionPos = remainPos.sort(cmpFunc);
-	// 采集环保护 (boot 回归取证): source 8 邻是 miner 站位与源容器选址域——
-	// ext 是硬占位建筑, 压环 = 采集面收窄 (boot 实证 source(18,22) 环被占 2/8,
-	// L3 9177→12228 回退)。ext 候选剔除全部 source POI 的切比雪夫 1 环。
-	// POI 序 [controller, mineral, source1, source2], mineral=index 1 (rosBlock 约定)
-	const sourcePois = objects.slice(2);
-	if (sourcePois.length > 0) {
-		const protectedIdx = new Set<number>();
-		for (const s of sourcePois) {
-			for (let dx = -1; dx <= 1; dx++) {
-				for (let dy = -1; dy <= 1; dy++) {
-					protectedIdx.add((s.x! + dx) * 50 + (s.y! + dy));
-				}
-			}
-		}
-		extensionPos = extensionPos.filter((e) => !protectedIdx.has(e[0]! * 50 + e[1]!));
-	}
-	// ext 近 hub 钳制 (批次 I 缺口 1, race 本体 L2@676 口径): ext 的价值 = 孵化
-	// 攒能路程短——远离 spawn/hub 的 ext 每次填充多走十几格, L2 期建成也是负资产
-	// (实证: 布局 ext 全压 x=43 远东一列, 离 spawn(25,25) 15+ 格, 中段塌方主因)。
-	// 以 spawn 本体为圆心切比雪夫 ≤7 环带截断, 环带内不足再放远点兜底。
-	if (existSpawn) {
-		const sx = existSpawn.x;
-		const sy = existSpawn.y;
-		const near = extensionPos.filter((e) => Math.max(Math.abs(e[0]! - sx), Math.abs(e[1]! - sy)) <= 7);
-		const far = extensionPos.filter((e) => Math.max(Math.abs(e[0]! - sx), Math.abs(e[1]! - sy)) > 7);
-		extensionPos = near.length >= 10 ? near.concat(far.slice(0, Math.max(0, 60 - near.length))) : near.concat(far);
-	}
-	let extCnt = 60;
-	for (let i = 0; i < extensionPos.length; i++) {
-		const e = extensionPos[i];
-		if (extCnt > 0) {
-			structMap['extension'].push!([e![0]!, e![1]!]);
-			putList.push([e![0]!, e![1]!, 'extension']);
-			extCnt -= 1;
-		}
-	}
 
+	const putList = placeSpawnAndExtensions(structMap, roomStructArr, getNearMinCost, objects.slice(2), existSpawn);
 	// 更新roads
 	roomStructs.init();
 	for (const struct in CONTROLLER_STRUCTURES) {
@@ -705,10 +615,10 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 			roomStructs.set(e[0]!, e[1]!, struct);
 		}
 	}
-	visited.init();
-	const visitedRoadArr = visited.arr as number[];
-	const costRoadArr = costRoad.arr as number[];
-	const roomStructsArrForRoad = roomStructs.arr as (number | string)[];
+	visitedPath.init();
+	const visitedRoadArr = visitedPath.arr;
+	const costRoadArr = costRoad.arr;
+	const roomStructsArrForRoad = roomStructs.arr;
 	for (let i = 0; i < structMap['road'].length; i++) {
 		const e = structMap['road'][i];
 		visitedRoadArr[e![0]! * 50 + e![1]!] = 1;
@@ -724,8 +634,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 				const nx = x + dx;
 				const ny = y + dy;
 				if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
-				const val = costRoadArr[nx * 50 + ny];
-				if (val! > 0 && minVal > val!) minVal = val!;
+				const val = numAt(costRoadArr, nx * 50 + ny);
+				if (val > 0 && minVal > val) minVal = val;
 			}
 		}
 		for (let dx = -1; dx <= 1; dx++) {
@@ -753,8 +663,8 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 				const nx = x + dx;
 				const ny = y + dy;
 				if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
-				const nVal = costRoadArr[nx * 50 + ny];
-				if (nVal! > 0 && minVal > nVal!) minVal = nVal!;
+				const nVal = numAt(costRoadArr, nx * 50 + ny);
+				if (nVal > 0 && minVal > nVal) minVal = nVal;
 			}
 		}
 		for (let dx = -1; dx <= 1; dx++) {
@@ -774,53 +684,7 @@ export const computeManor = (roomName: string, points: PlannerPoint[], fixedCent
 		}
 	}
 
-	const costs = new PathFinder.CostMatrix();
-	const terrain = new Room.Terrain(roomName);
-	for (let i = 0; i < 50; i++) {
-		for (let j = 0; j < 50; j++) {
-			const te = terrain.get(i, j);
-			costs.set(i, j, te == TERRAIN_MASK_WALL ? 255 : te == TERRAIN_MASK_SWAMP ? 4 : 2);
-		}
-	}
-	for (const struct of OBSTACLE_OBJECT_TYPES) {
-		if (structMap[struct]) {
-			const arr = structMap[struct];
-			for (let i = 0; i < arr.length; i++) {
-				const e = arr[i];
-				costs.set(e![0]!, e![1]!, 255);
-			}
-		}
-	}
-	for (let i = 0; i < structMap['road'].length; i++) {
-		const e = structMap['road'][i];
-		costs.set(e![0]!, e![1]!, 1);
-	}
-	structMap['container'].sort!((a, b) => {
-		const adx = a[0] - storageX;
-		const ady = a[1] - storageY;
-		const bdx = b[0] - storageX;
-		const bdy = b[1] - storageY;
-		return adx * adx + ady * ady - (bdx * bdx + bdy * bdy);
-	});
-	for (let i = 0; i < structMap['container'].length!; i++) {
-		const e = structMap['container'][i]!;
-		const result = PathFinder.search(
-			new RoomPosition(centerX, centerY, roomName),
-			{ pos: new RoomPosition(e[0]!, e[1]!, roomName), range: 1 },
-			{
-				roomCallback: () => costs,
-				maxRooms: 1
-			}
-		);
-		const path = result.path || [];
-		for (let j = 0; j < path.length; j++) {
-			const pos = path[j];
-			if (costs.get(pos!.x!, pos!.y!) != 1) {
-				pushRoad(pos!.x!, pos!.y!);
-				costs.set(pos!.x!, pos!.y!, 1);
-			}
-		}
-	}
+	connectContainerRoads(structMap, storageX, storageY, centerX ?? storageX, centerY ?? storageY, roomName, pushRoad);
 	ManagerPlanner.dismiss();
 
 	return {

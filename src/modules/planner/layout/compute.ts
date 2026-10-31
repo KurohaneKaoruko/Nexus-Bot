@@ -1,11 +1,9 @@
-// @ts-nocheck
 /**
  * 布局计算域: 静态/动态布局计算（含三级缓存命中）与重算后的残留工地清理。
  */
 import { decompress } from '@/utils/compress';
 import { submitIntent } from '@/runtime/intentQueue';
 import { rosPlanner } from '../rosPlanner';
-import { autoPlanner63 } from '../dynamic/63Planner';
 import { plannerLog as log, dynamicBucketFloor } from '../memory';
 import { normalizeDynamicPlannerResult } from './roomContext';
 import type {
@@ -79,7 +77,7 @@ export function computeStatic(roomName: string, layoutType: string, center: Layo
  * - 优先命中“最近一次缓存”（用于预览后立即 build）
  * - 其次命中“输入签名缓存”（用于批量/重复调用）
  * @param roomName 房间名
- * @param layoutType 动态布局类型 ('auto' | '63auto')
+ * @param layoutType 动态布局类型（仅 'auto'）
  * @returns 计算结果；失败返回 null（并输出日志）
  */
 export function computeDynamic(roomName: string, layoutType: string): CachedLayout | null {
@@ -98,12 +96,8 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
     // 落地手置 spawn：提取坐标供布局限幅与收编（computeManor 内以 spawn 为中心限幅并收编 spawn 位）。
     // 中心不定死：不给 fixedCenter，枢纽点由规划器自然选址（可建筑质心 + storage 取最近 k>2 格），
     // 仅通过限幅半径保证布局够得着 spawn 附近
-    let existSpawnPos: { x: number; y: number } | undefined;
-    // 63 布局无 spawn 锚定语义, 不参与限幅阶梯
-    if (layoutType !== '63auto') {
-        const landingSpawn = room.find(FIND_MY_SPAWNS)[0];
-        if (landingSpawn) existSpawnPos = { x: landingSpawn.pos.x, y: landingSpawn.pos.y };
-    }
+    const landingSpawn = room.find(FIND_MY_SPAWNS)[0];
+    const existSpawnPos = landingSpawn ? { x: landingSpawn.pos.x, y: landingSpawn.pos.y } : undefined;
 
     const cached = getLastCachedByRoomLayout(roomName, layoutType);
     if (cached) {
@@ -136,11 +130,11 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
     // 缺席以控制器坐标代位 (仅选址权重参考, 不落任何矿石结构)。缺席锁死布局
     // 会让 ext 永不放量, 容量锁 300, 采集面锁死最小体 (sim 场景实锤)
     const pc = room.controller?.pos;
-    const pm = room.find(FIND_MINERALS)[0]?.pos ?? pc;
     if (!pa || !pb || !pc) {
         log(`动态布局失败: 缺少关键对象 room=${roomName} layout=${layoutType} (controller/source)`);
         return null;
     }
+    const pm = room.find(FIND_MINERALS)[0]?.pos ?? pc;
 
     const pointsSig = `${pc.x},${pc.y}|${pm.x},${pm.y}|${pa.x},${pa.y}|${pb.x},${pb.y}`;
     let sigKey = makeDynamicSigKey(roomName, layoutType, pointsSig, flagCenter);
@@ -166,8 +160,7 @@ export function computeDynamic(roomName: string, layoutType: string): CachedLayo
         });
     }
 
-    const planner = layoutType === '63auto' ? autoPlanner63 : rosPlanner;
-    const computeManor = planner.ManagerPlanner.computeManor;
+    const computeManor = rosPlanner.ManagerPlanner.computeManor;
     // 锚定降级阶梯：紧凑 10 → 放宽 14 → 不限幅，逐级放宽仍保持 spawn 锚定；
     // 全部失败才退回无锚流程（布局远离 spawn 的最后兜底），杜绝「稍偏即崩」的二值脆弱性
     let roomStructsData = null;

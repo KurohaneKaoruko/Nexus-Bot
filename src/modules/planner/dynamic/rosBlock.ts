@@ -1,12 +1,12 @@
-// @ts-nocheck
 /**
  * ros 分块地形预处理: 山体距离/出口距离 BFS、近墙插值、POI 容器位选址,
  * 以及基于并查集的平面分块与小块合并 (优先走 kernel 快速路径)。
  */
-import { newNode, reclaimNode } from '@/utils/priorityQueue'
+import { PriorityQueue, newNode, reclaimNode } from '@/utils/priorityQueue'
 import { UnionFind } from '@/utils/unionFind'
 import { RoomArray } from '@/utils/roomArray'
-import { numAt, DIR4 } from '../shared/plannerUtils'
+import { numAt, DIR4_AT } from '../shared/plannerUtils'
+import type { ReachNode } from './blockKernel'
 import {
 	visited,
 	roomWalkable,
@@ -15,9 +15,9 @@ import {
 	roomObjectCache,
 	nearWallWithInterpolation,
 	interpolation,
-	queMin as queMinBuf,
-	startPoint as startPointBuf,
-	unionFind as unionFindBuf,
+	queMin,
+	startPoint,
+	unionFind,
 	resetBuffers,
 	releaseBuffers,
 	ensureBuffers,
@@ -29,7 +29,7 @@ const minPlaneCnt = 160;
 /** POI (controller/mineral/source) 列表, 由 computeManor 写入 */
 export let objects: { x: number; y: number; roomName: string }[] = [];
 
-export const setObjects = (v) => { objects = v; };
+export const setObjects = (v: { x: number; y: number; roomName: string }[]): void => { objects = v; };
 
 let fastQueue = new Int16Array(2500);
 let fastKernelManorMask = new Uint8Array(2500);
@@ -65,18 +65,16 @@ export const ManagerPlanner = {
 	 */
 	getBlockPutAbleCnt(
 		walkable: RoomArray,
-		visitedBuf: RoomArray,
-		queMin: { push: Function; clear: Function; isEmpty: Function; pop: Function; whileNoEmpty: Function },
 		unionFind: UnionFind,
 		tarRoot: number,
-		putAbleCacheMap: Record<number, any[]>,
-		AllCacheMap: Record<number, any[]>,
+		putAbleCacheMap: Record<number, ReachNode[]>,
+		AllCacheMap: Record<number, ReachNode[]>,
 		rootMembers?: Record<number, number[]>
 		) {
 			if (putAbleCacheMap[tarRoot]) return [putAbleCacheMap[tarRoot], AllCacheMap[tarRoot]];
 			const innerPutAbleList: any = [];
 			const AllCacheList: any = [];
-			const walkArr = walkable.arr as number[];
+			const walkArr = walkable.arr;
 			const memberList = rootMembers ? rootMembers[tarRoot] : undefined;
 			buildKernelManorMask(unionFind.parent, tarRoot, walkArr, fastKernelManorMask, memberList);
 			collectKernelManorReachability(fastKernelManorMask, walkArr, innerPutAbleList, AllCacheList);
@@ -97,7 +95,7 @@ export const ManagerPlanner = {
 		) {
 			const root = Number(tarRoot);
 			if (putAbleCntCacheMap[root] != null) return putAbleCntCacheMap[root];
-			const walkArr = walkable.arr as number[];
+			const walkArr = walkable.arr;
 			const cntCache = new Int16Array(2500);
 			cntCache.fill(-1);
 			const cnt = blockPutAbleCountKernel(
@@ -122,15 +120,27 @@ export const ManagerPlanner = {
 	): [UnionFind, Record<number, number>, RoomArray, RoomArray, Record<number, any[]>, Record<number, any[]>] {
 		ManagerPlanner.createObjects();
 
-		roomWalkable.initRoomTerrainWalkAble(roomName);
-		const walkArr = roomWalkable.arr as number[];
-		const blockedArr = blocked?.arr as number[] | undefined;
+		// 缓冲由 createObjects(ensureBuffers) 保证非空, 函数内以局部别名固定非空视图
+		const walkBuf = roomWalkable ?? new RoomArray();
+		const visitedBuf = visited ?? new RoomArray();
+		const nearWallBuf = nearWall ?? new RoomArray();
+		const routeBuf = routeDistance ?? new RoomArray();
+		const objCache = roomObjectCache ?? new RoomArray();
+		const interBuf = interpolation ?? new RoomArray();
+		const nearWallInterBuf = nearWallWithInterpolation ?? new RoomArray();
+		const queMinBuf2 = queMin ?? new PriorityQueue(true);
+		const startPointBuf2 = startPoint ?? new PriorityQueue(true);
+		const unionFindLocal = unionFind ?? new UnionFind(2500);
+
+		walkBuf.initRoomTerrainWalkAble(roomName);
+		const walkArr = walkBuf.arr;
+		const blockedArr = blocked?.arr;
 
 		// 计算距离山体要多远（均匀权重 BFS 用数组队列，避免堆开销）
-		visited.init();
-		nearWall.init();
-		const visitedArr = visited.arr as number[];
-		const nearWallArr = nearWall.arr as number[];
+		visitedBuf.init();
+		nearWallBuf.init();
+		const visitedArr = visitedBuf.arr;
+		const nearWallArr = nearWallBuf.arr;
 		let qHead = 0;
 		let qTail = 0;
 		for (let idx = 0; idx < 2500; idx++) {
@@ -141,15 +151,16 @@ export const ManagerPlanner = {
 			}
 		}
 		while (qHead < qTail) {
-			const idx = fastQueue[qHead++];
-			const x = (idx! / 50) | 0;
-			const y = idx! % 50;
+			const idx = numAt(fastQueue, qHead);
+			qHead += 1;
+			const x = (idx / 50) | 0;
+			const y = idx % 50;
 			const ndk = numAt(nearWallArr, idx);
 			for (let i = 0; i < 4; i++) {
-				const dx = DIR4[i][0]!;
-				const dy = DIR4[i][1]!;
-				const nx = x + dx!;
-				const ny = y + dy!;
+				const dir = DIR4_AT[i];
+				if (!dir) continue;
+				const nx = x + dir[0];
+				const ny = y + dir[1];
 				if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
 				const nidx = nx * 50 + ny;
 				if (walkArr[nidx] && !visitedArr[nidx]) {
@@ -173,11 +184,11 @@ export const ManagerPlanner = {
 					const nidx = nx * 50 + ny;
 					if (!walkArr[nidx]) continue;
 					nearWallArr[nidx] = 50;
-					queMinBuf.push(newNode(0, nx, ny));
+					queMinBuf2.push(newNode(0, nx, ny));
 				}
 			}
 			nearWallArr[idx] = 50;
-			queMinBuf.push(newNode(0, x, y));
+			queMinBuf2.push(newNode(0, x, y));
 		};
 		for (let y = 0; y < 50; y++) {
 			pushBorderSeed(0, y);
@@ -188,9 +199,9 @@ export const ManagerPlanner = {
 			pushBorderSeed(x, 49);
 		}
 
-		const roomPutAble = routeDistance;
+		const roomPutAble = routeBuf;
 		roomPutAble.initRoomTerrainWalkAble(roomName);
-		const roomPutAbleArr = roomPutAble.arr as number[];
+		const roomPutAbleArr = roomPutAble.arr;
 		const clearPutAbleNearBorder = (x: number, y: number) => {
 			const idx = x * 50 + y;
 			if (!roomPutAbleArr[idx]) return;
@@ -225,15 +236,15 @@ export const ManagerPlanner = {
 				const idx = nx * 50 + ny;
 				if (!walkArr[idx]) return false;
 				if (requirePutAble && !roomPutAbleArr[idx]) return false;
-				if (roomObjectCache.get(nx, ny)) return false;
+				if (objCache.get(nx, ny)) return false;
 				picked = [nx, ny];
 				return true;
 			};
 
 			for (let i = 0; i < 4; i++) {
-				const dx = DIR4[i][0]!;
-				const dy = DIR4[i][1]!;
-				tryPick(x + dx, y + dy, true);
+				const dir = DIR4_AT[i];
+				if (!dir) continue;
+				tryPick(x + dir[0], y + dir[1], true);
 				if (picked) break;
 			}
 			for (let dx = -1; dx <= 1; dx++) {
@@ -267,7 +278,7 @@ export const ManagerPlanner = {
 			}
 
 			if (!picked) return null;
-			roomObjectCache.set(picked[0], picked[1], struct);
+			objCache.set(picked[0], picked[1], struct);
 			return picked;
 		};
 		for (let i = 0; i < objects.length; i++) {
@@ -280,30 +291,30 @@ export const ManagerPlanner = {
 			if (i != 1) {
 				const linkPos = getObjectPos(p[0], p[1], 'link');
 				if (linkPos) {
-					roomObjectCache.link = roomObjectCache.link || [];
-					roomObjectCache.link.push(linkPos);
+					objCache.link = objCache.link || [];
+					objCache.link.push(linkPos);
 				} // link controller 然后是  source
 			} else {
-				roomObjectCache.extractor = [[pos!.x!, pos!.y!]];
+				objCache.extractor = [[pos!.x!, pos!.y!]];
 			}
-			roomObjectCache.container = roomObjectCache.container || [];
-			if (i != 1) roomObjectCache.container.unshift(p); //如果是 mineral 最后一个
-			else roomObjectCache.container.push(p);
+			objCache.container = objCache.container || [];
+			if (i != 1) objCache.container.unshift(p); //如果是 mineral 最后一个
+			else objCache.container.push(p);
 		}
 
 		// 插值：热点路径改为数组直访，减少 forEach/for4Direction 回调开销
-		const interpolationArr = interpolation.arr as number[];
-		const nearWallWithInterpolationArr = nearWallWithInterpolation.arr as number[];
+		const interpolationArr = interBuf.arr;
+		const nearWallWithInterpolationArr = nearWallInterBuf.arr;
 		for (let x = 0; x < 50; x++) {
 			for (let y = 0; y < 50; y++) {
 				const idx = x * 50 + y;
 				const val = numAt(nearWallArr, idx);
 				let value = -4 * val;
 				for (let i = 0; i < 4; i++) {
-					const dx = DIR4[i][0]!;
-					const dy = DIR4[i][1]!;
-					const nx = x + dx!;
-					const ny = y + dy!;
+					const dir = DIR4_AT[i];
+					if (!dir) continue;
+					const nx = x + dir[0];
+					const ny = y + dir[1];
 					if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
 					value += numAt(nearWallArr, nx * 50 + ny);
 				}
@@ -320,15 +331,15 @@ export const ManagerPlanner = {
 		}
 
 		// 计算距离出口多远
-		visited.init();
-		routeDistance.init();
-		const routeArr = routeDistance.arr as number[];
-		const routeVisitArr = visited.arr as number[];
+		visitedBuf.init();
+		routeBuf.init();
+		const routeArr = routeBuf.arr;
+		const routeVisitArr = visitedBuf.arr;
 		let routeHead = 0;
 		let routeTail = 0;
 		// border 阶段已经写入 queMin，这里转成数组队列做统一权重 BFS
-		while (!queMinBuf.isEmpty()) {
-			const seed = (queMinBuf.pop() as unknown) as { k: number; x: number; y: number; v?: number } | undefined;
+		while (!queMinBuf2.isEmpty()) {
+			const seed = (queMinBuf2.pop() as unknown) as { k: number; x: number; y: number; v?: number } | undefined;
 			if (!seed) break;
 			const idx = seed.x * 50 + seed.y;
 			if (!routeVisitArr[idx]) {
@@ -338,11 +349,12 @@ export const ManagerPlanner = {
 			}
 			reclaimNode(seed);
 		}
-		queMinBuf.clear();
+		queMinBuf2.clear();
 		while (routeHead < routeTail) {
-			const idx = fastQueue[routeHead++];
-			const x = (idx! / 50) | 0;
-			const y = idx! % 50;
+			const idx = numAt(fastQueue, routeHead);
+			routeHead += 1;
+			const x = (idx / 50) | 0;
+			const y = idx % 50;
 			const base = numAt(routeArr, idx);
 			for (let dx = -1; dx <= 1; dx++) {
 				for (let dy = -1; dy <= 1; dy++) {
@@ -360,15 +372,15 @@ export const ManagerPlanner = {
 			}
 		}
 
-		const putAbleCacheMap = {};
-		const allCacheMap = {};
-		const putAbleCntCacheMap = {};
-		const sizeMap = {};
+		const putAbleCacheMap: Record<number, ReachNode[]> = {};
+		const allCacheMap: Record<number, ReachNode[]> = {};
+		const putAbleCntCacheMap: Record<number, number> = {};
+		const sizeMap: Record<number, number> = {};
 		const walkableU8 = new Uint8Array(2500);
 		const scoreF32 = new Float32Array(2500);
 		const routeI16 = new Int16Array(2500);
 		const blockedU8 = blockedArr ? new Uint8Array(2500) : undefined;
-		const scoreArr = nearWallWithInterpolation.arr;
+		const scoreArr = nearWallInterBuf.arr;
 		for (let i = 0; i < 2500; i++) {
 			walkableU8[i] = walkArr[i] ? 1 : 0;
 			scoreF32[i] = numAt(scoreArr, i);
@@ -377,11 +389,12 @@ export const ManagerPlanner = {
 		}
 		const kernelResult = computeBlockKernel(walkableU8, scoreF32, routeI16, blockedU8);
 		if (kernelResult) {
-			unionFindBuf.parent = Array.from(kernelResult.parent);
+			unionFindLocal.loadFrom(kernelResult.parent);
 			for (let i = 0; i < 2500; i++) {
-				if (kernelResult.size[i]! > 0) (sizeMap as any)[i] = kernelResult.size[i];
+				const blockSize = numAt(kernelResult.size, i);
+				if (blockSize > 0) sizeMap[i] = blockSize;
 			}
-			return [unionFindBuf, sizeMap, roomWalkable, nearWall, putAbleCacheMap, allCacheMap];
+			return [unionFindLocal, sizeMap, walkBuf, nearWallBuf, putAbleCacheMap, allCacheMap];
 		}
 		// 对距离的格子插入到队列 ， 作为分开的顺序
 		for (let idx = 0; idx < 2500; idx++) {
@@ -390,43 +403,44 @@ export const ManagerPlanner = {
 			if (nVal) {
 				const x = (idx / 50) | 0;
 				const y = idx % 50;
-				startPointBuf.push(newNode(-nVal, x, y));
+				startPointBuf2.push(newNode(-nVal, x, y));
 			}
 		}
 		const posSeqMap: Record<number, number[]> = {};
 
 		// 分块，将地图分成一小块一小块
-		visited.init();
+		visitedBuf.init();
 		for (let i = 0; i < 2500; i++) {
-			if (startPointBuf.isEmpty()) break;
+			if (startPointBuf2.isEmpty()) break;
 			let cnt = 0;
-			const nd = (startPointBuf.pop() as unknown) as { k: number; x: number; y: number; v?: number } | undefined;
+			const nd = (startPointBuf2.pop() as unknown) as { k: number; x: number; y: number; v?: number } | undefined;
 			if (!nd) break;
 			const currentPos = nd.x * 50 + nd.y;
 			if (blockedArr && blockedArr[currentPos]) {
-				unionFindBuf.union(currentPos, 0);
+				unionFindLocal.union(currentPos, 0);
 				continue;
 			}
-			const posSeq = [];
+			const posSeq: number[] = [];
 
 			// 迭代版 DFS：mode 0=up, 1=down; phase 0=pre, 1=post
-			const stack = [[nd.x, nd.y, 0, 0]];
+			const stack: Array<[number, number, number, number]> = [[nd.x, nd.y, 0, 0]];
 			while (stack.length) {
 				const frame = stack.pop();
-				const x = frame![0]!;
-				const y = frame![1]!;
-				const mode = frame![2]!;
-				const phase = frame![3]!;
+				if (!frame) continue;
+				const x = frame[0];
+				const y = frame[1];
+				const mode = frame[2];
+				const phase = frame[3];
 				if (!phase) {
-					if (visited.exec(x, y, 1)) continue;
-					const currentValue = numAt(nearWallWithInterpolation.arr, x! * 50 + y!);
+					if (visitedBuf.exec(x, y, 1)) continue;
+					const currentValue = numAt(nearWallInterBuf.arr, x * 50 + y);
 					stack.push([x, y, mode, 1]);
 					if (!mode) {
 						for (let dx = -1; dx <= 1; dx++) {
 							for (let dy = -1; dy <= 1; dy++) {
 								if (!dx && !dy) continue;
-								const x1 = x! + dx;
-								const y1 = y! + dy;
+								const x1 = x + dx;
+								const y1 = y + dy;
 								if (x1 < 0 || x1 > 49 || y1 < 0 || y1 > 49) continue;
 								const v = numAt(nearWallWithInterpolationArr, x1 * 50 + y1);
 								if (v > currentValue && currentValue < 6) {
@@ -439,10 +453,10 @@ export const ManagerPlanner = {
 						}
 					} else {
 						for (let di = 0; di < 4; di++) {
-							const dx = DIR4[di][0]!;
-							const dy = DIR4[di][1]!;
-							const x1 = x! + dx!;
-							const y1 = y! + dy!;
+							const dir = DIR4_AT[di];
+							if (!dir) continue;
+							const x1 = x + dir[0];
+							const y1 = y + dir[1];
 							if (x1 < 0 || x1 > 49 || y1 < 0 || y1 > 49) continue;
 							const v = numAt(nearWallWithInterpolationArr, x1 * 50 + y1);
 							if (v && v < currentValue) stack.push([x1, y1, 1, 0]);
@@ -452,27 +466,28 @@ export const ManagerPlanner = {
 				}
 
 				// post-order 阶段，保持与递归版一致的合并时机
-				const pos = x! * 50 + y!;
-				const posRoot = unionFindBuf.find(pos);
+				const pos = x * 50 + y;
+				const posRoot = unionFindLocal.find(pos);
 				if (posRoot && (!blockedArr || !blockedArr[pos])) {
-					unionFindBuf.union(currentPos, pos);
+					unionFindLocal.union(currentPos, pos);
 					posSeq.push(pos);
 					cnt++;
 				} else if (blockedArr) {
-					unionFindBuf.union(pos, 0);
+					unionFindLocal.union(pos, 0);
 				}
 			}
 
 			//记录每一块的位置和大小 以 并查集的根节点 作为记录点
 			if (cnt > 0) {
-				const pos = unionFindBuf.find(currentPos);
-				queMinBuf.push(newNode(cnt, 0, 0, pos));
-				(sizeMap as any)[pos] = cnt;
+				const pos = unionFindLocal.find(currentPos);
+				queMinBuf2.push(newNode(cnt, 0, 0, pos));
+				sizeMap[pos] = cnt;
 				posSeqMap[pos] = posSeq;
 			}
 		}
 
 		// 将出口附近的块删掉（改为数组邻域扫描）
+		const unionFindAlias = unionFindLocal;
 		const pruneBorderNear = (x: number, y: number) => {
 			const idx = x * 50 + y;
 			if (!walkArr[idx]) return;
@@ -483,8 +498,8 @@ export const ManagerPlanner = {
 					if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
 					const nidx = nx * 50 + ny;
 					if (!walkArr[nidx]) continue;
-					const pos = unionFindBuf.find(nidx);
-					if ((sizeMap as any)[pos]) delete (sizeMap as any)[pos];
+					const pos = unionFindAlias.find(nidx);
+					if (sizeMap[pos]) delete sizeMap[pos];
 				}
 			}
 		};
@@ -496,19 +511,19 @@ export const ManagerPlanner = {
 			pruneBorderNear(x, 0);
 			pruneBorderNear(x, 49);
 		}
-		delete (sizeMap as any)[0];
+		delete sizeMap[0];
 
 		// 合并小块成大块的
-		queMinBuf.whileNoEmpty((nd) => {
+		queMinBuf2.whileNoEmpty((nd) => {
 			if (!nd || typeof nd.v !== 'number') return;
 			const pos = nd.v;
-			if (nd.k != (sizeMap as any)[pos]) return; // 已经被合并了
+			if (nd.k != sizeMap[pos]) return; // 已经被合并了
 
-			visited.init();
-			const nearCntMap = {};
+			visitedBuf.init();
+			const nearCntMap: Record<number, number> = {};
 
 			// 搜索附近的块（改为数组邻域扫描）
-			const mergeVisitedArr = visited.arr as number[];
+			const mergeVisitedArr = visitedBuf.arr;
 			const seq = posSeqMap[pos];
 			for (let si = 0; si < seq!.length!; si++) {
 				const e = seq![si]!;
@@ -523,11 +538,11 @@ export const ManagerPlanner = {
 						const nidx = nx * 50 + ny;
 						if (!walkArr[nidx] || mergeVisitedArr[nidx]) continue;
 						mergeVisitedArr[nidx] = 1;
-						const currentPos = unionFindBuf.find(nidx);
+						const currentPos = unionFindLocal.find(nidx);
 						if (currentPos == pos) continue;
-						const currentSize = (sizeMap as any)[currentPos];
-						if (currentSize < 300) {
-							(nearCntMap as any)[currentPos] = ((nearCntMap as any)[currentPos] || 0) + 1;
+						const currentSize = sizeMap[currentPos];
+						if (currentSize !== undefined && currentSize < 300) {
+							nearCntMap[currentPos] = (nearCntMap[currentPos] || 0) + 1;
 						}
 					}
 				}
@@ -540,24 +555,27 @@ export const ManagerPlanner = {
 			// 找出合并附近最优的块
 			for (const currentPos in nearCntMap) {
 				const currentPosNum = Number(currentPos);
-				const currentRatio = (nearCntMap as any)[currentPos] / Math.sqrt(Math.min((sizeMap as any)[currentPosNum], nd.k)); //实际/期望
+				const near = nearCntMap[currentPosNum] ?? 0;
+				const size = sizeMap[currentPosNum] ?? 0;
+				const currentRatio = near / Math.sqrt(Math.min(size, nd.k)); //实际/期望
 				if (
 					targetPos === undefined ||
-					(currentRatio == maxRatio ? (sizeMap as any)[currentPosNum] < (sizeMap as any)[targetPos] : currentRatio > maxRatio)
+					(currentRatio == maxRatio ? size < (sizeMap[targetPos] ?? 0) : currentRatio > maxRatio)
 				) {
 					targetPos = currentPosNum;
 					maxRatio = currentRatio;
-					nearCnt = (nearCntMap as any)[currentPos];
+					nearCnt = near;
 				}
 			}
 			for (const currentPos in nearCntMap) {
-				if (nearCnt < (nearCntMap as any)[currentPos]) {
+				const near = nearCntMap[currentPos] ?? 0;
+				if (nearCnt < near) {
 					targetPos = Number(currentPos);
-					nearCnt = (nearCntMap as any)[currentPos];
+					nearCnt = near;
 				}
 			}
 			if (targetPos === undefined) return;
-			const minSize = (sizeMap as any)[targetPos];
+			const minSize = sizeMap[targetPos] ?? 0;
 			const cnt = nd.k + minSize;
 			// let nearRatio =nearCntMap[targetPos]/allNearCnt;
 
@@ -565,8 +583,8 @@ export const ManagerPlanner = {
 			let ndkBlockPutAbleCnt = 0;
 			if (minSize > minPlaneCnt)
 				targetBlockPutAbleCnt = ManagerPlanner.getBlockPutAbleCntCount(
-					roomWalkable,
-					unionFindBuf,
+					walkBuf,
+					unionFindAlias,
 					targetPos,
 					putAbleCacheMap,
 					allCacheMap,
@@ -575,8 +593,8 @@ export const ManagerPlanner = {
 				);
 			if (nd.k > minPlaneCnt)
 				ndkBlockPutAbleCnt = ManagerPlanner.getBlockPutAbleCntCount(
-					roomWalkable,
-					unionFindBuf,
+					walkBuf,
+					unionFindAlias,
 					pos,
 					putAbleCacheMap,
 					allCacheMap,
@@ -586,33 +604,33 @@ export const ManagerPlanner = {
 
 			// 合并
 			if (Math.max(targetBlockPutAbleCnt, ndkBlockPutAbleCnt) < minPlaneCnt) {
-				unionFindBuf.union(pos, targetPos);
-				const mergedRoot = unionFindBuf.find(pos);
+				unionFindLocal.union(pos, targetPos);
+				const mergedRoot = unionFindLocal.find(pos);
 				nd.v = mergedRoot;
 
-				if (pos != mergedRoot) delete (sizeMap as any)[pos];
-				else delete (sizeMap as any)[targetPos];
+				if (pos != mergedRoot) delete sizeMap[pos];
+				else delete sizeMap[targetPos];
 
 				nd.k = cnt;
-				(sizeMap as any)[mergedRoot] = cnt;
+				sizeMap[mergedRoot] = cnt;
 				const targetSeq = posSeqMap[targetPos];
 				const currentSeq = posSeqMap[pos];
-				const mergedSeq = Array.from({ length: targetSeq!.length! + currentSeq!.length! });
+				const mergedSeq: number[] = Array.from({ length: (targetSeq?.length ?? 0) + (currentSeq?.length ?? 0) });
 				let mergedIdx = 0;
-				for (let i = 0; i < targetSeq!.length!; i++) mergedSeq[mergedIdx++] = targetSeq![i]!;
-				for (let i = 0; i < currentSeq!.length!; i++) mergedSeq[mergedIdx++] = currentSeq![i]!;
+				for (let i = 0; i < (targetSeq?.length ?? 0); i++) mergedSeq[mergedIdx++] = targetSeq?.[i] ?? 0;
+				for (let i = 0; i < (currentSeq?.length ?? 0); i++) mergedSeq[mergedIdx++] = currentSeq?.[i] ?? 0;
 				posSeqMap[mergedRoot] = mergedSeq;
-				delete (putAbleCacheMap as any)[mergedRoot];
-				delete (putAbleCacheMap as any)[targetPos];
-				delete (putAbleCntCacheMap as any)[mergedRoot];
-				delete (putAbleCntCacheMap as any)[targetPos];
-				delete (putAbleCntCacheMap as any)[pos];
+				delete putAbleCacheMap[mergedRoot];
+				delete putAbleCacheMap[targetPos];
+				delete putAbleCntCacheMap[mergedRoot];
+				delete putAbleCntCacheMap[targetPos];
+				delete putAbleCntCacheMap[pos];
 				if (pos != mergedRoot) delete posSeqMap[pos];
 				else delete posSeqMap[targetPos];
-				queMinBuf.push(newNode(nd.k, nd.x, nd.y, mergedRoot));
+				queMinBuf2.push(newNode(nd.k, nd.x, nd.y, mergedRoot));
 			}
 		});
-		return [unionFindBuf, sizeMap, roomWalkable, nearWall, putAbleCacheMap, allCacheMap];
+		return [unionFindLocal, sizeMap, walkBuf, nearWallBuf, putAbleCacheMap, allCacheMap];
 	},
 };
 

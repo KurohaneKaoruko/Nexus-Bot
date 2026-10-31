@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 工地放置域: RCL 过滤、占位判断、核心枢纽(storage/terminal)占位换位、按布局放量工地。
  * 原生调用经 intentQueue 提交 (api/17 命令边界): 返回值是"本pass提交的意图数"。
@@ -27,21 +26,6 @@ export function getLayoutPointsForRcl(room: Room, structureType: string, layoutA
         // RCL 门接 roadMinRcl (此前 buildMinLevels 为无消费方的死配置):
         // RCL3 起布局路网进场, RCL2 产能优先 ext 扩容
         if (level < PLANNER_CONFIG.roadMinRcl) return [];
-        const layoutType = getLayoutRecord(room.name)?.type;
-        switch (layoutType) {
-            case 'tea':
-                if (level == 3) return layoutArray.slice(0, 11);
-                if (level == 4) return layoutArray.slice(0, 24);
-                if (level == 5) return layoutArray.slice(0, 37);
-                break;
-            case 'hoho':
-                if (level == 3) return layoutArray.slice(0, 7);
-                if (level == 4) return layoutArray.slice(0, 13);
-                if (level == 5) return layoutArray.slice(0, 21);
-                break;
-            default:
-                break;
-        }
         return layoutArray;
     }
     if (structureType === STRUCTURE_RAMPART) {
@@ -303,7 +287,7 @@ export function plannerCreateSite(
             submitIntent(Game.time, {
                 actorName: room.name, kind: 'createSite', pipeline: 'construction', priority: 30,
                 targetPos: { x, y, roomName: room.name },
-                payload: { structureType: s },
+                payload: { structureType: s as BuildableStructureConstant },
                 dedupeKey: `layout-site:${room.name}:${x}:${y}:${s}`,
             });
             // 意图提交即计入本 pass 预算 (broker 同 Tick 执行; ERR_FULL 由下一 pass 的工地水位兜底)

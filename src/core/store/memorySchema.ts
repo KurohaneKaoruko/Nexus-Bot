@@ -222,6 +222,8 @@ export interface SpawnTelemetry {
 	waitEma: Record<string, number>;
 	/** 请求方被拒计数 (按闸门原因): gate=产出就绪闸, yield=采集让位, pause=survive 暂停 */
 	denyReasons: Record<string, number>;
+	/** 各类型请求首次入池 tick: 孵化成交或出池时结算 waitEma 并摘键——键集有界 */
+	pendingSince: Record<string, number>;
 }
 
 /**
@@ -439,8 +441,8 @@ export interface SquadRecord {
 	expiresAt: number;
 }
 
-/** 布局类型: 动态规划或静态模板名 (docs/nexus-design/17 §17.4) */
-export type LayoutType = "auto" | "63auto" | "mini" | "rosemary" | "clover" | "hoho" | "tea";
+/** 布局类型: ros 动态默认 / mini 专用 / race 静态模板 (docs/nexus-design/17 §17.4) */
+export type LayoutType = "auto" | "mini" | "race";
 
 /** 单房布局记录: 结构点位以压缩整数 ((x<<6)|y) 持久化, 仅 JSON 数据 */
 export interface LayoutRoomRecord {

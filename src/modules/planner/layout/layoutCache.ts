@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 布局计算的三级 TTL 缓存: 参数精确 key / 动态最近一次 / 动态输入签名。
  */
@@ -13,13 +12,18 @@ type CacheStore = {
 	byDynamicSig: { [key: string]: string };
 };
 
+declare global {
+	/** 布局缓存容器挂在 global 上跨 tick 存活 */
+	// eslint-disable-next-line no-var
+	var __layoutPlannerCache: CacheStore | undefined;
+}
+
 /** 获取布局缓存容器（存放在 global 上） */
 function getCacheStore(): CacheStore {
-	const g = global as any;
-	if (!g.__layoutPlannerCache) {
-		g.__layoutPlannerCache = { byKey: {}, lastKeyByRoomLayout: {}, byDynamicSig: {} };
+	if (!globalThis.__layoutPlannerCache) {
+		globalThis.__layoutPlannerCache = { byKey: {}, lastKeyByRoomLayout: {}, byDynamicSig: {} };
 	}
-	return g.__layoutPlannerCache;
+	return globalThis.__layoutPlannerCache;
 }
 
 /** 生成静态布局缓存 key */
@@ -41,14 +45,14 @@ export function makeDynamicSigKey(
 /** 深拷贝 structMap，避免外部修改污染缓存 */
 export function cloneStructMap(structMap: LayoutStructMap): LayoutStructMap {
 	const next: LayoutStructMap = {};
-	for (const s in structMap) next[s] = structMap[s].map! ((p) => [p[0], p[1]]);
+	for (const s in structMap) next[s] = (structMap[s] ?? []).map((p) => [p[0], p[1]]);
 	return next;
 }
 
 /** 深拷贝 layoutMemory，避免外部修改污染缓存 */
 export function cloneLayoutMemory(layoutMemory: LayoutMemoryMap): LayoutMemoryMap {
 	const next: LayoutMemoryMap = {};
-	for (const s in layoutMemory) next[s] = layoutMemory[s].slice! ();
+	for (const s in layoutMemory) next[s] = (layoutMemory[s] ?? []).slice();
 	return next;
 }
 

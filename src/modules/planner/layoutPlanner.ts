@@ -1,4 +1,3 @@
-// @ts-nocheck
 /*
  * 布局计算与落盘核心（组合壳）:
  * - 静态布局: 模板平移 + rampart 外环 + 采集基建 (source/mineral/controller 容器、link、道路) + link 建造排序;
@@ -11,7 +10,6 @@
 import { compress } from '@/utils/compress';
 import { submitIntent } from '@/runtime/intentQueue';
 import { rosPlanner } from './rosPlanner';
-import { autoPlanner63 } from './dynamic/63Planner';
 import LayoutVisual from './layoutVisual';
 import {
 	ensureLayoutRecord,
@@ -95,29 +93,6 @@ export const LayoutPlanner = {
         return OK;
     },
     /**
-     * 动态布局(63auto)构建：写入布局记录并清理旧布局残留工地。
-     * @param roomName 房间名
-     * @returns Screeps 错误码：OK/ERR_NOT_FOUND
-     */
-    buildDynamic63(roomName: string, opts?: { quiet?: boolean }): number {
-        const totalStart = cpuNow();
-        const computeStart = cpuNow();
-        const computed = computeDynamic(roomName, '63auto');
-        const computeCpu = cpuDelta(computeStart);
-        if (!computed) return ERR_NOT_FOUND;
-        const writeStart = cpuNow();
-        const record = ensureLayoutRecord(roomName);
-        const previousData = record.data;
-        writeLayoutData(record, '63auto' as any, computed.center, computed.layoutMemory);
-        removeStaleSites(roomName, computed, previousData);
-        const writeCpu = cpuDelta(writeStart);
-        const totalCpu = cpuDelta(totalStart);
-        if (!opts?.quiet) {
-            log(`动态布局构建成功: ${roomName} layout=63auto center(${computed.center.x},${computed.center.y}) computeCpu=${cpuFmt(computeCpu)} writeCpu=${cpuFmt(writeCpu)} totalCpu=${cpuFmt(totalCpu)}`);
-        }
-        return OK;
-    },
-    /**
      * 静态布局可视化（不落盘）。
      */
     visualStatic(roomName: string, layoutType: string): number {
@@ -133,7 +108,7 @@ export const LayoutPlanner = {
         return OK;
     },
     /**
-     * 动态布局(auto/63auto)可视化（不落盘）。
+     * 动态布局(auto)可视化（不落盘）。
      */
     visualDynamic(roomName: string): number {
         const computed = computeDynamic(roomName, 'auto');
@@ -142,21 +117,11 @@ export const LayoutPlanner = {
         log(`动态布局可视化成功: ${roomName} layout=auto center(${computed.center.x},${computed.center.y})`);
         return OK;
     },
-    visualDynamic63(roomName: string): number {
-        const computed = computeDynamic(roomName, '63auto');
-        if (!computed) return ERR_NOT_FOUND;
-        LayoutVisual.showRoomStructures(roomName, computed.structMap as any);
-        log(`动态布局可视化成功: ${roomName} layout=63auto center(${computed.center.x},${computed.center.y})`);
-        return OK;
-    },
     /**
      * 动态布局可视化（pa/pb/pc/pm 旗帜输入, 不落盘不缓存）。
      */
     visualDynamicByFlags(): number {
-        return visualByFlags('auto');
-    },
-    visualDynamic63ByFlags(): number {
-        return visualByFlags('63auto');
+        return visualByFlags();
     },
     /**
      * 迷你房布局构建（mini 模式）: spawn 锚点最小据点, 塔优先贴控制器一侧, RCL6+ 补 terminal。
@@ -208,7 +173,7 @@ export const LayoutPlanner = {
 /**
  * 旗帜输入的动态布局可视化骨架 (pa/pb/pc/pm 四旗指定枢纽点, 不落盘不缓存)。
  */
-function visualByFlags(layoutType: 'auto' | '63auto'): number {
+function visualByFlags(): number {
     if (Game.cpu.bucket < 100) {
         log(`动态布局可视化失败: CPU bucket 不足 bucket=${Game.cpu.bucket}`);
         return ERR_TIRED;
@@ -239,15 +204,14 @@ function visualByFlags(layoutType: 'auto' | '63auto'): number {
         });
     }
 
-    const planner = layoutType === '63auto' ? autoPlanner63 : rosPlanner;
-    const computeManor = planner.ManagerPlanner.computeManor;
+    const computeManor = rosPlanner.ManagerPlanner.computeManor;
     const roomStructsData = computeManor(roomName, [pc, pm, pa, pb]);
     if (!roomStructsData) {
-        log(`动态布局可视化失败: planner 返回空 room=${roomName} layout=${layoutType}(flags)`);
+        log(`动态布局可视化失败: planner 返回空 room=${roomName} layout=auto(flags)`);
         return ERR_NOT_FOUND;
     }
     LayoutVisual.showRoomStructures(roomName, roomStructsData.structMap);
-    log(`动态布局可视化成功: ${roomName} layout=${layoutType}(flags)`);
+    log(`动态布局可视化成功: ${roomName} layout=auto(flags)`);
     return OK;
 }
 

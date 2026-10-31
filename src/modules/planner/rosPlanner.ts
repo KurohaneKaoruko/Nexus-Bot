@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ros 动态布局规划器 ('auto'): 分块地形分析 + manor 布局主流程的组合入口。
  * 由 LayoutPlanner.buildDynamic (自动布局主线) 激活; 对外仅暴露 name 与 ManagerPlanner。

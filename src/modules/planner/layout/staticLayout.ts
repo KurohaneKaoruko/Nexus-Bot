@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * 静态模板布局: 模板平移 + rampart 外环 + 采集基建 (容器/link/道路) + link 建造排序。
  */
@@ -146,9 +145,12 @@ export function reorderLinkBuildOrder(room: Room, center: LayoutCenter, structMa
 	otherEntries.sort((a, b) => a.originalIndex - b.originalIndex);
 
 	const ordered: XY[] = [];
-	if (sourceEntries.length > 0) ordered.push(sourceEntries.shift()!.pos);
-	if (centerEntry) ordered.push(centerEntry.pos);
-	if (controllerEntry) ordered.push(controllerEntry.pos);
+	const firstSource = sourceEntries.shift();
+	if (firstSource) ordered.push(firstSource.pos);
+	// 闭包内赋值的变量在此处被控制流分析误收窄, 经由取值函数还原联合类型
+	const takeEntry = (e: OrderedLinkEntry | null): XY[] => (e ? [e.pos] : []);
+	ordered.push(...takeEntry(centerEntry));
+	ordered.push(...takeEntry(controllerEntry));
 	for (const entry of sourceEntries) ordered.push(entry.pos);
 	for (const entry of otherEntries) ordered.push(entry.pos);
 
@@ -359,7 +361,7 @@ export function toLayoutMemory(structMap: LayoutStructMap): LayoutMemoryMap {
 	const memory: LayoutMemoryMap = {};
 	for (const s in structMap) {
 		const pts = structMap[s];
-		memory[s] = compressBatch(pts);
+		if (pts) memory[s] = compressBatch(pts);
 	}
 	return memory;
 }

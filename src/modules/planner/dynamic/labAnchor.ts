@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * lab 区锚点选址: 在 manor 评分图上为 3×3 lab 群找距 storage 最近的合法 4×4 承载区。
  */

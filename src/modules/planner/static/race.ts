@@ -8,7 +8,7 @@
  * speedrun/layout 从本模板派生生产档坐标 (变体旋钮留运行时), 主代码管线可
  * 直接以 layoutType='race' 消费——两边对同一房给出同一布局图景。
  *
- * 与其余模板的差异: 不含 storage/terminal/lab 等高本建筑 (冲级赛单房速通,
+ * 与 ros/mini 的差异: 不含 storage/terminal/lab 等高本建筑 (冲级赛单房速通,
  * 只建 spawn/extension/container), 道路由 speedrun 铺路体系动态规划 (不入模板),
  * rampart 环由 staticLayout 统一追加。
  */

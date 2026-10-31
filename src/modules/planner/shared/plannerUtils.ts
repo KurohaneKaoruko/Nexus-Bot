@@ -14,8 +14,8 @@ export type XYTuple = [number, number]
 /** 结构点位映射: structureType -> 坐标列表 */
 export type StructMap = Record<string, XYTuple[]>
 
-/** 从 number|string 混排数组取数值 (非数字视为 0) */
-export const numAt = (arr: number[] | string[], idx: number): number => {
+/** 从 GridValue 混排数组取数值 (非数字视为 0) */
+export const numAt = (arr: ArrayLike<number | string>, idx: number): number => {
 	const v = arr[idx];
 	return typeof v === 'number' ? v : 0;
 };
@@ -26,7 +26,10 @@ export const DIR4 = [
 	[-1, 0],
 	[0, 1],
 	[0, -1]
-];
+] as const;
+
+/** DIR4 数值缓存 (noUncheckedIndexedAccess 下的热路径直访) */
+export const DIR4_AT: readonly (readonly [number, number])[] = DIR4;
 
 /** 两点距离平方 */
 export const squareDistance = (x1: number, y1: number, x2: number, y2: number): number => {
