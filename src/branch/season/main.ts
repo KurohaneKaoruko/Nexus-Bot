@@ -13,6 +13,7 @@ import { Cluster } from "@/modules/cluster";
 import { Tasks } from "@/modules/tasks";
 import { Spawning } from "@/modules/spawning";
 import { Agents, Broker } from "@/modules/agents";
+import { MovementStart, MovementEnd } from "@/modules/agents/movementWindow";
 import { Planner } from "@/modules/planner";
 import { RoomFeatures } from "@/proto/features";
 import { Teams } from "@/modules/teams";
@@ -31,6 +32,7 @@ import { Pixel } from "@/modules/economy";
 const nexus = createNexus(SEASON_PROFILE);
 
 nexus.use(
+	MovementStart,
 	Perception,
 	ActorOwnershipSweep,
 	Defense,
@@ -58,6 +60,7 @@ nexus.use(
 	ClearEnd,
 	StatisticsEnd,
 	ActorOwnershipPersist,
+	MovementEnd,
 	Visuals,
 	Pixel,
 );

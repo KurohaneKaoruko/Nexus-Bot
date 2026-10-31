@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 /**
  *  用 SSP (Successive Shortest Paths) + SPFA 求解二分图最优匹配问题
@@ -381,7 +380,7 @@ function moveMatch(
 			greedyStack[greedyStackTop++] = superStartNode;
 		}
 		do {
-			curStartIdx = greedyStack[--greedyStackTop];
+			curStartIdx = greedyStack[--greedyStackTop] ?? 0;
 			edgeIdx = (curStartIdx << 3) + curStartIdx;
 			// edge 都通往 superTarget 且已按分数从大到小排序
 			// 优先找空地放
@@ -390,7 +389,7 @@ function moveMatch(
 			maxEdgeIdx = 0; // 从当前 superStart → superTarget 的边中选
 			superStartUnplaced = true;
 			for (idx = edgeIdx; idx < edgeIdx + 9; idx++) {
-				curSuperTargetIdx = edgeArray[idx];
+				curSuperTargetIdx = edgeArray[idx] ?? 0;
 				if (curSuperTargetIdx === 0) break;
 				if ((curSuperTargetIdx & 0x8000) === 0) continue;
 				curSuperTargetIdx &= 0x7fff;
@@ -410,7 +409,7 @@ function moveMatch(
 						if (!addedTarget.has(jSuperTarget)) {
 							addedTarget.add(jSuperTarget);
 							// 当前占用这个格子的 superTarget 对应的 superStart → jSuperTarget 的边权
-							score = weightArray[occupiedEdgeIdx[jSuperTarget]];
+							score = weightArray[occupiedEdgeIdx[jSuperTarget] ?? 0] ?? -65536;
 							totalScore += score;
 							occupied = true;
 						}
@@ -425,7 +424,7 @@ function moveMatch(
 				} else {
 					// 如果找到空位置，设置匹配关系
 					// superStart → superTarget 之间的匹配关系
-					edgeArray[idx] &= 0x7fff; // 清除 0x8000 表示无容量
+					edgeArray[idx] = (edgeArray[idx] ?? 0) & 0x7fff; // 清除 0x8000 表示无容量
 					occupiedEdgeIdx[curStartIdx] = idx;
 					occupiedEdgeIdx[curSuperTargetIdx] = idx;
 
@@ -457,7 +456,7 @@ function moveMatch(
 				for (idx = targetEdgeIdx; idx < targetEdgeIdx + 9; idx++) {
 					kTarget = edgeArray[idx]! & 0x7fff;
 					if (kTarget === 0) break;
-					kEdgeIdx = occupiedEdgeIdx[kTarget]; // 这个是 superTarget → target 的边
+					kEdgeIdx = occupiedEdgeIdx[kTarget] ?? 0; // 这个是 superTarget → target 的边
 					curEdgeIdx = (kTarget << 3) + kTarget; // target → superTarget 的边
 					// 如果被占用，则回退该占用者
 					if (kEdgeIdx) {
@@ -466,7 +465,7 @@ function moveMatch(
 						jEdgeIdx = (jSuperTarget << 3) + jSuperTarget;
 						// 遍历 jSuperTarget 所有 target，将其设为未占用
 						for (j = jEdgeIdx; j < jEdgeIdx + 9; j++) {
-							jTarget = edgeArray[j]; // 容量已经被清除，不需要 & 0x7FFF
+							jTarget = edgeArray[j] ?? 0; // 容量已经被清除，不需要 & 0x7FFF
 							if (jTarget === 0) break;
 							if (jTarget & 0x8000) {
 								console.log(
@@ -479,7 +478,7 @@ function moveMatch(
 							edgeArray[(jTarget << 3) + jTarget] = 0; // 清除反向边
 							edgeArray[j] = jTarget | 0x8000; // 恢复正向边容量
 						}
-						jSuperStart = (occupiedEdgeIdx[jSuperTarget]! / 9) | 0; // 边除 9 取整得到节点 idx
+						jSuperStart = ((occupiedEdgeIdx[jSuperTarget] ?? 0) / 9) | 0; // 边除 9 取整得到节点 idx
 						// 不能恢复 superStart → superTarget 正向边容量，因为会导致 curStartIdx 无法放置
 						// edgeArray[occupiedEdgeIdx[jSuperStart]] |= 0x8000;
 						// occupiedEdgeIdx[jSuperTarget] = 0;  // 清除 superTarget 记录的正向边
@@ -493,7 +492,7 @@ function moveMatch(
 					edgeArray[idx] = kTarget; // 清除 superTarget → target 正向边容量
 				}
 				// 设置 superStart → superTarget 的匹配关系
-				edgeArray[maxEdgeIdx] &= 0x7fff; // 清除 0x8000 表示无容量
+				edgeArray[maxEdgeIdx] = (edgeArray[maxEdgeIdx] ?? 0) & 0x7fff; // 清除 0x8000 表示无容量
 				occupiedEdgeIdx[curSuperTargetIdx] = maxEdgeIdx;
 				occupiedEdgeIdx[curStartIdx] = maxEdgeIdx;
 			}
@@ -505,12 +504,12 @@ function moveMatch(
 		// target 未被 superStart 占用才考虑普通 start
 		if (edgeArray[targetEdgeIdx] === 0) {
 			jTarget = (curTargetIdx >> 1) + 1;
-			curStartIdx = targetBestStart[jTarget];
-			bestEdgeIdx = targetBestEdge[jTarget];
+			curStartIdx = targetBestStart[jTarget] ?? 0;
+			bestEdgeIdx = targetBestEdge[jTarget] ?? 0;
 			// 设置反向边
 			edgeArray[targetEdgeIdx] = curStartIdx | 0x8000;
 			// 当前边设为被占用
-			edgeArray[bestEdgeIdx] &= 0x7fff;
+			edgeArray[bestEdgeIdx] = (edgeArray[bestEdgeIdx] ?? 0) & 0x7fff;
 			// 为该 target 登记已经被占用的正向边
 			occupiedEdgeIdx[curTargetIdx] = bestEdgeIdx;
 			// 为该 start 登记已经被占用的边
@@ -564,7 +563,7 @@ function moveMatch(
 
 	let maxNode = Math.max(startIdx, targetIdx, superTargetIdx);
 	while (stackTop) {
-		curStartIdx = stack[--stackTop];
+		curStartIdx = stack[--stackTop] ?? 0;
 
 		// --- SPFA 初始化 ---
 		spfaDist.fill(-32768, 0, maxNode);
@@ -583,13 +582,13 @@ function moveMatch(
 
 		// --- SPFA 主循环：队列中只有 start 节点 ---
 		while (qHead !== qTail) {
-			idx = spfaQueue[qHead++];
+			idx = spfaQueue[qHead++] ?? 0;
 			if (qHead >= NUM_NODE) qHead = 0;
 			spfaInQue[idx] = 0;
 
 			edgeIdx = (idx << 3) + idx;
 			for (i = edgeIdx; i < edgeIdx + 9; i++) {
-				curTargetIdx = edgeArray[i];
+				curTargetIdx = edgeArray[i] ?? 0;
 				if (curTargetIdx === 0) break;
 				if ((curTargetIdx & 0x8000) === 0) continue;
 				curTargetIdx &= 0x7fff;
@@ -598,7 +597,7 @@ function moveMatch(
 				// target 是奇数，是普通 target
 				score = spfaDist[idx]! + weightArray[i]!;
 
-				kEdgeIdx = occupiedEdgeIdx[curTargetIdx];
+				kEdgeIdx = occupiedEdgeIdx[curTargetIdx] ?? 0;
 				if (kEdgeIdx) {
 					// 已匹配 target：沿反向边松弛
 					jTarget = edgeArray[(curTargetIdx << 3) + curTargetIdx]! & 0x7fff;
@@ -622,7 +621,7 @@ function moveMatch(
 						for (j = jEdgeIdx; j < jEdgeIdx + 9; j++) {
 							if (edgeArray[j] === 0) break;
 							if (edgeArray[j]! & 0x8000) {
-								totalScore = score - weightArray[occupiedEdgeIdx[curSuperTargetIdx]];
+								totalScore = score - (weightArray[occupiedEdgeIdx[curSuperTargetIdx] ?? 0] ?? 0);
 								if (totalScore > maxScore) {
 									maxScore = totalScore;
 									maxEdgeIdx = i;
@@ -646,7 +645,7 @@ function moveMatch(
 			curTargetIdx = edgeArray[bestEdgeIdx]! & 0x7fff;
 			idx = (bestEdgeIdx / 9) | 0; // bestEdgeIdx 是通往未匹配 target 的正向边
 
-			edgeArray[bestEdgeIdx] &= 0x7fff;
+			edgeArray[bestEdgeIdx] = (edgeArray[bestEdgeIdx] ?? 0) & 0x7fff;
 			curEdgeIdx = (curTargetIdx << 3) + curTargetIdx;
 			edgeArray[curEdgeIdx] = idx | 0x8000;
 			occupiedEdgeIdx[curTargetIdx] = bestEdgeIdx;
@@ -654,11 +653,11 @@ function moveMatch(
 
 			// idx 是逐级回溯的普通 start
 			while (spfaPrev[idx]) {
-				edgeIdx = spfaPrev[idx]; // edgeIdx 是 idx 原本匹配的 target 的回溯下一 start 的正向边
+				edgeIdx = spfaPrev[idx] ?? 0; // edgeIdx 是 idx 原本匹配的 target 的回溯下一 start 的正向边
 				curTargetIdx = edgeArray[edgeIdx]! & 0x7fff;
-				edgeArray[occupiedEdgeIdx[curTargetIdx]] |= 0x8000;
+				edgeArray[occupiedEdgeIdx[curTargetIdx] ?? 0] = (edgeArray[occupiedEdgeIdx[curTargetIdx] ?? 0] ?? 0) | 0x8000;
 				idx = (edgeIdx / 9) | 0; // 回溯的下一 start
-				edgeArray[edgeIdx] &= 0x7fff;
+				edgeArray[edgeIdx] = (edgeArray[edgeIdx] ?? 0) & 0x7fff;
 				curEdgeIdx = (curTargetIdx << 3) + curTargetIdx;
 				edgeArray[curEdgeIdx] = idx | 0x8000;
 				occupiedEdgeIdx[curTargetIdx] = edgeIdx;
@@ -683,18 +682,18 @@ function moveMatch(
 			idx = (maxEdgeIdx / 9) | 0;
 
 			// edgeArray[occupiedEdgeIdx[curTargetIdx]] |= 0x8000;  // 无需恢复该 target 原本 superTarget→target 的边
-			edgeArray[maxEdgeIdx] &= 0x7fff;
+			edgeArray[maxEdgeIdx] = (edgeArray[maxEdgeIdx] ?? 0) & 0x7fff;
 			curEdgeIdx = (curTargetIdx << 3) + curTargetIdx;
 			edgeArray[curEdgeIdx] = idx | 0x8000;
 			occupiedEdgeIdx[curTargetIdx] = maxEdgeIdx;
 			occupiedEdgeIdx[idx] = maxEdgeIdx;
 
 			while (spfaPrev[idx]) {
-				edgeIdx = spfaPrev[idx];
+				edgeIdx = spfaPrev[idx] ?? 0;
 				curTargetIdx = edgeArray[edgeIdx]! & 0x7fff;
-				edgeArray[occupiedEdgeIdx[curTargetIdx]] |= 0x8000;
+				edgeArray[occupiedEdgeIdx[curTargetIdx] ?? 0] = (edgeArray[occupiedEdgeIdx[curTargetIdx] ?? 0] ?? 0) | 0x8000;
 				idx = (edgeIdx / 9) | 0;
-				edgeArray[edgeIdx] &= 0x7fff;
+				edgeArray[edgeIdx] = (edgeArray[edgeIdx] ?? 0) & 0x7fff;
 				curEdgeIdx = (curTargetIdx << 3) + curTargetIdx;
 				edgeArray[curEdgeIdx] = idx | 0x8000;
 				occupiedEdgeIdx[curTargetIdx] = edgeIdx;
@@ -707,14 +706,14 @@ function moveMatch(
 			greedyStack[greedyStackTop++] = jSuperStart;
 
 			do {
-				curStartIdx = greedyStack[--greedyStackTop];
+				curStartIdx = greedyStack[--greedyStackTop] ?? 0;
 				edgeIdx = (curStartIdx << 3) + curStartIdx;
 				maxScore = -65536;
 				maxEdgeIdx = 0;
 				superStartUnplaced = true;
 
 				for (idx = edgeIdx; idx < edgeIdx + 9; idx++) {
-					curSuperTargetIdx = edgeArray[idx];
+					curSuperTargetIdx = edgeArray[idx] ?? 0;
 					if (curSuperTargetIdx === 0) break;
 					if ((curSuperTargetIdx & 0x8000) === 0) continue;
 					curSuperTargetIdx &= 0x7fff;
@@ -733,13 +732,13 @@ function moveMatch(
 									// 是 superTarget
 									if (!addedTarget.has(jTarget)) {
 										addedTarget.add(jTarget);
-										score = weightArray[occupiedEdgeIdx[jTarget]];
+										score = weightArray[occupiedEdgeIdx[jTarget] ?? 0] ?? -65536;
 										totalScore += score;
 										occupied = true;
 									}
 								} else {
 									// 是普通 start 占用
-									score = weightArray[occupiedEdgeIdx[curTargetIdx]];
+									score = weightArray[occupiedEdgeIdx[curTargetIdx] ?? 0] ?? -65536;
 									totalScore += score;
 									occupied = true;
 								}
@@ -756,7 +755,7 @@ function moveMatch(
 					} else {
 						// 如果找到空位置，设置匹配关系
 						// superStart → superTarget 之间的匹配关系
-						edgeArray[idx] &= 0x7fff;
+						edgeArray[idx] = (edgeArray[idx] ?? 0) & 0x7fff;
 						occupiedEdgeIdx[curStartIdx] = idx;
 						occupiedEdgeIdx[curSuperTargetIdx] = idx;
 
@@ -788,7 +787,7 @@ function moveMatch(
 					for (idx = targetEdgeIdx; idx < targetEdgeIdx + 9; idx++) {
 						kTarget = edgeArray[idx]! & 0x7fff;
 						if (kTarget === 0) break;
-						kEdgeIdx = occupiedEdgeIdx[kTarget];
+						kEdgeIdx = occupiedEdgeIdx[kTarget] ?? 0;
 						curEdgeIdx = (kTarget << 3) + kTarget; // 反向边
 						// 如果被占用，则回退该占用者
 						if (kEdgeIdx) {
@@ -798,7 +797,7 @@ function moveMatch(
 								jSuperTarget = jTarget;
 								jEdgeIdx = (jSuperTarget << 3) + jSuperTarget;
 								for (j = jEdgeIdx; j < jEdgeIdx + 9; j++) {
-									jTarget = edgeArray[j]; // 容量已经被清除，不需要 & 0x7FFF
+									jTarget = edgeArray[j] ?? 0; // 容量已经被清除，不需要 & 0x7FFF
 									if (jTarget === 0) break;
 									if (jTarget & 0x8000) {
 										console.log(
@@ -816,7 +815,7 @@ function moveMatch(
 							} else {
 								// 占用者是普通 start
 								occupiedEdgeIdx[jTarget] = 0;
-								edgeArray[kEdgeIdx] |= 0x8000;
+								edgeArray[kEdgeIdx] = (edgeArray[kEdgeIdx] ?? 0) | 0x8000;
 								stack[stackTop++] = jTarget;
 							}
 						}
@@ -826,7 +825,7 @@ function moveMatch(
 						edgeArray[idx] = kTarget; // 清除 superTarget → target 正向边容量
 					}
 					// 设置 superStart → superTarget 的匹配关系
-					edgeArray[maxEdgeIdx] &= 0x7fff;
+					edgeArray[maxEdgeIdx] = (edgeArray[maxEdgeIdx] ?? 0) & 0x7fff;
 					occupiedEdgeIdx[curSuperTargetIdx] = maxEdgeIdx;
 					occupiedEdgeIdx[curStartIdx] = maxEdgeIdx;
 				}
@@ -845,12 +844,12 @@ function moveMatch(
 	const result: MoveMatchResultEntry[] = []; // 存放所有匹配对
 	for (idx = 2; idx < startIdx; idx += 4) {
 		if (occupiedEdgeIdx[idx]) {
-			curTargetIdx = edgeArray[occupiedEdgeIdx[idx]];
+			curTargetIdx = edgeArray[occupiedEdgeIdx[idx] ?? 0] ?? 0;
 			if (curTargetIdx & 0x8000) {
 				console.log(`❌Error: idx ${idx}: ${idxToObject[idx]} 已匹配的边仍有容量`);
 				curTargetIdx &= 0x7fff;
 			}
-			const resultEntry = toResultEntry(idxToObject[idx], idxToObject[curTargetIdx]);
+			const resultEntry = toResultEntry(idxToObject[idx] ?? 0, idxToObject[curTargetIdx] ?? 0);
 			if (resultEntry) {
 				result.push(resultEntry);
 			} else {
