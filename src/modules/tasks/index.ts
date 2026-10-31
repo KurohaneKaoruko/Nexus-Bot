@@ -32,15 +32,28 @@ export const Tasks: TickModule = {
 				continue;
 			}
 			const targetRoomName = task.targetPos?.roomName;
+			// 远程族豁免 (跨房任务): 经济件 (harvest/carry) 与点亮件 (scout/reserve)
+			// 的目标房可以不是本方房——挂靠房丢房不连坐 (bugs/cross-room-agent-deadlock
+			// 缺陷一: 豁免漏 scout/reserve, 外房挂靠的侦查/预订任务 t1 即被误杀)。
 			const remoteEconomic =
-				(task.kind === "harvest" || task.kind === "carry") &&
+				(task.kind === "harvest" ||
+					task.kind === "carry" ||
+					task.kind === "scout" ||
+					task.kind === "reserve") &&
 				targetRoomName !== undefined &&
 				targetRoomName !== task.roomName;
+			// 直挂形态: scout/reserve 锚点即目标外房 (从未属我), room-lost 清扫
+			// 不适用——存活由 lease/deadline 兜底, 不靠挂靠房归属
+			const selfAnchoredRemote =
+				(task.kind === "scout" || task.kind === "reserve") &&
+				targetRoomName !== undefined &&
+				targetRoomName === task.roomName;
 			const targetVisible = targetRoomName !== undefined && Game.rooms[targetRoomName] !== undefined;
 			if (
 				task.kind !== "claim" &&
 				!myRoomNames.has(task.roomName) &&
-				!remoteEconomic
+				!remoteEconomic &&
+				!selfAnchoredRemote
 			) {
 				board.cancel(task.id, ctx.tick, "room-lost");
 			} else if (remoteEconomic && !targetVisible) {
@@ -68,6 +81,9 @@ export const Tasks: TickModule = {
 			);
 		});
 
+		// 分配器候选 (docs/24 §24.5.2): 名册 units 键集 = rooms.creeps ∪ remoteUnits
+		// (全部可见本方单位)。顺序保持 rooms 房序 + remoteUnits 序拼接——分配器
+		// 同分取先遍历者, 改序会平移门读数; 顺序合流留给 remoteUnits 字段退役时
 		const profiles = [
 			...Object.values(world.rooms).flatMap((room) =>
 				room.creeps.filter((creep) => !creep.spawning).map(profileOf),
