@@ -33,11 +33,19 @@ const ref = JSON.parse(readFileSync(REF_PATH, 'utf8'));
 const scenarios = only ? Object.keys(ref).filter((k) => only.includes(k)) : Object.keys(ref);
 
 if (doBuild) {
-	console.log('▶ 重建 bundle (SOURCE_MAP=0 NO_UPLOAD=1)...');
+	console.log('▶ 重建 main bundle (SOURCE_MAP=0 NO_UPLOAD=1)...');
 	execFileSync('npx', ['rolldown', '-c'], {
 		cwd: ROOT,
 		stdio: 'inherit',
 		env: { ...process.env, SOURCE_MAP: '0', NO_UPLOAD: '1' },
+	});
+	// race 场景 (speedrun/race-body-audit/speedrun-upstream) 用独立 race 变体产物
+	// dist-race/main.js (场景内 bundle 字段路由), 此处一并重建
+	console.log('▶ 重建 race bundle (SOURCE_MAP=0 OBFUSCATE=0 NO_UPLOAD=1 VARIANT=race)...');
+	execFileSync('npx', ['rolldown', '-c'], {
+		cwd: ROOT,
+		stdio: 'inherit',
+		env: { ...process.env, SOURCE_MAP: '0', OBFUSCATE: '0', NO_UPLOAD: '1', VARIANT: 'race' },
 	});
 }
 
