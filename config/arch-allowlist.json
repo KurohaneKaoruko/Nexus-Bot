@@ -342,10 +342,6 @@
 			"track": "P7 industry-adapter",
 			"calls": 2
 		},
-		"src/modules/movement/index.ts::pull": {
-			"track": "P4 movement-adapter (移动执行层, 永久豁免主体)",
-			"calls": 1
-		},
 		"src/modules/spawning/spawnDirector.ts::spawnCreep": {
 			"track": "P8 spawn-arbiter",
 			"calls": 1
@@ -365,6 +361,10 @@
 		"src/proto/Flag/function/warSpawn.ts::remove": {
 			"track": "人操豁免 (warSpawn 旗标战争孵化, 域7定性保留)",
 			"calls": 6
+		},
+		"src/modules/movement/movementIntentSquad.ts::pull": {
+			"track": "P4 movement-adapter (移动执行层, 永久豁免主体)",
+			"calls": 1
 		}
 	}
 }
