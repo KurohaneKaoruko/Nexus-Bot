@@ -47,7 +47,7 @@ export default defineSim({
 			name: 'W5N8',
 			terrain: { kind: 'generated', seed: 7 },
 			sources: { count: 2, energy: 3000 },
-			controller: { level: 3, pos: [28, 27] },
+			controller: { level: 4, pos: [28, 27] },
 			mineral: { pos: [10, 40], type: 'O', amount: 30000 },
 			structures: [
 				{ type: 'spawn', pos: [25, 25], energy: 300 },
@@ -56,19 +56,25 @@ export default defineSim({
 				{ type: 'extension', pos: [24, 26], energy: 50 },
 				{ type: 'extension', pos: [26, 26], energy: 50 },
 				{ type: 'extension', pos: [23, 25], energy: 50 },
+				// RCL4 预置 storage (phase4 0.3 场景补洞): §24.7.1 外矿开闸条件
+				// 「母房有 storage」——RCL3 引擎口径 storage 会被标 off, 故升 RCL4
+				{ type: 'storage', pos: [26, 25], store: { energy: 20000 } },
 			],
 			creeps: [],
 		},
-		// 邻房: 平地双源 (侦查可达 + 远程采集收益)
+		// 邻房: 平地双源 + 中立控制器 (phase4 0.3: 外矿链依赖的预定/保留目标;
+		// 旧配置无 controller 字段, reserve 链路语义不完整)
 		{
 			name: 'W5N9',
 			terrain: { kind: 'flat' },
 			sources: { count: 2, energy: 3000 },
+			controller: { level: 0, pos: [25, 25], mine: false },
 		},
 		{
 			name: 'W4N8',
 			terrain: { kind: 'flat' },
 			sources: { count: 1, energy: 3000 },
+			controller: { level: 0, pos: [25, 25], mine: false },
 		},
 	],
 	asserts: [

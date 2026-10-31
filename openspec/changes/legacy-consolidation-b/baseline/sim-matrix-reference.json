@@ -1,4 +1,12 @@
 {
+	"remote-mine": {
+		"green": true,
+		"ticks": 30000,
+		"rcl": {
+			"L4": 0
+		},
+		"cpuP95": 6
+	},
 	"speedrun": {
 		"green": true,
 		"ticks": 40000,
@@ -65,13 +73,5 @@
 			"L3": 8557
 		},
 		"cpuP95": 9
-	},
-	"remote-mine": {
-		"green": true,
-		"ticks": 30000,
-		"rcl": {
-			"L3": 0
-		},
-		"cpuP95": 6
 	}
 }

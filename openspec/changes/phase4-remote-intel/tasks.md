@@ -7,9 +7,12 @@
 
 ## 0. 取证（改动前）
 
-- [ ] 0.1 跨房单位取证场景 `sim/roster-probe.sim.ts`：母房 + 一个邻房；构造一个会跨房的单位（预置单位 + 预置 `Memory.Nexus.tasks` 中一条租给它的 scout 任务，或实现者认为更简单的等价构造）。初始 Memory 必须带可识别的 `schemaVersion`，否则校准会整体重建（docs/25 B9）。记录：单位跨房当 tick 是否进入 `world.dead`、`Memory.creeps[name]` 是否被删除、之后是否在边界出口格来回。验证：取证记录写入 docs/bugs（新条目），作为第 1 节基线
-- [ ] 0.2 现有外矿取证：`sim/remote-mine.sim.ts` 跑 30k + dump-memory，记录外矿采集任务的 id 是否每 tick 变化（清扫取消重建，docs/24 §24.3 B7）、是否出现过 scout 单位。验证：记录并入 0.1 的 docs/bugs 条目
-- [ ] 0.3 场景补洞：`sim/remote-mine.sim.ts` 邻房改为中立控制器（`controller: { level: 0, mine: false, pos }`），母房预置 storage（满足 §24.7.1 开闸条件），保留现有断言。验证：场景可跑，断言结果与 0.2 一致
+- [x] 0.1 跨房单位取证场景 `sim/roster-probe.sim.ts`：母房 + 一个邻房；构造一个会跨房的单位（预置单位 + 预置 `Memory.Nexus.tasks` 中一条租给它的 scout 任务，或实现者认为更简单的等价构造）。初始 Memory 必须带可识别的 `schemaVersion`，否则校准会整体重建（docs/25 B9）。记录：单位跨房当 tick 是否进入 `world.dead`、`Memory.creeps[name]` 是否被删除、之后是否在边界出口格来回。验证：取证记录写入 docs/bugs（新条目），作为第 1 节基线
+  > 实现注记（2026-11-01）：取证档 `docs/bugs/cross-room-agent-deadlock.md`——三缺陷实锤：① room-lost 清扫 t1 杀外房挂靠 scout 任务（remoteEconomic 豁免只盖 harvest/carry）；② 跨房 move 意图寻路失效（scout 卡北墙角 (49,0) 400t，意图流仅前 25t 有 move）；③ 到达判定无兜底（任务永挂 in_progress，heartbeat 续命）。证伪一项：「跨房即丢记忆」不成立（挂靠母房对照组 units/creeps 记录全程保留——P1-18 remoteUnits 修复有效），真实断点在跨房移动与外房挂靠
+- [x] 0.2 现有外矿取证：`sim/remote-mine.sim.ts` 跑 30k + dump-memory，记录外矿采集任务的 id 是否每 tick 变化（清扫取消重建，docs/24 §24.3 B7）、是否出现过 scout 单位。验证：记录并入 0.1 的 docs/bugs 条目
+  > 实现注记（2026-11-01）：B7「每 tick 取消重建」**不成立**——planner upsert 同键续命（id 稳定 30k 不换手）。新实锤：scout 全程零孵化（任务恒 available）；~t26500 偶发孵 2 只 → 一只卡 W4N8 (0,0) 500t、一只无任务空转 → 寿命尽后链死永不再孵；reserve 任务同样恒 available（reserver 不在孵化词表）。27k 后 harvest/carry 链自愈成形
+- [x] 0.3 场景补洞：`sim/remote-mine.sim.ts` 邻房改为中立控制器（`controller: { level: 0, mine: false, pos }`），母房预置 storage（满足 §24.7.1 开闸条件），保留现有断言。验证：场景可跑，断言结果与 0.2 一致
+  > 实现注记（2026-11-01）：邻房 W5N9/W4N8 补中立 ctrl (25,25)；母房 RCL3→RCL4 + 预置 storage（20k 能量）——RCL3 口径 storage 会被引擎标 off。场景绿（L4@0 / p95 10ms），取证同 0.2（跑在同一场景配置上）
 
 ## 1. 殖民地名册（缺陷修复）
 
