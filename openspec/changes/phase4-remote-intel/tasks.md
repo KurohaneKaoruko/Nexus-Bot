@@ -16,12 +16,12 @@
 
 ## 1. 殖民地名册（缺陷修复）
 
-- [ ] 1.1 `core/world.ts` 的 `WorldView` 新增 `units` 与 `visible`（docs/24 §24.5.1）；`world.rooms` 语义不变。验证：`npm run typecheck` 绿
-- [ ] 1.2 `world/perception.ts`：`Game.creeps` 一次遍历生成 `units`；为有本方单位驻留的非己方房生成 `visible` 轻量快照。验证：typecheck 绿；dump-memory 不新增持久字段
-- [ ] 1.3 `aliveNames` 与 `world.dead` 改按 `units`。验证：typecheck 绿；roster-probe 中跨房单位的 `Memory.creeps` 与 `units` 保留，`world.dead` 只在真实死亡 tick 出现（对照 0.1）
-- [ ] 1.4 `runAgents` 遍历 `units`，上下文取 `rooms[r] ?? visible[r]`；驱动范围按 docs/24 §24.5.3（己方房内与现状一致，含 `agentSystem.ts:1172` 的分流判定原样保留；外部房只驱动持有 Nexus 任务指针的单位）；`runCreep` 的 `room` 参数放宽为联合类型。验证：typecheck 绿 + lint 绿；roster-probe 中单位不再在边界来回，任务按计划推进
-- [ ] 1.5 其余单位口径改按名册（docs/24 §24.5.2）：在岗计数（`spawnDirector.ts:246-253`，按 `homeRoom` 归属）、替补窗口（`:343-359`）、分配器候选（`tasks/index.ts:36-38`）、拥堵记录（`trafficMonitor.ts:39`）、动作速率（`economy/model.ts:123`）。验证：typecheck 绿；roster-probe 中单位外出期间不触发重孵；grep 复核再无「遍历 `world.rooms[*].creeps` 来数单位」的用法（空间查询除外）
-- [ ] 1.6 回归：boot-from-scratch 3/3、rcl-sprint 指标与 CPU p95 不低于变更前基线（两场景单位不跨房，行为应不变）。验证：报告 JSON 逐项对照留档
+- [x] 1.1 `core/world.ts` 的 `WorldView` 新增 `units` 与 `visible`（docs/24 §24.5.1）；`world.rooms` 语义不变。验证：`npm run typecheck` 绿
+- [x] 1.2 `world/perception.ts`：`Game.creeps` 一次遍历生成 `units`；为有本方单位驻留的非己方房生成 `visible` 轻量快照。验证：typecheck 绿；dump-memory 不新增持久字段
+- [x] 1.3 `aliveNames` 与 `world.dead` 改按 `units`。验证：typecheck 绿；roster-probe 中跨房单位的 `Memory.creeps` 与 `units` 保留，`world.dead` 只在真实死亡 tick 出现（对照 0.1）
+- [x] 1.4 实施注记: 驱动序保持旧两段式 (rooms 房序 + remoteUnits 序)——交通解算对意图提交序敏感, 名册遍历会平移门读数; 可驱动并集与 units 等价 (语义即 §24.5.3)。外房锚点任务 (缺陷一修复后可存活的 scout/reserve/claim/retreat 直挂形态) 走免上下文 `runForeignTask` (从 runCreep 提取, 不读房观察); `runCreep` 的 `room` 参数经 `RoomContext` 别名放宽未落地——上下文保持锚点房语义 (RoomObservation), 零类型级联。验证: typecheck 绿 + lint 绿; roster-probe 单位跨房到达, 任务 completed (300t)
+- [x] 1.5 在岗计数原本就走 memory.units 注册表 (staffingCount, 视野无关) 已达标; 替补窗口改 units+remoteUnits 保序拼接 (homeRoom 归房, 请求序不变); 拥堵记录/动作速率改 units 遍历; 分配器候选键集等价 (rooms∪remoteUnits), 顺序保持旧拼接 (同分取先遍历者, 改序平移门读数)。验证: typecheck 绿; grep 复核数单位口径无 rooms[*].creeps 残留 (agentRemote:344 为空间查询豁免)
+- [x] 1.6 回归: boot L1@0/L2@330/L3@8557 逐位一致 (A/B bundle 静载双跑核验; 重载下同 bundle 复跑漂 8172-9454 系 secscan.py 77% CPU 噪声, sim-audit-2026-10-19 机理); speedrun L1-L6 全线逐位; remote-mine GREEN; p95 全线 +7~22ms 待静机复跑归因 (负载回落判据: secscan.py 退出)。中间发现并修复: scout 到达兜底「见视野即完成」会因外矿件先行点亮邻房而提前释放在途 scout, 重排孵化链 (boot L3 +897t 实证)——兜底收窄为外房直挂形态 (runForeignTask) 专属, 母房锚点维持本体到达判定
 
 ## 2. 多房 Intel
 

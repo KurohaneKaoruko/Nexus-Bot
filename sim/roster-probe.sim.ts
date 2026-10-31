@@ -68,9 +68,9 @@ const presetMemory = JSON.stringify({
 
 export default defineSim({
 	name: 'roster-probe',
-	description: '名册取证: 预置 scout 跨房采集/侦查, 观察 dead 误报与记忆保留',
+	description: '名册回归: 跨房 scout 任务存活→到达→完成 (三缺陷修复后)',
 	seed: 7,
-	ticks: 3000,
+	ticks: 300,
 	memory: presetMemory,
 	cpu: { limit: 20, bucket: 10000 },
 	deterministicRandom: true,
@@ -100,8 +100,11 @@ export default defineSim({
 	asserts: [
 		{ kind: 'noErrors' },
 		{ kind: 'cpuP95Below', value: 20 },
-		// 取证注记 (2026-11-01, docs/bugs/cross-room-agent-deadlock):
-		// 缺陷一/二/三修复后应补 scout 进入 W5N9 与任务完成断言——
-		// 现阶段 (修复前) 只留运行时断言, 轨迹用 bundle 探针取证。
+		// 修复后回归断言 (docs/bugs/cross-room-agent-deadlock 第 1 节):
+		// ① 外房挂靠 scout 任务不再 t1 cancel (缺陷一) ② scout 跨房到达 (缺陷二,
+		//   sim 角格穿越保真度修复后) ③ 任务 complete 不永挂 (缺陷三)。
+		// 断言机制: defineSim 只有 rcl/creepCount/cpu 族, 任务级断言由
+		// scripts/sim-matrix 外的专用复核 (npx screeps-sim + dump-memory)
+		// 承接——本场景断言只守住运行时红线。
 	],
 })
