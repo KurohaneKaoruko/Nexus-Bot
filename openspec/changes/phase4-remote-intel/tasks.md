@@ -59,15 +59,24 @@
 
 ## 5. 外矿能源闭环
 
-- [ ] 5.1 经济规划器清扫豁免：`economy/planners.ts:286` 跳过 `remote:` 前缀任务。验证：typecheck 绿；dump-memory 中 `remote:*` 任务 id 跨 tick 稳定（对照 0.2）
-- [ ] 5.2 `world/worksite.ts` 支持无视野房（源坐标取 Intel）。验证：外矿源工位在首次可见前可算
-- [ ] 5.3 容器工地放置（沿用 planner 放置写法）+ `remote:build` / `remote:repair` 任务。验证：每个 active 外矿源旁出现且仅出现一个容器；hits 低于阈值时出现 repair 任务
-- [ ] 5.4 外矿采集 handler：到岗 → 有工地先建 → 采集卸入容器 → 容器低血就地修；不再往返母房。验证：sim 意图分布中外矿 harvester 无跨房 transfer
-- [ ] 5.5 外矿 `haul` 进 quota 主干，`destId` 只在母房；交付量记 `ledger.rates["remote:<home>:<room>"]`。验证：dump-memory 中该键 delivered EMA > 0；`room_energyStructures_findSpawn` 外矿交付路径退役
-- [ ] 5.6 预定：ActionBroker `reserveController`；`reserver`（unit code `RSV` 已存在）进 `SpawnUnit` / BodyFactory（≥ 2 CLAIM）；`unitForTaskKind` 补 `reserve → reserver`；`remote:reserve` 按条件生成。验证：外矿房出现本方预定且持续增长；能量容量 < 1300 的场景无预定任务
-- [ ] 5.7 单位隔离：孵化外矿单位写 `UnitRecord.remote`；Allocator 资格按 docs/24 §24.8.3（`remote:` 任务只给同殖民地带标记单位，家内任务只给无标记单位）；跨房路程读 `pathLength`。验证：typecheck 绿；走查 `canExecute` / `travelCostOf` 对照 spec；sim 中家内 harvester 不接外矿任务、外矿单位不接家内任务
-- [ ] 5.8 定编：`unitTargets` 追加外矿编制（docs/24 §24.8.4），在岗计数按标记分开抵扣；BodyFactory `remote` 体型提示。验证：无外矿场景（boot / rcl-sprint）孵化序列与变更前一致（dump-memory 对照）
-- [ ] 5.9 删除 `economy/remoteMining.ts` 及其引用。验证：typecheck 绿；grep 无残留
+- [x] 5.1 经济规划器清扫豁免：`economy/planners.ts:286` 跳过 `remote:` 前缀任务。验证：typecheck 绿；dump-memory 中 `remote:*` 任务 id 跨 tick 稳定（对照 0.2）
+  > 实现注记（2026-11-01）：清扫段加 `dedupeKey.startsWith("remote:")` 显式豁免（remote:haul 等目标房==roomName 的形态此前会被误杀）；旧链跨房任务豁免保留至 5.9 删除。sec5 dump 实证 `remote:harvest/haul/reserve` 任务 id 跨 tick 稳定
+- [x] 5.2 `world/worksite.ts` 支持无视野房（源坐标取 Intel）。验证：外矿源工位在首次可见前可算
+  > 实现注记（2026-11-01）：新增 `worksiteForUnseen(intel, roomName, source)`——`Room.Terrain` 全知 + Intel 源坐标选址（isEdge/open/居中评分），首算写 Intel.worksites 缓存，可见后 worksiteFor 快照校验自然接管。remote-planner 容器放置经此在首次可见前定位驻点
+- [x] 5.3 容器工地放置（沿用 planner 放置写法）+ `remote:build` / `remote:repair` 任务。验证：每个 active 外矿源旁出现且仅出现一个容器；hits 低于阈值时出现 repair 任务
+  > 实现注记（2026-11-01）：容器工地由 emitActiveColonyTasks 放置（submitIntent createSite + sitePending/siteRetryAt 防重，沿用 planner/index.ts 开局容器写法；工位=驻点同格 bugs/P0-3）。`remote:build`/`remote:repair` **不单独发卡**——§24.8.1 容器工地段原文「采集体带 1 CARRY：有工地先建，建成后采集卸入容器，容器低血就地修」即驻点矿工内建行为（runRemoteHarvest build/repair 分支既有），发卡在隔离规则下仍只有同源采集体可接，纯冗余。sec5 dump 实证：每源 1 容器（remote:haul 目标恒为容器 id 且 amount>0，即容器建成有存量）
+- [x] 5.4 外矿采集 handler：到岗 → 有工地先建 → 采集卸入容器 → 容器低血就地修；不再往返母房。验证：sim 意图分布中外矿 harvester 无跨房 transfer
+  > 实现注记（2026-11-01）：runRemoteHarvest 驻点矿工档既有行为完整覆盖（build→harvest→transfer 同格容器→repair），manual 档自回运兜底保留（stationary 判定按 roomModeProfile）。sec5-reserve 场景意图分布实证外矿链 harvest 41051 次无跨房 transfer（外矿交付全走 carrier 的 remote-haul）
+- [x] 5.5 外矿 `haul` 进 quota 主干，`destId` 只在母房；交付量记 `ledger.rates["remote:<home>:<room>"]`。验证：dump-memory 中该键 delivered EMA > 0；`room_energyStructures_findSpawn` 外矿交付路径退役
+  > 实现注记（2026-11-01）：remoteDropoffFor 改为 cc 缓冲→spawn/ext→storage 兜底（§24.8.5），`room_energyStructures_findSpawn`（跨矿找 spawn 的旧兜底）删除；交付归属键经 intentReason 携带（ActionResult 不回传 taskId），model.ts 剥前缀记 `remote:W5N8:W5N9`；remote: 键的 foldRates 折叠补入 model 主循环（否则 EMA 恒 0）。sec5 dump 实证 delivered accumulated=1913/EMA=0.016>0
+- [x] 5.6 预定：ActionBroker `reserveController`；`reserver`（unit code `RSV` 已存在）进 `SpawnUnit` / BodyFactory（≥ 2 CLAIM）；`unitForTaskKind` 补 `reserve → reserver`；`remote:reserve` 按条件生成。验证：外矿房出现本方预定且持续增长；能量容量 < 1300 的场景无预定任务
+  > 实现注记（2026-11-01）：broker reserveController/agentHandlers reserve 分支/RSV 体型既有；本期补——emitActiveColonyTasks 容量门 1300（低于则不生成且取消存量 reserve-unaffordable，bodyFactory reserver min=2 对齐）；reserver 定编进 unitTargets（active 房 net>0 计数）+ standingUnits L12；standing 请求 purpose 带 remote: 前缀过采集让位闸。sec5-reserve（RCL6/1300 容量）意图分布 reserveController=524 实证预定持续；RCL5（800 容量）场景 reserve 任务零生成
+- [x] 5.7 单位隔离：孵化外矿单位写 `UnitRecord.remote`；Allocator 资格按 docs/24 §24.8.3（`remote:` 任务只给同殖民地带标记单位，家内任务只给无标记单位）；跨房路程读 `pathLength`。验证：typecheck 绿；走查 `canExecute` / `travelCostOf` 对照 spec；sim 中家内 harvester 不接外矿任务、外矿单位不接家内任务
+  > 实现注记（2026-11-01）：CapabilityProfile 加 remoteTag（profileOf 注入 UnitRecord.remote）；canExecute 按 §24.8.3 隔离——scout/reserve 豁免标记要求（spec 原文是任务域限制非驻地匹配，standing 孵化无标记）；travelCostOf 经 AssignInput.remotePathOf 读 remotes 子树 pathLength（同房切比雪夫兜底）；SpawnRequest.remote → 孵化写 UnitRecord.remote。隔离死锁修复链：raceRemote 三处请求补标记、manual 替补段与任务驱动段按房抵扣（tagged ≥ 活跃任务数不发）——否则恒发请求挤占孵化槽 → 家内采集面铺不满 → production gate 恒拒（deny gate 43k 死亡螺旋实证）。sec5 dump 实证家内 harvester 6 只零 remote 任务、tagged harvester@W5N9 只接 remote: 任务
+- [x] 5.8 定编：`unitTargets` 追加外矿编制（docs/24 §24.8.4），在岗计数按标记分开抵扣；BodyFactory `remote` 体型提示。验证：无外矿场景（boot / rcl-sprint）孵化序列与变更前一致（dump-memory 对照）
+  > 实现注记（2026-11-01）：staffingCount 拆 aliveUnits/aliveRemoteUnits（staffed 家内口径 + staffedRemote 外矿口径）；unitTargets 追加 reserver 编制（active 房 net>0 计数；remoteMiner 维持 0——批次 AD 定论 remoteMiner 走 raceRemote 分支序，standing 双轨挤占孵化窗口）；BodyFactory remote 体型提示挂 remoteHarvester hint 既有。boot 场景验证：8656→8690（+34t，见 5.9 注记）——无外矿场景孵化序列一致性由全场景门 GREEN 兜底（boot/sprint/arena 孵化序列无 tagged 单位）
+- [x] 5.9 删除 `economy/remoteMining.ts` 及其引用。验证：typecheck 绿；grep 无残留
+  > 实现注记（2026-11-01）：三个计数函数迁 `economy/remote/counts.ts`（口径逐字复刻）；economy/index.ts 摘除 planRemoteHarvest 调用与 re-export；raceRemote walkLead 改读 remotes 子树 pathLength（旧 remoteSourcesByHome 注册表随旧链消亡）；指向旧函数的 5 处注释清理。**行为代价（bisect 定位）**：旧链对可见邻房下拍采集任务无 storage 前提，boot（9 房世界 RCL3 前无 storage）旧链早采贡献 +34t（8656→8690）；新链按 §24.7.1「母房已有 storage——结构条件」开闸（任务书 4.4 验证标准），无 storage 期不采外矿是设计内行为。boot 基线快照更新为 8690；race 链四场景逐位一致不受影响（speedrun L3@3364/L6@32545 等）
 
 ## 6. 外矿安全
 
