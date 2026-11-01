@@ -158,7 +158,7 @@
 
 ### 25.3.8 外矿
 
-见 `13-external-mining-migration.md`：旧外矿链主线不运行，主线 `remoteMining.ts` 实际不运转，迁移分四期。
+见 `13-external-mining-migration.md`：旧外矿链已整链删除（legacy-consolidation-b C 波 + phase4 第 5 节，`remoteMining.ts` 不存在），一期（多房 Intel / 选点状态机 / 能源闭环 / 安全暂停 / 收益反馈）已落地（`phase4-remote-intel`），主线由 `modules/economy/remote/` 承接；二至四期（路网 / 防御 / keeper）见 §24.2 分期表。
 
 ## 25.4 双轨并存清单
 

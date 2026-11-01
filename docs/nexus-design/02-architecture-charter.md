@@ -247,6 +247,9 @@ Action Layer (actionBroker + movement)    → 仲裁冲突 / 交通协调 / 提�
 | 移动请求与路权 | `modules/movement` (BetterMove + trafficMonitor) | Agent、Broker |
 | 行动结果 | `modules/agents/actionBroker` | 任务生命周期、遥测、账本速率 |
 | 布局记录 | `modules/planner` → `Memory.nexus.layout` | construction、worksite |
+| 外矿选点状态机 | `modules/economy/remote/planner` (写 `Memory.nexus.remotes`) | spawning 定编抵扣、defense 威胁观测遍历、console |
+| 外矿威胁记录 | `modules/defense/threatModel` (写 `rooms[].threat`, `scope` 区分 home/remote) | remote 状态机暂停/恢复；scope=remote 不进 maxThreatScore |
+| 外矿交付速率 | `modules/economy/model` (折叠 `ledger.rates["remote:<home>:<room>"]`) | remote 收益反馈 (measured.netEma) |
 
 三类信息的生命周期（TickContext / global 运行时 / Memory 三级分层）见本篇 §19.5，此处不重复；本节只规定各域的**唯一写入方**。
 
