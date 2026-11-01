@@ -225,8 +225,12 @@ export const SPAWN_CONFIG = {
 	 *  carrier L3 / harvester L4——本矿矿工 drop 采矿, 搬运是 spawn 的唯一
 	 *  能量入口, 必须先于采集补员 (旧体系 carrier 88 > harvester 55 的同语义);
 	 *  两者由采集让位闸 + carrier 上限闸实现 H/C 交替起步; upgrader L6 常态
-	 *  升级档 (main 档无 rush 提级时靠此兜底), scout L11 一次性小件。 */
-	standingPriorityByUnit: { carrier: 3, upgrader: 4, worker: 6, harvester: 9, scout: 11, remoteMiner: 12, reserver: 12 } as Readonly<Record<string, number>>,
+	 *  升级档 (main 档无 rush 提级时靠此兜底)。
+	 *  scout L7 (phase4 3.1): 外矿链路第一环, L11 垫底档在发展期恒被
+	 *  carrier/harvester 常驻缺口压住, remote 目标永不被点亮 (0.2 取证
+	 *  scout 全程零孵化的 main 档复现); 1 MOVE 50 能量一次性小件, 提到
+	 *  build(8) 之下、worker(6) 之上——侦查视野先于建造消费。 */
+	standingPriorityByUnit: { carrier: 3, upgrader: 4, worker: 6, scout: 7, harvester: 9, remoteMiner: 12, reserver: 12 } as Readonly<Record<string, number>>,
 	/** 冲级档缺编 upgrader 的孵化等级下限 (bugs/P1-19): rush 期缺编 upgrader
 	 *  与搬运同进 urgent 段, 攒能与立即通道交错建立火力。
 	 *  2 (race-speedrun 6.1 第四轮, 越过 carrier L3): 换代空窗取证——upgrader(4)

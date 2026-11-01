@@ -15,7 +15,8 @@ export const INTEL_CONFIG = {
 	forgetTicks: 100000,
 	/** Intel 条目总数上限: 超限淘汰最旧者 (己方房与外矿房不参与淘汰) */
 	maxRooms: 100,
-	/** 私服自定义地图房类覆盖表: 房名 → kind, 优先于房名推导 */
+	/** 房类覆盖表 (房名 → kind): 房名推导按标准世界生成规则;
+	 *  仅当地图布局与命名规则不符时在此覆盖, 标准生成世界用不到。优先于推导 */
 	kindOverride: {} as Record<string, "normal" | "highway" | "keeper" | "center">,
 } as const;
 

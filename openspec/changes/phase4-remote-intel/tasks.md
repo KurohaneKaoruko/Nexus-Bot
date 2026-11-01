@@ -36,9 +36,13 @@
 
 ## 3. 侦察
 
-- [ ] 3.1 scout 可孵化：`SpawnUnit` / `ECONOMY_ROLES` / BodyFactory 加 `scout`（单 MOVE），`unitForTaskKind` 补 `scout → scout`。验证：typecheck 绿；有 scout 任务时 dump-memory 出现 scout 单位
-- [ ] 3.2 scout 任务由 Intel 驱动：只为候选房中 Intel 未知或过期者生成，dedupeKey `remote:scout:<home>:<room>`，带 `deadline`。验证：dump-memory 中 scout 任务数 ≤ 未知 / 过期候选房数，到期未认领者被对账取消
-- [ ] 3.3 scout 到达目标房中心 3 格内 `board.complete`。验证：每个候选房的 scout 任务只完成一次，Intel `lastSeen` 随之刷新；无循环派遣
+- [x] 3.1 scout 可孵化：`SpawnUnit` / `ECONOMY_ROLES` / BodyFactory 加 `scout`（单 MOVE），`unitForTaskKind` 补 `scout → scout`。验证：typecheck 绿；有 scout 任务时 dump-memory 出现 scout 单位
+  > 实现注记（2026-11-01）：四关卡在 P1-18/批次 AD 已就位（SpawnUnit 含 scout / ECONOMY_ROLES 收录 / buildBody 单 MOVE / unitForTaskKind 映射），本节补的是**孵化优先级**：standingPriorityByUnit.scout L11→L7——L11 垫底档在发展期恒被 carrier(3)/harvester(9) 常驻缺口压住，remote 目标永不被点亮（0.2 取证「scout 全程零孵化」的 main 档复现，诊断 denyReasons.gate=1406/pendingSince.scout 恒挂）。L7 = build(8) 之下、worker(6) 之上；1 MOVE 50 能量一次性小件。dump 验证：3000t 内 2 只 scout 孵化并完成任务
+- [x] 3.2 scout 任务由 Intel 驱动：只为候选房中 Intel 未知或过期者生成，dedupeKey `remote:scout:<home>:<room>`，带 `deadline`。验证：dump-memory 中 scout 任务数 ≤ 未知 / 过期候选房数，到期未认领者被对账取消
+  > 实现注记（2026-11-01）：remoteMining 两分支（auto 邻房扫描 / manual 目标列表）统一：`intelStale` 判活（未知或超 staleTicks 才派），dedupeKey 全部迁 `remote:scout:` 前缀，`deadline = tick + REMOTE_CONFIG.scoutDeadline`（board.reconcile 到期自动 cancel，failureReason=deadline）。已知新鲜房（去过又丢视野）不重派。经济规划器清扫对目标房≠本矿的任务本就豁免（P1-18 断点⑤），`remote:` 前缀任务不被误杀
+- [x] 3.3 scout 到达目标房中心 3 格内 `board.complete`。验证：每个候选房的 scout 任务只完成一次，Intel `lastSeen` 随之刷新；无循环派遣
+  > 实现注记（2026-11-01）：两形态判定统一为「进房 + 切比雪夫距目标点 ≤3」（中心 3 格保证源/控制器全入视野；旧口径「进房即完成」在边角进入时可能漏看主要结构）。runCreep（母房锚点）与 runForeignTask（外房直挂，保留视野兜底）同步收紧。dump 验证：W5N9/W4N8 Intel sources=2 点亮即完成证据；8000t 无循环派遣（Intel 新鲜后不重派）。既有用例 agent-dispatch.test.ts 随口径更新并补「>3 格继续移动」分支
+  > 归因注记（boot 门基线平移）：第 2 节 perception Intel 写入使每 tick Memory 序列化成本微增 → runIsolated budget 边界平移 → boot L3 8557→8656（+99t，静机双 bundle 各 3/2 次读数稳定，二分锁定 f9e6890）。属功能真实代价（官服同样按 Memory 体积计费），参考快照已更新为 8656；race 变体不含 perception 主链，speedrun/race-body-audit 不受影响
 
 ## 4. 外矿选点
 

@@ -3,7 +3,7 @@
  *
  * kind 由房名坐标推导, 无需视野: 横或纵坐标为 10 的倍数 → highway;
  * 两坐标对 10 取余都在 4..6 → (5,5) 为 center、其余 keeper; 其他 normal。
- * 私服自定义地图经 INTEL_CONFIG.kindOverride 覆盖。
+ * 布局偏离标准命名生成规则的地图经 INTEL_CONFIG.kindOverride 覆盖。
  */
 import { INTEL_CONFIG } from "@/config/remote";
 

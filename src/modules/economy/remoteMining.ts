@@ -8,6 +8,8 @@ import type { RoomObservation } from "@/core/world";
 import type { TaskBoard } from "@/modules/tasks";
 import { priorityFor } from "@/core/store/taskSchema";
 import { RESERVE_CONFIG, SCOUT_CONFIG } from "@/config/economy";
+import { REMOTE_CONFIG } from "@/config/remote";
+import { intelStale } from "@/modules/world/intelState";
 import { roomModeProfileFor } from "@/modules/strategy";
 
 /** 己方用户名 (任一自有 spawn 的 owner; 无 spawn 的角落场景由调用侧兜底为不抢订) */
@@ -265,16 +267,23 @@ export function planRemoteHarvest(
 		const targets = ctx.memory.economy.remoteTargets ?? [];
 		for (const targetRoomName of targets) {
 			const remoteRoom = Game.rooms[targetRoomName];
-			// 无视野: 对手动指定的房间定向侦查 (不扫列表外邻房)
+			// 无视野: 对手动指定的房间定向侦查 (不扫列表外邻房)。
+			// Intel 驱动 (phase4 3.2): 仅未知/过期房派 scout, 已知新鲜房
+			// (去过又丢视野, Intel 未过期) 不重派——dedupeKey 走 remote: 前缀,
+			// deadline 到期对账取消 (与 auto 档同口径)
 			if (!remoteRoom) {
-				board.upsert({
-					dedupeKey: `scout:${room.roomName}:${targetRoomName}`,
-					kind: "scout",
-					roomName: room.roomName,
-					targetPos: { x: 25, y: 25, roomName: targetRoomName },
-					priority: priorityFor("scout"),
-					requiredCapabilities: ["move"],
-				}, ctx.tick);
+				const targetIntel = ctx.memory.rooms[targetRoomName];
+				if (!targetIntel || intelStale(targetIntel, ctx.tick)) {
+					board.upsert({
+						dedupeKey: `remote:scout:${room.roomName}:${targetRoomName}`,
+						kind: "scout",
+						roomName: room.roomName,
+						targetPos: { x: 25, y: 25, roomName: targetRoomName },
+						priority: priorityFor("scout"),
+						requiredCapabilities: ["move"],
+						deadline: ctx.tick + REMOTE_CONFIG.scoutDeadline,
+					}, ctx.tick);
+				}
 				continue;
 			}
 			if (remoteRoom.controller?.my) continue;
@@ -438,14 +447,21 @@ function planAutoRemote(
 			requiredCapabilities: ["work", "move"],
 		}, ctx.tick);
 		expected.add(`harvest:${room.roomName}:remote:${neighborName}:probe${entries[0]?.i ?? 0}`);
-		board.upsert({
-			dedupeKey: `scout:${room.roomName}:${neighborName}`,
-			kind: "scout",
-			roomName: room.roomName,
-			targetPos: { x: 25, y: 25, roomName: neighborName },
-			priority: priorityFor("scout"),
-			requiredCapabilities: ["move"],
-		}, ctx.tick);
+		// scout 派遣 Intel 驱动 (phase4 3.2): 只为未知/过期房发, dedupeKey 走
+		// remote: 前缀 + deadline 到期对账取消——已知新鲜房重复派是纯浪费
+		// (采集件到房自会刷 Intel, scout 的唯一价值是提前点亮)
+		const neighborIntel = ctx.memory.rooms[neighborName];
+		if (!neighborIntel || intelStale(neighborIntel, ctx.tick)) {
+			board.upsert({
+				dedupeKey: `remote:scout:${room.roomName}:${neighborName}`,
+				kind: "scout",
+				roomName: room.roomName,
+				targetPos: { x: 25, y: 25, roomName: neighborName },
+				priority: priorityFor("scout"),
+				requiredCapabilities: ["move"],
+				deadline: ctx.tick + REMOTE_CONFIG.scoutDeadline,
+			}, ctx.tick);
+		}
 	}
 }
 

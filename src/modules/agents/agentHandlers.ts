@@ -17,6 +17,11 @@ import { rankHostiles } from "@/modules/defense";
 import { dist, RANGE_ADJACENT, RANGE_RANGED, RANGE_REPAIR, RANGE_UPGRADE, submitAction, submitAdjacentExtensionFill, submitDrop, submitMoveOrAction, submitMoveTo, fetchEnergy, deliverEnergy, hasFetchTarget, nearestPile } from "@/modules/agents/agentLogistics";
 import { runRemoteCarry, runRemoteHarvest } from "@/modules/agents/agentRemote";
 
+/** 切比雪夫距离 (scout 到达口径: 进房且距目标点 ≤3 格) */
+function chebyshev(ax: number, ay: number, bx: number, by: number): number {
+	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+}
+
 export function runCreep(
 	ctx: TickContext,
 	broker: ActionBroker,
@@ -27,13 +32,18 @@ export function runCreep(
 ): void {
 	switch (task.kind) {
 		case "scout": {
-			// 母房锚点 scout: 到达判定维持原口径 (单位本体进房才 complete)——
+			// 母房锚点 scout: 完成判定维持原口径 (单位本体进房才 complete)——
 			// 邻房视野可由其他外矿件先行点亮, 「见视野即完成」会让在途 scout
 			// 提前释放、孵化队列重排 (boot 门 L3 +897t 实证)。视野兜底只在
-			// 外房直挂形态 (runForeignTask) 生效, 那里无母房上下文、卡边即永挂
+			// 外房直挂形态 (runForeignTask) 生效, 那里无母房上下文、卡边即永挂。
+			// 到达口径 (phase4 3.3): 进房且距目标点 ≤3 格——房间中心 50 格视野
+			// 恒可覆盖全房 (50×50 对角 ~35 格 < 50), 但源头房角落可能扫不到
+			// 邻房 intel, 中心 3 格保证房内主要结构 (源/控制器) 全部入视野
 			const target = task.targetPos?.roomName;
 			if (!target) return;
-			if (creep.roomName === target) {
+			const tx = task.targetPos?.x ?? 25;
+			const ty = task.targetPos?.y ?? 25;
+			if (creep.roomName === target && chebyshev(creep.x, creep.y, tx, ty) <= 3) {
 				board.complete(task.id, creep.name, ctx.tick);
 				const live = Game.creeps[creep.name];
 				if (live) delete (live.memory as Record<string, unknown>).taskId;
@@ -400,11 +410,17 @@ export function runForeignTask(
 			// 重开残留 6 条 scout 任务 + 视野口径漏计 → 无限补孵 20 只, bugs/实服)
 			const target = task.targetPos?.roomName;
 			if (!target) return;
+			const tx = task.targetPos?.x ?? 25;
+			const ty = task.targetPos?.y ?? 25;
 			// 到达兜底 (缺陷三, 外房直挂形态专属): 目标房进视野即算完成——
 			// 直挂 scout 无母房上下文, 边界卡位时任务会永挂 in_progress;
 			// 母房锚点形态不走此路径 (视野可被其他外矿件先行点亮, 提前
-			// 完成会重排孵化链, boot 门 L3 +897t 实证)
-			if (creep.roomName === target || Game.rooms[target] !== undefined) {
+			// 完成会重排孵化链, boot 门 L3 +897t 实证)。
+			// 本体到达口径 (phase4 3.3): 进房且距目标点 ≤3 格
+			const arrived =
+				(creep.roomName === target && chebyshev(creep.x, creep.y, tx, ty) <= 3) ||
+				Game.rooms[target] !== undefined;
+			if (arrived) {
 				board.complete(task.id, creep.name, ctx.tick);
 				const live = Game.creeps[creep.name];
 				if (live) delete (live.memory as Record<string, unknown>).taskId;

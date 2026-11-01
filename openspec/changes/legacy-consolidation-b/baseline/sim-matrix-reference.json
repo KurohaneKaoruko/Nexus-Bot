@@ -1,77 +1,77 @@
 {
-	"remote-mine": {
-		"green": true,
-		"ticks": 30000,
-		"rcl": {
-			"L4": 0
-		},
-		"cpuP95": 6
-	},
-	"speedrun": {
-		"green": true,
-		"ticks": 40000,
-		"rcl": {
-			"L1": 0,
-			"L2": 866,
-			"L3": 3364,
-			"L4": 6004,
-			"L5": 12489,
-			"L6": 32545
-		},
-		"cpuP95": 35
-	},
-	"race-body-audit": {
-		"green": true,
-		"ticks": 6000,
-		"rcl": {
-			"L1": 0,
-			"L2": 755,
-			"L3": 3814
-		},
-		"cpuP95": 34
-	},
-	"speedrun-upstream": {
-		"green": true,
-		"ticks": 40000,
-		"rcl": {
-			"L1": 0,
-			"L2": 656,
-			"L3": 3303,
-			"L4": 5863,
-			"L5": 12317,
-			"L6": 32334
-		},
-		"cpuP95": 34
-	},
-	"arena": {
-		"green": false,
-		"ticks": 40000,
-		"rcl": {
-			"L1": 0,
-			"L2": 330,
-			"L3": 8352,
-			"L4": 27618
-		},
-		"cpuP95": 9
-	},
-	"sprint": {
-		"green": false,
-		"ticks": 50000,
-		"rcl": {
-			"L1": 0,
-			"L2": 834,
-			"L3": 38308
-		},
-		"cpuP95": 9
-	},
-	"boot": {
-		"green": true,
-		"ticks": 20000,
-		"rcl": {
-			"L1": 0,
-			"L2": 330,
-			"L3": 8557
-		},
-		"cpuP95": 9
-	}
+  "remote-mine": {
+    "green": true,
+    "ticks": 30000,
+    "rcl": {
+      "L4": 0
+    },
+    "cpuP95": 6
+  },
+  "speedrun": {
+    "green": true,
+    "ticks": 40000,
+    "rcl": {
+      "L1": 0,
+      "L2": 866,
+      "L3": 3364,
+      "L4": 6004,
+      "L5": 12489,
+      "L6": 32545
+    },
+    "cpuP95": 35
+  },
+  "race-body-audit": {
+    "green": true,
+    "ticks": 6000,
+    "rcl": {
+      "L1": 0,
+      "L2": 755,
+      "L3": 3814
+    },
+    "cpuP95": 34
+  },
+  "speedrun-upstream": {
+    "green": true,
+    "ticks": 40000,
+    "rcl": {
+      "L1": 0,
+      "L2": 656,
+      "L3": 3303,
+      "L4": 5863,
+      "L5": 12317,
+      "L6": 32334
+    },
+    "cpuP95": 34
+  },
+  "arena": {
+    "green": false,
+    "ticks": 40000,
+    "rcl": {
+      "L1": 0,
+      "L2": 330,
+      "L3": 8352,
+      "L4": 27618
+    },
+    "cpuP95": 9
+  },
+  "sprint": {
+    "green": false,
+    "ticks": 50000,
+    "rcl": {
+      "L1": 0,
+      "L2": 834,
+      "L3": 38308
+    },
+    "cpuP95": 9
+  },
+  "boot": {
+    "green": true,
+    "ticks": 20000,
+    "rcl": {
+      "L1": 0,
+      "L2": 330,
+      "L3": 8656
+    },
+    "cpuP95": 9
+  }
 }
