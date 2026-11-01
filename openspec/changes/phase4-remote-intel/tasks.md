@@ -25,10 +25,14 @@
 
 ## 2. 多房 Intel
 
-- [ ] 2.1 `utils/roomName.ts`：房名解析 + `roomKind(name)` + `INTEL_CONFIG.kindOverride`。验证：typecheck 绿；node 直跑用例覆盖 W/E/N/S 四象限、坐标 10 的倍数、(5,5) center、(4..6,4..6) keeper、覆盖表优先
-- [ ] 2.2 schema v10 → v11：`RoomIntelRecord` 可选字段（docs/24 §24.6.1）、`Memory.Nexus.remotes` 子树、`UnitRecord.remote`、`RoomThreatRecord.scope`；`migrateV10ToV11` 补 `kind`，并把 `OutMineData[home].energy` 中的房迁为 `remotes[home].rooms[room].manual = "pin"`（`centerRoom` / `RoadData` / `highway` 不动）。验证：typecheck 绿；迁移用例 node 直跑（空数据 / 旧数据 / 合法保留 / 坏条目 / 幂等 / OutMineData 迁移 / highway 原样保留）；boot 场景 dump-memory 观察迁移执行
-- [ ] 2.3 perception 对 `visible` 房增量写 Intel（值变化才写）；`intelState(record, field, now)` 三态读取。验证：typecheck 绿；三态用例 node 直跑；dump-memory 观察外矿房 Intel 字段出现且未见期间不被改写
-- [ ] 2.4 有界清理：`forgetTicks` 与 `maxRooms`（己方房、外矿房不参与淘汰）。验证：用例 node 直跑；30k 场景 `rooms` 条目数有界
+- [x] 2.1 `utils/roomName.ts`：房名解析 + `roomKind(name)` + `INTEL_CONFIG.kindOverride`。验证：typecheck 绿；node 直跑用例覆盖 W/E/N/S 四象限、坐标 10 的倍数、(5,5) center、(4..6,4..6) keeper、覆盖表优先
+  > 实现注记（2026-11-01）：`roomNameRemainder`（取余口径，与半球无关）+ `roomKind`（覆盖表优先）；schema 侧同构实现 `roomKindOf`（memorySchema 内联推导，避免 utils→schema 环依赖），二者同规则。用例 tests/intel-rooms.test.ts（四象限/highway/center/keeper/非法名/覆盖表优先，7 用例 node 直跑全绿）
+- [x] 2.2 schema v10 → v11：`RoomIntelRecord` 可选字段（docs/24 §24.6.1）、`Memory.Nexus.remotes` 子树、`UnitRecord.remote`、`RoomThreatRecord.scope`；`migrateV10ToV11` 补 `kind`，并把 `OutMineData[home].energy` 中的房迁为 `remotes[home].rooms[room].manual = "pin"`（`centerRoom` / `RoadData` / `highway` 不动）。验证：typecheck 绿；迁移用例 node 直跑（空数据 / 旧数据 / 合法保留 / 坏条目 / 幂等 / OutMineData 迁移 / highway 原样保留）；boot 场景 dump-memory 观察迁移执行
+  > 实现注记（2026-11-01）：项目实际版本 v16 → **v17**（文档写 v10→v11 是拟稿时版本号）。v11 字段全落（RoomIntelRecord 六字段 + remotes/RemoteColonyRecord/RemoteRoomRecord/RemoteSourceRecord/RemoteEstimate + UnitRecord.remote + RoomThreatRecord.scope + SUBSYSTEM_KEYS 增 remotes）；migrateV16ToV17 补 kind + OutMineData.energy→pin（centerRoom/highway/RoadData 不动，OutMineData 本体收尾期再删）+ 坏条目删除，幂等。迁移用例 3 组全绿；intel-dump-verify 场景确认 schemaVersion 17 落盘
+- [x] 2.3 perception 对 `visible` 房增量写 Intel（值变化才写）；`intelState(record, field, now)` 三态读取。验证：typecheck 绿；三态用例 node 直跑；dump-memory 观察外矿房 Intel 字段出现且未见期间不被改写
+  > 实现注记（2026-11-01）：perception visible 循环后接 Intel 增量写入（lastSeen/confidence/sourceIds/sources/controllerPos/owner/reservation/invaderCore/hostileStructures，值变化才写；己方房分支同样补 kind）；三态读取落 `modules/world/intelState.ts`（intelField/intelStale/intelConfidence）。dump 验证：W5N9 六字段全写（owner/reservation=null 已知为空口径）、W5N8 己方房补 kind 无其他副作用
+- [x] 2.4 有界清理：`forgetTicks` 与 `maxRooms`（己方房、外矿房不参与淘汰）。验证：用例 node 直跑；30k 场景 `rooms` 条目数有界
+  > 实现注记（2026-11-01）：perception 内按 `tick % forgetTicks` 频控（首轮 bootstrap 即扫）；豁免集 = 己方房 ∪ remotes 中 active/scouting/manual 房。行为门四场景（speedrun/remote-mine/race-body-audit/boot）RCL 时间线逐位一致；p95 +4/+5ms 经同负载 A/B 三轮对照证伪（HEAD 35/35/38 vs WORK 34/43/35，中位持平）
 
 ## 3. 侦察
 

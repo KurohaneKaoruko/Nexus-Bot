@@ -23,6 +23,8 @@ import {
 	type WorldView,
 } from "@/core/world";
 import { unitCode } from "@/constant/UnitConstant";
+import { INTEL_CONFIG } from "@/config/remote";
+import { roomKind as roomKindOf } from "@/utils/roomName";
 
 /** 墙/城门类结构: 耐久无实际上限, 用绝对维护线而非 hitsMax 比例 */
 const WALL_LIKE: ReadonlySet<string> = new Set(["constructedWall", "rampart"]);
@@ -35,8 +37,7 @@ function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 }
 
 /** 敌方单位摘要 (己方房观察与 visible 快照共用) */
-function summarizeHostile(creep: Creep & { owner: { username: string } }, _roomName: string): HostileCreepSummary {
-	const alivePart = (type: BodyPartConstant): number =>
+function summarizeHostile(creep: Creep & { owner: { username: string } }, _roomName: string): HostileCreepSummary {	const alivePart = (type: BodyPartConstant): number =>
 		creep.body.filter((part) => part.type === type && part.hits > 0).length;
 	return {
 		id: creep.id,
@@ -123,6 +124,15 @@ function summarizeVisibleRoom(room: Room): VisibleRoomObservation {
 				}).length) > 0,
 		creeps: [],
 	};
+}
+
+/** 源坐标数组值相等判定 (Intel 增量写入的「值变化才写」判据) */
+function sameSources(
+	a: { id: string; x: number; y: number }[] | undefined,
+	b: { id: string; x: number; y: number }[],
+): boolean {
+	if (!a || a.length !== b.length) return false;
+	return a.every((s, i) => b[i] !== undefined && s.id === b[i].id && s.x === b[i].x && s.y === b[i].y);
 }
 
 /** 己方单位摘要工厂 (己方房/可见外矿房共用) */
@@ -364,8 +374,10 @@ export const Perception: TickModule = {
 				lastSeen: ctx.tick,
 				confidence: 1,
 				sourceIds: [],
+				kind: roomKindOf(roomName),
 			};
 			intel.lastSeen = ctx.tick;
+			intel.kind ??= roomKindOf(roomName);
 			// RCL 时间线 (speedrun 取证): 首次观测到新等级即记账 (等值跳过, 零写放大)
 			if (observation.rcl !== undefined) {
 				if (!intel.rclTimeline) intel.rclTimeline = {};
@@ -417,6 +429,95 @@ export const Perception: TickModule = {
 					visible[roomName] = vis;
 				}
 				vis.creeps.push(summary);
+			}
+		}
+
+		// visible 房 Intel 增量写入 (docs/24 §24.6.1): 写入方唯一, 值变化才写;
+		// 无本方单位驻留的可见房 (路过视野) 不建 visible 快照, 也不写 Intel
+		for (const roomName of Object.keys(visible)) {
+			const vis = visible[roomName];
+			if (!vis) continue;
+			const room = Game.rooms[roomName];
+			if (!room) continue;
+			let intel = ctx.memory.rooms[roomName];
+			if (!intel) {
+				intel = { lastSeen: ctx.tick, confidence: 1, sourceIds: [], kind: roomKindOf(roomName) };
+				ctx.memory.rooms[roomName] = intel;
+			}
+			intel.lastSeen = ctx.tick;
+			intel.confidence = 1;
+			intel.kind ??= roomKindOf(roomName);
+			const sourceIds = vis.sources.map((source) => source.id);
+			if (intel.sourceIds.length !== sourceIds.length || intel.sourceIds.some((id, i) => id !== sourceIds[i])) {
+				intel.sourceIds = sourceIds;
+			}
+			const sources = vis.sources.map((source) => ({ id: source.id, x: source.x, y: source.y }));
+			if (!sameSources(intel.sources, sources)) {
+				intel.sources = sources;
+			}
+			if (vis.controller) {
+				if (
+					!intel.controllerPos ||
+					intel.controllerPos.x !== vis.controller.x ||
+					intel.controllerPos.y !== vis.controller.y
+				) {
+					intel.controllerPos = { x: vis.controller.x, y: vis.controller.y };
+				}
+				const owner = vis.controller.owner ?? null;
+				if (intel.owner !== owner) {
+					intel.owner = owner;
+				}
+				const reservation = vis.controller.reservation
+					? {
+							username: vis.controller.reservation.username,
+							untilTick: ctx.tick + vis.controller.reservation.ticksToEnd,
+						}
+					: null;
+				if (
+					intel.reservation === undefined ||
+					intel.reservation?.username !== reservation?.username ||
+					intel.reservation?.untilTick !== reservation?.untilTick
+				) {
+					intel.reservation = reservation;
+				}
+			}
+			if (intel.invaderCore !== vis.invaderCore) {
+				intel.invaderCore = vis.invaderCore;
+			}
+			const hostileStructures = vis.hostiles.length > 0 || room.find(FIND_HOSTILE_STRUCTURES).length > 0;
+			if (intel.hostileStructures !== hostileStructures) {
+				intel.hostileStructures = hostileStructures;
+			}
+		}
+
+		// Intel 有界清理 (docs/24 §24.6.1): 非己方、非外矿、遗忘阈外的条目删除;
+		// 超上限时淘汰最旧者。频控按 forgetTicks 取模——首轮在 tick 0 (bootstrap) 即扫一次
+		if (ctx.tick % INTEL_CONFIG.forgetTicks === 0) {
+			const owned = new Set(Object.keys(rooms));
+			const remoteActive = new Set<string>();
+			for (const colony of Object.values(ctx.memory.remotes ?? {})) {
+				for (const [roomName, record] of Object.entries(colony.rooms)) {
+					if (record.state === "active" || record.state === "scouting" || record.manual !== undefined) {
+						remoteActive.add(roomName);
+					}
+				}
+			}
+			const intelRooms = ctx.memory.rooms;
+			for (const roomName of Object.keys(intelRooms)) {
+				const record = intelRooms[roomName];
+				if (!record) continue;
+				if (owned.has(roomName) || remoteActive.has(roomName)) continue;
+				if (ctx.tick - record.lastSeen > INTEL_CONFIG.forgetTicks) {
+					delete intelRooms[roomName];
+				}
+			}
+			const names = Object.keys(intelRooms);
+			if (names.length > INTEL_CONFIG.maxRooms) {
+				names
+					.filter((name) => !owned.has(name) && !remoteActive.has(name))
+					.sort((a, b) => (intelRooms[a]?.lastSeen ?? 0) - (intelRooms[b]?.lastSeen ?? 0))
+					.slice(0, names.length - INTEL_CONFIG.maxRooms)
+					.forEach((name) => delete intelRooms[name]);
 			}
 		}
 
