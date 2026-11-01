@@ -3,3 +3,4 @@
  */
 export { Perception } from "@/modules/world/perception";
 export { worksiteFor, atWorksite, harvestSlotsFor } from "./worksite";
+export { intelField, intelStale, intelConfidence } from "./intelState";
