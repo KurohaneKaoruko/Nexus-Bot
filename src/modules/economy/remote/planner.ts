@@ -13,6 +13,7 @@ import type { RemoteRoomRecord, RoomIntelRecord } from "@/core/store/memorySchem
 import type { RemoteTransitionInput } from "@/modules/economy/remote/stateMachine";
 import { priorityFor } from "@/core/store/taskSchema";
 import { REMOTE_CONFIG } from "@/config/remote";
+import { LEDGER_CONFIG } from "@/config/economy";
 import { roomKind } from "@/utils/roomName";
 import { intelStale } from "@/modules/world/intelState";
 import { worksiteForUnseen } from "@/modules/world/worksite";
@@ -25,6 +26,7 @@ import { remoteTransitionOf } from "@/modules/economy/remote/stateMachine";
 const SITE_RETRY = 50;
 /** haul 起运量: 容器存量 ≥ 单程满载才值得跨房跑一趟 */
 const REMOTE_HAUL_MIN = 100;
+declare const CREEP_LIFE_TIME: number;
 
 /** 母房记录初始化 (懒建): 殖民地子树 v17 起在 schema */
 function colonyOf(ctx: TickContext, homeName: string) {
@@ -122,11 +124,14 @@ function transitionInputOf(
 		intelStale: stale,
 		scouted: !stale,
 		unsafe: isUnsafe(intel),
-		threatConfidence: 0, // 威胁模型接入在防御联动 (后续节)
+		// 威胁置信度 (docs/24 §24.9): 可见敌对=1, 失视按 halfLife 衰减,
+		// 无威胁记录=0——pauseThreat/resumeThreat 与该量纲对齐
+		threatConfidence: intel?.threat?.scope === "remote" ? intel.threat.confidence : 0,
 		spawnBudgetAvailable,
 	};
 	if (rec.estimate?.net !== undefined) input.net = rec.estimate.net;
 	if (rec.measured?.netEma !== undefined) input.measuredNetEma = rec.measured.netEma;
+	if (rec.lossSince !== undefined) input.lossDuration = ctx.tick - rec.lossSince;
 	if (rec.manual !== undefined) input.manual = rec.manual;
 	return input;
 }
@@ -199,11 +204,83 @@ export function planRemoteColony(
 
 		// 转移
 		const input = transitionInputOf(ctx, rec, name, budgetAvailable);
+		// 实测净收入折叠 (docs/24 §24.10): 每 foldInterval tick 折一次
+		// measured.netEma = 交付 EMA − 存量单位孵化成本摊销 (成本/寿命折算/tick)
+		if (rec.state === "active") {
+			const last = rec.measured?.lastFoldTick ?? 0;
+			if (ctx.tick - last >= REMOTE_CONFIG.foldInterval) {
+				const deliveredEma = ctx.memory.ledger.rates[`remote:${room.roomName}:${name}`]?.delivered.ema ?? 0;
+				let amortized = 0;
+				for (const unit of Object.values(ctx.memory.units)) {
+					if (unit.remote === name && unit.costEnergy !== undefined) {
+						amortized += unit.costEnergy / CREEP_LIFE_TIME;
+					}
+				}
+				const net = deliveredEma - amortized;
+				if (rec.measured) {
+					const alpha = LEDGER_CONFIG.rateSmoothing;
+					rec.measured.netEma = rec.measured.netEma * (1 - alpha) + net * alpha;
+				} else {
+					rec.measured = { netEma: net, lastFoldTick: ctx.tick };
+				}
+				rec.measured.lastFoldTick = ctx.tick;
+				// 连续亏损计时 (docs/24 §24.10): EMA<0 起 lossSince, 回正即清零
+				if (rec.measured.netEma < 0) {
+					rec.lossSince ??= ctx.tick;
+				} else {
+					delete rec.lossSince;
+				}
+			}
+		}
+		// 外矿单位死亡窗口 (docs/24 §24.9): deathWindow 内死 ≥ pauseDeaths → 暂停。
+		// 死亡名单是当 tick 事件 (emergency 阶段尚在, 记录未回收), 按 remote 标记归房
+		if ((rec.state === "active" || rec.state === "scouting") && ctx.world.dead.length > 0) {
+			for (const deadName of ctx.world.dead) {
+				if (ctx.memory.units[deadName]?.remote === name) {
+					rec.deathTicks ??= [];
+					rec.deathTicks.push(ctx.tick);
+				}
+			}
+		}
+		if (rec.deathTicks?.length) {
+			const windowStart = ctx.tick - REMOTE_CONFIG.deathWindow;
+			rec.deathTicks = rec.deathTicks.filter((t) => t >= windowStart);
+			if (rec.state === "active" && rec.deathTicks.length >= REMOTE_CONFIG.pauseDeaths) {
+				rec.state = "paused";
+				rec.since = ctx.tick;
+				rec.reason = `deaths:${rec.deathTicks.length}>=${REMOTE_CONFIG.pauseDeaths} in ${REMOTE_CONFIG.deathWindow}t`;
+				for (const task of board.list({ roomName: room.roomName })) {
+					if (
+						(task.dedupeKey ?? "").startsWith("remote:") &&
+						task.targetPos?.roomName === name &&
+						task.status !== "completed" &&
+						task.status !== "cancelled"
+					) {
+						board.cancel(task.id, ctx.tick, "remote-paused");
+					}
+				}
+			}
+		}
 		const t = remoteTransitionOf(rec, input, ctx.tick);
 		if (t) {
 			rec.state = t.state;
 			rec.since = ctx.tick;
 			rec.reason = t.reason;
+			// 暂停撤回 (docs/24 §24.9): 该房外矿任务全部取消——采集体/搬运体
+			// 租约到期自然回池, 存量载体完成当次交付后不再续租。
+			// (单位级 retreat 联动属防御域三期编队需求方, 本期任务取消即止损)
+			if (t.state === "paused") {
+				for (const task of board.list({ roomName: room.roomName })) {
+					if (
+						(task.dedupeKey ?? "").startsWith("remote:") &&
+						task.targetPos?.roomName === name &&
+						task.status !== "completed" &&
+						task.status !== "cancelled"
+					) {
+						board.cancel(task.id, ctx.tick, "remote-paused");
+					}
+				}
+			}
 		}
 
 		// 动作生成

@@ -37,11 +37,13 @@ export const REMOTE_CONFIG = {
 	containerRepairBelow: 0.5,
 	/** 预定刷新阈值 (tick): ticksToEnd 低于此值补预定 */
 	reserveRefreshBelow: 1000,
-	/** 暂停威胁门槛 (0..1): 房间威胁置信度超过此值暂停外矿 */
+	/** 暂停威胁门槛 (0..1): 房间威胁置信度超过此值暂停外矿
+	 *  (置信度 = threat.confidence: 可见 1 / 失视 halfLife 衰减, 微场景实证
+	 *  active→paused 于 1.00 > 0.5, docs/24 §24.9) */
 	pauseThreat: 0.5,
 	/** 恢复威胁门槛 (0..1): 暂停后威胁置信度降至此值以下恢复 */
 	resumeThreat: 0.2,
-	/** 死亡暂停计数 (个): 窗口内外矿单位死亡达此数即暂停 */
+	/** 死亡暂停计数 (个): 窗口内外矿单位死亡达此数即暂停 (按 UnitRecord.remote 归房) */
 	pauseDeaths: 2,
 	/** 死亡计数窗口 (tick) */
 	deathWindow: 1000,
@@ -49,9 +51,12 @@ export const REMOTE_CONFIG = {
 	pauseTicks: 2000,
 	/** 拒绝重试间隔 (tick): 净收益不足被拒后此时长内不再评估 */
 	rejectedRetryTicks: 5000,
-	/** 实测净收入折叠间隔 (tick): 账本采样折叠为 netEma 的周期 */
+	/** 实测净收入折叠间隔 (tick): 账本采样折叠为 netEma 的周期
+	 *  (与 LEDGER_CONFIG.rateWindowTicks 同值, 交付 EMA 与摊销同窗口对齐) */
 	foldInterval: 100,
-	/** 净收入评估窗口 (tick): 窗口内净收入为负即触发亏损剔除 */
+	/** 净收入评估窗口 (tick): 实测净收入 EMA 连续为负达此时长才触发亏损剔除
+	 *  (冷启动期交付未爬坡而摊销先计, 此窗是防误杀缓冲; sim 30k 实证
+	 *  RCL4/800 单 spawn 双外矿全程处于冷启动负值段不误剔) */
 	lossWindow: 10000,
 	/** 外矿装卸余量 (格): 装载/卸载驻留折算的等效路途长度, 与 2d 同量纲
 	 *  (搬运容量 C = r_eff × (2d + 此值) / CARRY_CAPACITY, docs/24 §24.7.2) */

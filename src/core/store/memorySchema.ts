@@ -148,6 +148,8 @@ export interface UnitRecord {
 	firstArrivedAt?: number;
 	/** 外派驻地房 (v17, docs/nexus-design/13 §24.8.3): 外矿单位隔离口径, 家内定编不计数 */
 	remote?: string;
+	/** 出生体型能量成本 (v17, docs/nexus-design/13 §24.10): 外矿实测净收益的孵化成本摊销输入 */
+	costEnergy?: number;
 }
 
 /** 资源预留承诺 (docs/nexus-design/06 §6.6): 对未来计划的会计记录, 非库存本体 */
@@ -523,8 +525,12 @@ export interface RemoteRoomRecord {
 	estimate?: RemoteEstimate;
 	/** 实测净收入 EMA (账本交付速率折叠) */
 	measured?: { netEma: number; lastFoldTick: number };
+	/** 实测净收入连续为负的起始 tick (docs/24 §24.10 lossWindow 判据) */
+	lossSince?: number;
 	/** 暂停到期 tick (paused 态) */
 	pausedUntil?: number;
+	/** 外矿单位死亡 tick 环形记录 (docs/24 §24.9 deathWindow 判据, 有界数组) */
+	deathTicks?: number[];
 	/** 本期: energy; 四期: keeper */
 	profile: "energy";
 }

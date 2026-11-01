@@ -565,6 +565,8 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				lastTaskChange: ctx.tick,
 				// 外矿驻地标记 (docs/24 §24.8.3): 分配器隔离口径
 				...(request.remote ? { remote: request.remote } : {}),
+				// 出生体型成本 (docs/24 §24.10): 外矿实测净收益摊销输入
+				...(request.remote ? { costEnergy: bodyCost(body) } : {}),
 			};
 			// worker 出生史累计标记 (workerBuildCriticalOf 豁免口径, 死亡不清)。
 			// request.unit 是类型名 (SpawnUnit), 与 UNIT_CODES 代号 ("W") 比较

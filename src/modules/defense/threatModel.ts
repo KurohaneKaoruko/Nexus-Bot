@@ -116,8 +116,80 @@ export function scoreHostiles(room: RoomObservation): ThreatSnapshot {
  * 更新房间威胁记录 (emergency 阶段每 Tick 调用):
  * 可见 → 快照评分覆盖 + 击杀近似归因; 失视 → 按 tick 衰减, 无害/超时清除;
  * 新威胁窗口 → 计数 + 紧急重估标志; 威胁活跃期死亡的房间单位计入战损。
+ * scope (docs/24 §24.9): "home" = 家内房 (进全局姿态/编制), "remote" = 外矿房
+ * (只驱动外矿状态机暂停/恢复, 不计入 maxThreatScore)。
  */
 export function updateRoomThreat(ctx: TickContext, room: RoomObservation): void {
+	updateThreatOf(ctx, room, "home");
+}
+
+/**
+ * 外矿房威胁观测 (docs/24 §24.9): 可见时从 Game.rooms 构造最小观测评分
+ * (proximityFactor 恒 1——外矿房无己方资产), 不可见时按既有衰减规则。
+ * 由 Defense 模块对 remotes 子树的 active/scouting 房调用。
+ */
+export function updateRemoteThreat(ctx: TickContext, roomName: string): void {
+	const intel = ctx.memory.rooms[roomName];
+	if (!intel) {
+		return;
+	}
+	const live = Game.rooms[roomName];
+	if (live) {
+		const hostiles = live.find(FIND_HOSTILE_CREEPS);
+		if (hostiles.length > 0) {
+			// 最小观测评分 (部件和 × 类别倍率), 无资产接近度加权 (外矿房无己方资产)
+			let score = 0;
+			let hasPlayer = false;
+			for (const hostile of hostiles) {
+				const parts =
+					hostile.getActiveBodyparts(ATTACK) +
+					hostile.getActiveBodyparts(RANGED_ATTACK) +
+					hostile.getActiveBodyparts(HEAL) +
+					hostile.getActiveBodyparts(TOUGH) +
+					hostile.getActiveBodyparts(MOVE);
+				const isNpc = hostile.owner.username === "Invader";
+				if (!isNpc) hasPlayer = true;
+				score += parts * THREAT_CONFIG.categoryMultiplier[isNpc ? "npc" : "player"];
+			}
+			const previous = intel.threat;
+			const continuing = previous !== undefined && previous.score >= THREAT_CONFIG.harmlessScore;
+			intel.threat = {
+				score,
+				peakScore: Math.max(score, previous?.peakScore ?? 0),
+				category: hasPlayer ? "player" : "npc",
+				firstSeenAt: continuing ? previous.firstSeenAt : ctx.tick,
+				lastSeenAt: ctx.tick,
+				confidence: 1,
+				hostileCount: hostiles.length,
+				reason: `remote-hostiles:${hostiles.length} score:${Math.round(score)}`,
+				scope: "remote",
+			};
+			return;
+		}
+	}
+	// 不可见或无敌人: 沿用衰减规则 (清除/衰减由同函数处理)
+	decayRemoteThreat(ctx, roomName);
+}
+
+function decayRemoteThreat(ctx: TickContext, roomName: string): void {
+	const intel = ctx.memory.rooms[roomName];
+	const previous = intel?.threat;
+	if (!previous || previous.scope !== "remote") {
+		return;
+	}
+	const unseen = ctx.tick - previous.lastSeenAt;
+	const decayed = previous.score * Math.pow(THREAT_CONFIG.decayFactor, unseen);
+	if (unseen > THREAT_CONFIG.staleTicks || decayed < THREAT_CONFIG.harmlessScore) {
+		delete intel.threat;
+	} else {
+		intel.threat = {
+			...previous,
+			score: decayed,
+		};
+	}
+}
+
+function updateThreatOf(ctx: TickContext, room: RoomObservation, scope: "home" | "remote"): void {
 	const intel = ctx.memory.rooms[room.roomName];
 	if (!intel) {
 		return;
@@ -149,6 +221,7 @@ export function updateRoomThreat(ctx: TickContext, room: RoomObservation): void 
 			confidence: 1,
 			hostileCount: snapshot.hostileCount,
 			reason: snapshot.reason,
+			scope,
 		};
 	} else if (previous) {
 		const unseen = ctx.tick - previous.lastSeenAt;
@@ -161,6 +234,7 @@ export function updateRoomThreat(ctx: TickContext, room: RoomObservation): void 
 				...previous,
 				score: decayed,
 				confidence: Math.pow(0.5, unseen / THREAT_CONFIG.confidenceHalfLife),
+				scope,
 			};
 		}
 	}
@@ -176,10 +250,14 @@ export function updateRoomThreat(ctx: TickContext, room: RoomObservation): void 
 	}
 }
 
-/** 全局最高威胁分 (战略 war 输入, 纯 Memory 读) */
+/** 全局最高威胁分 (战略 war 输入, 纯 Memory 读)。scope=remote 的外矿房威胁
+ *  不计入 (docs/24 §24.9): 不抬高家内 defender 编制、不触发 war 姿态 */
 export function maxThreatScore(memory: NexusMemory): number {
 	let max = 0;
 	for (const intel of Object.values(memory.rooms)) {
+		if (intel.threat?.scope === "remote") {
+			continue;
+		}
 		const score = intel.threat?.score ?? 0;
 		if (score > max) {
 			max = score;

@@ -25,6 +25,8 @@ export interface RemoteTransitionInput {
 	threatConfidence: number;
 	/** 实测净收入 EMA (active 态亏损剔除判据) */
 	measuredNetEma?: number;
+	/** 实测净收入连续为负的持续时长 (tick; 超过 lossWindow 才剔除) */
+	lossDuration?: number;
 	/** spawn 预算是否有余 (evaluated → active 准入) */
 	spawnBudgetAvailable: boolean;
 }
@@ -109,16 +111,17 @@ export function remoteTransitionOf(
 					immediate: true,
 				};
 			}
-			// 亏损剔除 (pin 除外)
+			// 亏损剔除 (pin 除外): 持续 lossWindow 才剔 (docs/24 §24.10)
 			if (
 				!pin &&
 				input.measuredNetEma !== undefined &&
 				input.measuredNetEma < 0 &&
+				(input.lossDuration ?? 0) >= REMOTE_CONFIG.lossWindow &&
 				dwellPassed
 			) {
 				return {
 					state: "rejected",
-					reason: `measured:${input.measuredNetEma.toFixed(2)}<0`,
+					reason: `measured:${input.measuredNetEma.toFixed(2)}<0 for ${Math.round(input.lossDuration ?? 0)}t`,
 				};
 			}
 			// 安全否决随时生效

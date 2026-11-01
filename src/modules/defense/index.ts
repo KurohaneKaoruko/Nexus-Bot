@@ -13,7 +13,7 @@ import { createTaskBoard } from "@/modules/tasks";
 import { ensureBroker } from "@/modules/agents";
 import { planDefenseRoom } from "@/modules/defense/planners";
 import { assignTowers } from "@/modules/defense/towerControl";
-import { foldTowerSpend, updateRoomThreat } from "@/modules/defense/threatModel";
+import { foldTowerSpend, updateRemoteThreat, updateRoomThreat } from "@/modules/defense/threatModel";
 
 // ── 公共面: 防御角色单位 (原型角色注册表消费) ──
 
@@ -55,6 +55,15 @@ export const Defense: TickModule = {
 			updateRoomThreat(ctx, room);
 			// 应急任务: defend/retreat/repair + SafeMode 政策 (经 broker 提交)
 			planDefenseRoom(ctx, board, room, broker);
+		}
+		// 外矿房威胁观测 (docs/24 §24.9): scope=remote, 只驱动外矿状态机
+		// 暂停/恢复, 不进 maxThreatScore (家内编制/姿态不受外矿威胁影响)
+		for (const colony of Object.values(ctx.memory.remotes ?? {})) {
+			for (const [name, rec] of Object.entries(colony.rooms)) {
+				if (rec.state === "active" || rec.state === "scouting" || rec.state === "paused") {
+					updateRemoteThreat(ctx, name);
+				}
+			}
 		}
 		submitTowerActions(ctx, broker);
 		foldTowerSpend(ctx);
