@@ -3,15 +3,18 @@ import { resolveFirstRoomMode } from "@/console/roomAutoStart";
 import { BASE_CONFIG } from "@/constant/BaseConstant";
 import { clearRoomRelatedMemory, ensureRoomData, getAutoData, getRoomData, getStructData } from "@/core/store/accessor";
 import { parseShardRoomName } from "@/utils/shardRoom";
-import { clearMemoryCache } from "@/modules/agents/creepCache";
-import { ROOM_NAME_SOURCE_TEXT, resolveRoomName } from "@/console/argUtils";
+import { clearMemoryCache } from "@/proto";
+import { resolveRoomName } from "@/console/argUtils";
+import layoutFn from "@/console/function/layout";
+import { upsertSendEntry } from "@/modules/economy/sendLedger";
 
-// 动态布局（无需布局中心）
-const DYNAMIC_LAYOUT_SET = new Set(['auto', '63auto', 'scorpior']);
+// 无需布局中心的自动布局；race 是唯一保留的静态模板，需要 centerPos/storagePos
+const CENTERLESS_LAYOUT_SET = new Set(['auto', 'mini']);
+const SUPPORTED_LAYOUT_SET = new Set(['auto', 'mini', 'race']);
 const ROOM_MODE_SET = ['main', 'stop', 'low', 'high', 'rush', 'mini'];
 
 // 房间控制
-export default {
+const roomCtl = {
     room: {
     /**
      * 快速启动：一条指令完成「加入控制列表 → 构建布局 → 开启自动建筑」。
@@ -19,7 +22,7 @@ export default {
      * 两个参数都可以省略：
      * - start()               自动推断房间（旗帜 > 唯一未托管房 > 唯一己方房），使用自动布局
      * - start('W1N1')         指定房间，使用自动布局（或沿用已配置布局）
-     * - start('W1N1','clover')指定房间 + 静态布局（需 centerPos 旗帜标记布局中心）
+     * - start('W1N1','race')指定房间 + 静态布局（需 centerPos 旗帜标记布局中心）
      *
      * opts.quiet: 静默模式（供落地自启等自动流程复用），只执行不输出，由调用方自行汇总。
      */
@@ -32,11 +35,11 @@ export default {
         const target = resolved.roomName;
 
         // ── 2. 布局确定：显式传入 > 房间已有配置 > auto ──
-        const layoutName = layout || (getRoomData(target) as any)?.layout || 'auto';
+        const layoutName = layout || getRoomData(target)?.layout || 'auto';
 
         // ── 3. 静态布局必须有中心（旗帜标记）──
         const centerFlag = Game.flags.centerPos;
-        if (!DYNAMIC_LAYOUT_SET.has(layoutName) &&
+        if (!CENTERLESS_LAYOUT_SET.has(layoutName) &&
             (!centerFlag || centerFlag.pos.roomName !== target)) {
             return Error(
                 `使用静态布局 ${layoutName} 需要布局中心：请将名为 centerPos 的旗帜放到 ${target} 的布局中心（storage 位置），` +
@@ -45,17 +48,17 @@ export default {
         }
 
         // ── 4. 依次执行启动流程（子步骤静音，避免重复刷屏）──
-        (globalThis as any).room.add(target, layoutName, undefined, undefined, { quiet: true });
-        const buildResult = (globalThis as any).layout.build(target, layoutName, { quiet: true });
+        roomCtl.room.add(target, layoutName, undefined, undefined, { quiet: true });
+        const buildResult = layoutFn.layout.build(target, layoutName, { quiet: true });
         if (buildResult !== OK && buildResult !== undefined) {
             return Error(`${target} 布局构建失败（${buildResult}），可手动执行 layout.build('${target}', '${layoutName}') 重试。`);
         }
-        (globalThis as any).layout.auto(target, true, { quiet: true });
+        layoutFn.layout.auto(target, true, { quiet: true });
 
         if (quiet) return OK;
 
         // ── 5. 单行启动摘要 ──
-        const roomMem = getRoomData(target) as any;
+        const roomMem = getRoomData(target);
         const center = roomMem?.center;
         const inferredNote = resolved.source && resolved.source !== 'explicit' ? '（自动选择）' : '';
         globalThis.log(
@@ -69,7 +72,7 @@ export default {
         if (!resolved.roomName) return resolved.error;
         const target = resolved.roomName;
 
-        const roomMem = ensureRoomData(target) as any;
+        const roomMem = ensureRoomData(target);
         if (!roomMem['mode']) {
             // 落地首房（己方房间 ≤ 1）按订阅档位自动选模式：CPU ≥ 100 直接 rush 冲级
             const ownedRooms = Object.values(Game.rooms).filter((r) => r?.controller?.my).length;
@@ -77,6 +80,7 @@ export default {
         }
         if (!opts?.quiet) globalThis.log(`已将房间 ${target} 加入控制列表。`);
         if (layout) {
+            if (!SUPPORTED_LAYOUT_SET.has(layout)) return Error(`仅支持 auto、mini、race 三种布局。`);
             roomMem['layout'] = layout;
             if (!opts?.quiet) globalThis.log(`已设置 ${target} 的布局为 ${layout}。`);
         }
@@ -85,7 +89,7 @@ export default {
             if (!opts?.quiet) globalThis.log(`已设置 ${target} 的布局中心为 (${x},${y})。`);
         } else {
             let PosFlag = Game.flags.storagePos || Game.flags.centerPos;
-            if (PosFlag && PosFlag.room!.name! === target) {
+            if (PosFlag && PosFlag.room?.name === target) {
                 roomMem['center'] = { x: PosFlag.pos.x, y: PosFlag.pos.y };
                 if (!opts?.quiet) globalThis.log(`已设置 ${target} 的布局中心为 (${PosFlag.pos.x},${PosFlag.pos.y})。`);
             }
@@ -93,7 +97,7 @@ export default {
         const room = Game.rooms[target];
         if (room?.my && typeof room.init === 'function') {
             room.init();
-            (room.memory as any)._init = true;
+            room.memory['_init'] = true;
         }
         return OK;
     },
@@ -101,9 +105,9 @@ export default {
     auto(
         enable: boolean = true,
         mode: 'main' | 'low' | 'high' | 'rush' | 'mini' = 'main',
-        layout: 'auto' | '63auto' | 'scorpior' = 'auto'
+        layout: 'auto' | 'mini' = 'auto'
     ) {
-        const auto = getAutoData() as any;
+        const auto = getAutoData();
         if (!enable) {
             delete auto.RoomAutoStart;
             globalThis.log(`已关闭新占领房间自动托管。`);
@@ -112,8 +116,8 @@ export default {
         if (!['main', 'low', 'high', 'rush', 'mini'].includes(mode)) {
             return Error('自动托管默认模式仅支持 main、low、high、rush、mini。');
         }
-        if (!['auto', '63auto', 'scorpior'].includes(layout)) {
-            return Error('自动托管仅支持 auto、63auto、scorpior 三种自动布局。');
+        if (!CENTERLESS_LAYOUT_SET.has(layout)) {
+            return Error('自动托管仅支持 auto、mini 两种无需布局中心的布局。');
         }
 
         auto.RoomAutoStart = {
@@ -145,7 +149,7 @@ export default {
             return OK;
         }
         const lines = names.map(name => {
-            const cfg = rooms[name] as any;
+            const cfg = rooms[name]!;
             const bits: string[] = [];
             if (cfg.mode) bits.push(`模式 ${cfg.mode}`);
             if (cfg.layout) bits.push(`布局 ${cfg.layout}`);
@@ -162,7 +166,7 @@ export default {
     mode(roomName?: string, mode: 'main' | 'low' | 'high' | 'stop' | 'rush' | 'mini' = 'main') {
         // 单参数写法：room.mode('high') / room.mode('rush')
         if (roomName && ROOM_MODE_SET.includes(roomName)) {
-            mode = roomName as any;
+            mode = roomName as RoomControlMemory['mode'];
             roomName = undefined;
         }
         if (!ROOM_MODE_SET.includes(mode)) return Error(`仅支持 ${ROOM_MODE_SET.join('、')} 模式。`);
@@ -174,7 +178,7 @@ export default {
         if (!room || !room.my) {
             return Error(`房间 ${resolved.roomName} 不存在或未拥有。`);
         }
-        const roomMem = ensureRoomData(resolved.roomName) as any;
+        const roomMem = ensureRoomData(resolved.roomName);
         roomMem['mode'] = mode;
         globalThis.log(`已设置 ${resolved.roomName} 的运行模式为 ${mode}。`);
         return OK;
@@ -205,7 +209,7 @@ export default {
             }
         }
 
-        const roomMem = ensureRoomData(target) as any;
+        const roomMem = ensureRoomData(target);
         roomMem['center'] = { x: cx, y: cy };
         globalThis.log(`已设置 ${target} 的布局中心为 (${cx},${cy})。`);
         return OK;
@@ -225,7 +229,7 @@ export default {
         if (!room || !room.my) {
             return Error(`房间 ${resolved.roomName} 不存在或未拥有。`);
         }
-        const roomMem = ensureRoomData(resolved.roomName) as any;
+        const roomMem = ensureRoomData(resolved.roomName);
         roomMem['defend_mode'] = mode;
         globalThis.log(`已设置 ${resolved.roomName} 的防御模式为 ${mode}。`);
         return OK;
@@ -243,7 +247,7 @@ export default {
         if (!applied) {
             return Error("用法: sign <房间名> <文本>");
         }
-        const botMem = ensureRoomData(resolved.roomName) as any;
+        const botMem = ensureRoomData(resolved.roomName);
         botMem['sign'] = applied;
         globalThis.log(`已设置 ${resolved.roomName} 的房间签名为:\n ${applied}`);
         return OK;
@@ -257,7 +261,7 @@ export default {
             return Error('请输入大于 0 的数值：0~1 之间按比例使用，大于 1 时按 hits/3e8 折算为比例。');
         }
 
-        const botMem = getStructData(resolved.roomName) as any;
+        const botMem = getStructData(resolved.roomName);
         const ratio = hits <= 1 ? hits : hits / 3e8;
         botMem['ram_threshold'] = ratio;
         globalThis.log(`已设置 ${resolved.roomName} 的刷墙上限比例为 ${ratio}。`);
@@ -274,7 +278,7 @@ export default {
         if (amount <= 0) return Error(`数量必须大于0。`);
 
         const room = Game.rooms[roomName];
-        room!.SendMissionAdd! (targetRoom, type, amount);
+        upsertSendEntry(Memory, targetRoom, type, amount);
         globalThis.log(`[任务模块] 在房间 ${room!.name!} 添加了发送任务: ${amount} ${type} -> ${targetRoom} `);
         return OK;
     },
@@ -290,7 +294,7 @@ export default {
 
         let changed = 0;
         let matched = 0;
-        const clearRoomLocalCache = (mem: any) => {
+        const clearRoomLocalCache = (mem: CreepMemory) => {
             // 清理跨房后容易失效的临时缓存/路径，避免继续追旧目标卡边缘
             clearMemoryCache(mem);
             delete mem._moveToRoomState;
@@ -298,7 +302,8 @@ export default {
 
         for (const name in Game.creeps) {
             const creep = Game.creeps[name];
-            const mem = creep!.memory! as any;
+            if (!creep) continue;
+            const mem = creep.memory!;
             const localHome = mem.home ? parseShardRoomName(mem.home).roomName : undefined;
             const localHomeRoom = mem.homeRoom ? parseShardRoomName(mem.homeRoom).roomName : undefined;
             const localSourceRoom = mem.sourceRoom ? parseShardRoomName(mem.sourceRoom).roomName : undefined;
@@ -325,3 +330,5 @@ export default {
     }
     },
 };
+
+export default roomCtl;

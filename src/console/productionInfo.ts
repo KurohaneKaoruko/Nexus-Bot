@@ -1,6 +1,5 @@
 
-import { LAB_T1_PRIORITY, LabMap, RESOURCE_PRODUCTION, t1, t2, t3 } from '@/constant/ResourceConstant';
-import { resolveLabFromMem } from '@/modules/industry/labReservations';
+import { resolveLabFromMem } from '@/modules/industry';
 import { sanitizeMissionPoolMemory } from '@/core/store/accessor';
 
 const COLORS = {
@@ -49,12 +48,11 @@ const th = (text: string) => `<th style="${STYLES.th}">${text}</th>`;
 
 const fmt = (n: number) => Math.trunc(n).toLocaleString('en-US');
 
-const getBotMem = (): any => (Memory as any)?.Nexus;
-const peekStruct = (roomName: string): any => getBotMem()?.StructData?.[roomName];
+const getBotMem = (): BotMemory | undefined => (Memory as unknown as { Nexus?: BotMemory }).Nexus;
+const peekStruct = (roomName: string): StructControlMemory | undefined => getBotMem()?.StructData?.[roomName];
 const peekAutoLab = (roomName: string): Record<string, number> | undefined => getBotMem()?.AutoData?.AutoLabData?.[roomName];
 const peekAutoFactory = (roomName: string): Record<string, number> | undefined => getBotMem()?.AutoData?.AutoFactoryData?.[roomName];
-const peekMissionPools = (): any => getBotMem()?.MissionPools;
-const peekResourceManage = (roomName: string): any => getBotMem()?.ResourceManage?.[roomName];
+const peekMissionPools = (): BotMemory['MissionPools'] | undefined => getBotMem()?.MissionPools;
 
 type Transfer = { from: string; to: string; res: string; amount: number; id?: string };
 
@@ -68,22 +66,23 @@ const listTerminalTransfers = (roomName: string, onlyResources?: Set<string>) =>
         arr.push(t);
     };
 
-    const myTerminal = pools?.[roomName]?.terminal;
+    const legacy = pools as unknown as Record<string, { terminal?: LegacySendTask[] }>;
+    const myTerminal = legacy[roomName]?.terminal;
     if (Array.isArray(myTerminal)) {
         for (const t of myTerminal) {
             if (!t || t.type !== 'send') continue;
-            const d = t.data as any;
+            const d = t.data;
             if (!d?.targetRoom || !d?.resourceType || typeof d?.amount !== 'number') continue;
             pushIf(outgoing, { id: t.id, from: roomName, to: d.targetRoom, res: String(d.resourceType), amount: d.amount });
         }
     }
 
     for (const fromRoom in pools) {
-        const tasks = pools?.[fromRoom]?.terminal;
+        const tasks = legacy[fromRoom]?.terminal;
         if (!Array.isArray(tasks)) continue;
         for (const t of tasks) {
             if (!t || t.type !== 'send') continue;
-            const d = t.data as any;
+            const d = t.data;
             if (d?.targetRoom !== roomName) continue;
             if (!d?.resourceType || typeof d?.amount !== 'number') continue;
             pushIf(incoming, { id: t.id, from: fromRoom, to: roomName, res: String(d.resourceType), amount: d.amount });
@@ -92,6 +91,13 @@ const listTerminalTransfers = (roomName: string, onlyResources?: Set<string>) =>
 
     return { outgoing, incoming };
 };
+
+/** terminal 池遗留 send 任务 (已退役, 仅存量读取) */
+interface LegacySendTask {
+    id: string;
+    type: 'send';
+    data: { targetRoom: string; resourceType: ResourceConstant; amount: number };
+}
 
 type ManageMove = { source: string; target: string; res: string; amount: number; id?: string };
 
@@ -103,7 +109,7 @@ const listManageMoves = (roomName: string, onlyResources?: Set<string>) => {
     const moves: ManageMove[] = [];
     for (const t of tasks) {
         if (!t || t.type !== 'manage') continue;
-        const d = t.data as any;
+        const d = t.data;
         if (!d?.source || !d?.target || !d?.resourceType || typeof d?.amount !== 'number') continue;
         const res = String(d.resourceType);
         if (onlyResources && !onlyResources.has(res)) continue;
@@ -135,18 +141,18 @@ const renderManage = (roomName: string, resources?: Set<string>) => {
 
 const getLabAvail = (room: Room, res: ResourceConstant) => {
     let total = room.getResAmount(res);
-    const labs = (room as any).lab as StructureLab[] | undefined;
+    const labs = room.lab;
     if (Array.isArray(labs)) {
         for (const lab of labs) {
             if (!lab || lab.mineralType !== res) continue;
-            total += (lab.store as any)[res] || 0;
+            total += lab.store[res] || 0;
         }
     }
     return total;
 };
 
 const getFactoryAvail = (room: Room, res: ResourceConstant) => {
-    return room.getResAmount(res) + ((room.factory?.store as any)?.[res] || 0);
+    return room.getResAmount(res) + (room.factory?.store[res] || 0);
 };
 
 const renderAutoPlan = (room: Room, autoMap: Record<string, number> | undefined, getAvail: (r: ResourceConstant) => number) => {
@@ -155,7 +161,7 @@ const renderAutoPlan = (room: Room, autoMap: Record<string, number> | undefined,
         .filter(([, v]) => typeof v === 'number')
         .sort((a, b) => (Number(b[1]) - Number(a[1])) || a[0].localeCompare(b[0]));
     const top = entries.slice(0, 3).map(([p, limit]) => {
-        const cur = getAvail(p as any);
+        const cur = getAvail(p as ResourceConstant);
         const left = Math.max(0, limit - cur);
         const status = left > 0 ? colorText(`${ICONS.warning} ${fmt(cur)}/${fmt(limit)}`, COLORS.warning) : colorText(`${ICONS.good} ${fmt(cur)}/${fmt(limit)}`, COLORS.good);
         return `${mono(p)} ${status}`;
@@ -164,12 +170,12 @@ const renderAutoPlan = (room: Room, autoMap: Record<string, number> | undefined,
     return top.join(br) + more;
 };
 
-const renderLabNeed = (room: Room, struct: any) => {
+const renderLabNeed = (room: Room, struct: StructControlMemory) => {
     const labAtype = struct?.labAtype as ResourceConstant | undefined;
     const labBtype = struct?.labBtype as ResourceConstant | undefined;
     if (!labAtype || !labBtype) return mono('-', COLORS.textMuted);
-    const product = (REACTIONS as any)?.[labAtype]?.[labBtype] as ResourceConstant | undefined;
-    const needs = new Set<string>([labAtype, labBtype, product].filter(Boolean) as any);
+    const product = (REACTIONS[labAtype as ResourceConstant] as Record<string, ResourceConstant> | undefined)?.[labBtype as ResourceConstant];
+    const needs = new Set<string>([labAtype, labBtype, product].filter(Boolean) as string[]);
     const { labA, labB } = (() => {
         const a = resolveLabFromMem(room, struct?.labA)?.lab;
         const b = resolveLabFromMem(room, struct?.labB)?.lab;
@@ -181,14 +187,14 @@ const renderLabNeed = (room: Room, struct: any) => {
         lines.push(colorText(`${ICONS.danger} A/B 未配置或不可见`, COLORS.danger));
         return lines.join(br);
     }
-    const aOk = labA.mineralType === labAtype && (labA.store as any)[labAtype] >= 5;
-    const bOk = labB.mineralType === labBtype && (labB.store as any)[labBtype] >= 5;
+    const aOk = labA.mineralType === labAtype && (labA.store[labAtype as ResourceConstant] ?? 0) >= 5;
+    const bOk = labB.mineralType === labBtype && (labB.store[labBtype as ResourceConstant] ?? 0) >= 5;
     if (!aOk) {
-        const has = (labA.store as any)[labAtype] || 0;
+        const has = labA.store[labAtype as ResourceConstant] || 0;
         lines.push(`${mono('A')} ${mono(labAtype)} ${colorText(`${has}/5`, has >= 5 ? COLORS.good : COLORS.warning)}`);
     }
     if (!bOk) {
-        const has = (labB.store as any)[labBtype] || 0;
+        const has = labB.store[labBtype as ResourceConstant] || 0;
         lines.push(`${mono('B')} ${mono(labBtype)} ${colorText(`${has}/5`, has >= 5 ? COLORS.good : COLORS.warning)}`);
     }
     if (product) {
@@ -205,7 +211,7 @@ const renderLabNeed = (room: Room, struct: any) => {
     return [lines.join(br), mono('调度', COLORS.textMuted) + br + transfers, mono('搬运', COLORS.textMuted) + br + manage].join(br);
 };
 
-const renderLabStatus = (room: Room, struct: any) => {
+const renderLabStatus = (room: Room, struct: StructControlMemory) => {
     if (!room.lab?.length) return colorText(`${ICONS.neutral} 未建造`, COLORS.neutral);
     if (!struct?.lab) return colorText(`${ICONS.danger} 已关闭`, COLORS.danger);
     const hasTask = !!(struct?.labAtype && struct?.labBtype);
@@ -213,7 +219,7 @@ const renderLabStatus = (room: Room, struct: any) => {
     return colorText(`${ICONS.good} 运行中`, COLORS.good);
 };
 
-const renderLabSituation = (room: Room, struct: any, autoLab: Record<string, number> | undefined) => {
+const renderLabSituation = (room: Room, struct: StructControlMemory, autoLab: Record<string, number> | undefined) => {
     const labAtype = struct?.labAtype as ResourceConstant | undefined;
     const labBtype = struct?.labBtype as ResourceConstant | undefined;
 
@@ -226,18 +232,18 @@ const renderLabSituation = (room: Room, struct: any, autoLab: Record<string, num
     const { lab: labB } = resolveLabFromMem(room, struct?.labB);
     if (!labA || !labB) return colorText(`${ICONS.warning} 资源不足`, COLORS.warning);
 
-    const aOk = labA.mineralType === labAtype && ((labA.store as any)[labAtype] || 0) >= 5;
-    const bOk = labB.mineralType === labBtype && ((labB.store as any)[labBtype] || 0) >= 5;
+    const aOk = labA.mineralType === labAtype && ((labA.store[labAtype as ResourceConstant] ?? 0) || 0) >= 5;
+    const bOk = labB.mineralType === labBtype && ((labB.store[labBtype as ResourceConstant] ?? 0) || 0) >= 5;
     if (!aOk || !bOk) return colorText(`${ICONS.warning} 资源不足`, COLORS.warning);
 
     return colorText(`${ICONS.good} 正在生产`, COLORS.good);
 };
 
-const renderLabTask = (room: Room, struct: any) => {
+const renderLabTask = (room: Room, struct: StructControlMemory) => {
     const labAtype = struct?.labAtype as ResourceConstant | undefined;
     const labBtype = struct?.labBtype as ResourceConstant | undefined;
     if (!labAtype || !labBtype) return mono('-', COLORS.textMuted);
-    const product = (REACTIONS as any)?.[labAtype]?.[labBtype] as ResourceConstant | undefined;
+    const product = (REACTIONS[labAtype as ResourceConstant] as Record<string, ResourceConstant> | undefined)?.[labBtype as ResourceConstant];
     const amountLimit = Number(struct?.labAmount || 0);
     const parts = [
         `${mono(labAtype)} ${mono('+', COLORS.textMuted)} ${mono(labBtype)} ${mono('->', COLORS.textMuted)} ${mono(String(product || '?'))}`,
@@ -246,13 +252,13 @@ const renderLabTask = (room: Room, struct: any) => {
     const { lab: labA } = resolveLabFromMem(room, struct?.labA);
     const { lab: labB } = resolveLabFromMem(room, struct?.labB);
     if (labA && labB) {
-        parts.push(`${mono('A', COLORS.textMuted)}(${mono(`${labA.pos.x},${labA.pos.y}`, COLORS.textMuted)}) ${mono(String(labA.mineralType || '-'))}:${mono(fmt((labA.store as any)[labA.mineralType as any] || 0), COLORS.textMuted)}`);
-        parts.push(`${mono('B', COLORS.textMuted)}(${mono(`${labB.pos.x},${labB.pos.y}`, COLORS.textMuted)}) ${mono(String(labB.mineralType || '-'))}:${mono(fmt((labB.store as any)[labB.mineralType as any] || 0), COLORS.textMuted)}`);
+        parts.push(`${mono('A', COLORS.textMuted)}(${mono(`${labA.pos.x},${labA.pos.y}`, COLORS.textMuted)}) ${mono(String(labA.mineralType || '-'))}:${mono(fmt(labA.store[labA.mineralType as ResourceConstant] || 0), COLORS.textMuted)}`);
+        parts.push(`${mono('B', COLORS.textMuted)}(${mono(`${labB.pos.x},${labB.pos.y}`, COLORS.textMuted)}) ${mono(String(labB.mineralType || '-'))}:${mono(fmt(labB.store[labB.mineralType as ResourceConstant] || 0), COLORS.textMuted)}`);
     }
     return parts.join(br);
 };
 
-const renderFactoryStatus = (room: Room, struct: any) => {
+const renderFactoryStatus = (room: Room, struct: StructControlMemory) => {
     if (!room.factory) return colorText(`${ICONS.neutral} 未建造`, COLORS.neutral);
     if (!struct?.factory) return colorText(`${ICONS.danger} 已关闭`, COLORS.danger);
     if (room.factory.cooldown) return colorText(`${ICONS.warning} 冷却(${room.factory.cooldown})`, COLORS.warning);
@@ -261,7 +267,7 @@ const renderFactoryStatus = (room: Room, struct: any) => {
     return colorText(`${ICONS.good} 运行中`, COLORS.good);
 };
 
-const renderFactorySituation = (room: Room, struct: any, autoFactory: Record<string, number> | undefined) => {
+const renderFactorySituation = (room: Room, struct: StructControlMemory, autoFactory: Record<string, number> | undefined) => {
     const product = struct?.factoryProduct as ResourceConstant | undefined;
     const flv = Number(room.factory?.level || struct?.factoryLevel || 0);
 
@@ -274,16 +280,16 @@ const renderFactorySituation = (room: Room, struct: any, autoFactory: Record<str
         return colorText(`${ICONS.warning} 资源不足`, COLORS.warning);
     }
 
-    const info = (COMMODITIES as any)?.[product];
+    const info = COMMODITIES[product as CommoditiesTypes];
     const components = info?.components as Record<string, number> | undefined;
     if (!components) return colorText(`${ICONS.warning} 资源不足`, COLORS.warning);
     if (info?.level && Number(info.level) !== flv) return colorText(`${ICONS.danger} 等级不符`, COLORS.danger);
 
-    const lackInRoom = Object.entries(components).some(([c, need]) => getFactoryAvail(room, c as any) < Number(need));
+    const lackInRoom = Object.entries(components).some(([c, need]) => getFactoryAvail(room, c as ResourceConstant) < Number(need));
     if (lackInRoom) return colorText(`${ICONS.warning} 资源不足`, COLORS.warning);
 
-    const store = (room.factory?.store as any) || {};
-    const lackInFactory = Object.entries(components).some(([c, need]) => (store as any)[c] < Number(need));
+    const store = room.factory?.store;
+    const lackInFactory = Object.entries(components).some(([c, need]) => (store?.[c as ResourceConstant] ?? 0) < Number(need));
     if (lackInFactory) return colorText(`${ICONS.warning} 等待填装`, COLORS.warning);
     return colorText(`${ICONS.good} 正在生产`, COLORS.good);
 };
@@ -303,7 +309,7 @@ const renderFactoryBanned = (room: Room) => {
     return lines.length ? lines.join(br) : mono('-', COLORS.textMuted);
 };
 
-const renderFactoryTask = (room: Room, struct: any) => {
+const renderFactoryTask = (room: Room, struct: StructControlMemory) => {
     const product = struct?.factoryProduct as ResourceConstant | undefined;
     const amountLimit = Number(struct?.factoryAmount || 0);
     const flv = Number(room.factory?.level || struct?.factoryLevel || 0);
@@ -315,18 +321,18 @@ const renderFactoryTask = (room: Room, struct: any) => {
     return parts.join(br);
 };
 
-const renderFactoryNeed = (room: Room, struct: any) => {
+const renderFactoryNeed = (room: Room, struct: StructControlMemory) => {
     const product = struct?.factoryProduct as ResourceConstant | undefined;
     const flv = Number(room.factory?.level || struct?.factoryLevel || 0);
     if (!product) return mono('-', COLORS.textMuted);
-    const info = (COMMODITIES as any)?.[product];
+    const info = COMMODITIES[product as CommoditiesTypes];
     const components = info?.components as Record<string, number> | undefined;
     if (!components) return colorText(`${ICONS.danger} 无配方`, COLORS.danger);
     if (info?.level && Number(info.level) !== flv) return colorText(`${ICONS.danger} 等级不匹配`, COLORS.danger);
     const needs = new Set<string>([product, ...Object.keys(components)]);
     const lines: string[] = [];
     for (const [c, need] of Object.entries(components)) {
-        const has = (room.factory?.store as any)?.[c] || 0;
+        const has = (room.factory?.store[c as ResourceConstant] ?? 0) || 0;
         if (has < Number(need)) {
             lines.push(`${mono(c)} ${colorText(`${fmt(has)}/${fmt(Number(need))}`, COLORS.warning)}`);
         }

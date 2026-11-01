@@ -1,5 +1,5 @@
 
-import { ackCreepTransfer, cleanupCreepTransfers, getKnownShardNames, readInterShardRemoteRoot, upsertCreepTransfer } from '@/modules/intershard/interShard';
+import { ackCreepTransfer, cleanupCreepTransfers, getKnownShardNames, readInterShardRemoteRoot, upsertCreepTransfer } from '@/modules/intershard';
 
 const snapshot = (obj: any) => {
     try { return JSON.parse(JSON.stringify(obj)); } catch { return {}; }
@@ -32,7 +32,7 @@ const restoreIncoming = () => {
         const creep = Game.creeps[creepName];
         if (!creep) continue;
         const mem = Memory.creeps?.[creep.name] as any;
-        if (mem && mem.role) continue;
+        if (mem && mem.unit) continue;
 
         for (const fromShard of remotes) {
             const remote = readInterShardRemoteRoot(fromShard);

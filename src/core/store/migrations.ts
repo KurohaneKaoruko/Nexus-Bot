@@ -4,6 +4,7 @@
  * 版本号管理 (写 schemaVersion) 统一由 bootstrap 负责, 迁移函数不碰版本字段。
  */
 import { SUBSYSTEM_DEFAULTS } from "./memorySchema";
+import { roomKindOf } from "./memorySchema";
 
 /** 迁移在纯 JSON 视图上工作, 不触碰游戏 API */
 export type RawNexus = Record<string, unknown>;
@@ -251,6 +252,303 @@ export const migrateV9ToV10: MigrationFn = (memory) => {
 	return {};
 };
 
+/** 迁移期单编队槽位数上限: 防坏数据放大, 与 CLUSTER_CONFIG.maxSlotsPerSquad 同量级 */
+const MAX_SLOT_COUNT_PER_SQUAD = 64;
+
+/**
+ * v10 → v11: 新增 rooms[].harvestSplit 源饱和实测分解 (可选, 缺省不回填);
+ * `SquadRecord.slots` 由数量标量升级为异构槽位定义数组——旧标量 N 展开为与原编队
+ * taskKind/capabilities 一致的同质槽位 (specs/squad-heterogeneous-slots
+ * 「槽位结构变更向后兼容」)。`expiresAt`/`members` 不动, 保持续期语义与在编成员;
+ * 坏条目回退安全空槽位数组而非抛错, 保证迁移不中断。迁移幂等。
+ */
+export const migrateV10ToV11: MigrationFn = (memory) => {
+	const rooms = memory["rooms"];
+	if (isPlainObject(rooms)) {
+		for (const key of Object.keys(rooms)) {
+			const entry = rooms[key];
+			if (!isPlainObject(entry)) {
+				continue;
+			}
+			const split = entry["harvestSplit"];
+			if (split === undefined) {
+				continue;
+			}
+			if (!isPlainObject(split)) {
+				delete entry["harvestSplit"];
+				continue;
+			}
+			for (const sourceId of Object.keys(split)) {
+				const rec = split[sourceId];
+				if (
+					!isPlainObject(rec) ||
+					typeof rec["atSource"] !== "number" ||
+					typeof rec["transit"] !== "number" ||
+					typeof rec["waiting"] !== "number"
+				) {
+					delete split[sourceId];
+				}
+			}
+		}
+	}
+
+	const squads = memory["squads"];
+	if (isPlainObject(squads)) {
+		for (const id of Object.keys(squads)) {
+			const squad = squads[id];
+			if (!isPlainObject(squad)) {
+				continue;
+			}
+			const taskKind = typeof squad["taskKind"] === "string" ? squad["taskKind"] : "defend";
+			const caps = Array.isArray(squad["capabilities"])
+				? squad["capabilities"].filter((c: unknown) => typeof c === "string")
+				: [];
+			const slots = squad["slots"];
+			if (Array.isArray(slots)) {
+				// 已是数组: 仅防御性清洗非法项, 保持幂等
+				squad["slots"] = slots
+					.filter(
+						(s: unknown) =>
+							isPlainObject(s) &&
+							typeof s["taskKind"] === "string" &&
+							Array.isArray(s["capabilities"]) &&
+							typeof s["count"] === "number" &&
+							(s["count"] as number) > 0,
+					)
+					.map((s: Record<string, unknown>) => ({
+						taskKind: s["taskKind"] as string,
+						capabilities: (s["capabilities"] as unknown[]).filter(
+							(c: unknown) => typeof c === "string",
+						) as string[],
+						count: Math.min(
+							MAX_SLOT_COUNT_PER_SQUAD,
+							Math.floor(s["count"] as number),
+						),
+					}));
+				continue;
+			}
+			// 旧标量: N 展开为单个同质槽位定义 (count=N)
+			const count =
+				typeof slots === "number" && Number.isFinite(slots) && slots > 0
+					? Math.min(MAX_SLOT_COUNT_PER_SQUAD, Math.floor(slots))
+					: 0;
+			squad["slots"] = count > 0 ? [{ taskKind, capabilities: caps, count }] : [];
+		}
+	}
+	return {};
+};
+
+/**
+ * v11 → v12: 新增 `ownership` 子系统 (api/16 actor-ownership 任务 2.2):
+ * 跨 Tick 持久所有权索引, 旧 Memory 无此键 → 引导为安全空状态
+ * (spec: 内存兼容——旧 Memory 不产生未迁移字段错误, 机制从空状态引导)。
+ * 坏条目 (owner 非串/expiresAt 非数) 逐条剔除; 子系统级损坏重置。
+ * 迁移幂等。
+ */
+export const migrateV11ToV12: MigrationFn = (memory) => {
+	const ownership = memory["ownership"];
+	if (ownership === undefined) {
+		return {};
+	}
+	if (
+		!isPlainObject(ownership) ||
+		!isPlainObject(ownership["actors"])
+	) {
+		memory["ownership"] = { indexVersion: 1, actors: {} };
+		return { resetSubsystems: ["ownership"] };
+	}
+	const actors = ownership["actors"] as Record<string, unknown>;
+	for (const [name, entry] of Object.entries(actors)) {
+		if (
+			!isPlainObject(entry) ||
+			typeof entry["owner"] !== "string" ||
+			typeof entry["expiresAt"] !== "number"
+		) {
+			delete actors[name];
+		}
+	}
+	return {};
+};
+
+/**
+ * v12 → v13: 账本五态分账 (specs/resource-ledger 任务 7.1/7.2/7.4):
+ * ledger 新增 hunger / consumedTotal / overdueCount 子键,
+ * rates 各房补 consumed 速率位; 预留 createdAt 为可选字段, 不回填
+ * (缺省记录不做超龄判定, 首次 reserve 起带年龄)。迁移幂等。
+ */
+export const migrateV12ToV13: MigrationFn = (memory) => {
+	const ledger = memory["ledger"];
+	if (ledger === undefined) {
+		return {};
+	}
+	if (!isPlainObject(ledger)) {
+		return { resetSubsystems: ["ledger"] };
+	}
+	ledger["hunger"] ??= {};
+	ledger["consumedTotal"] ??= {};
+	ledger["overdueCount"] ??= 0;
+	const rates = ledger["rates"];
+	if (isPlainObject(rates)) {
+		for (const entry of Object.values(rates)) {
+			if (isPlainObject(entry) && !isPlainObject(entry["consumed"])) {
+				entry["consumed"] = { accumulated: 0, ema: 0, lastFoldTick: 0 };
+			}
+		}
+	}
+	return {};
+};
+
+/**
+ * v13 → v14: 搬运任务词表统一为 carry (与 carrier 单位/搬运语义对齐)。
+ * 旧 haul 任务不迁移: planner 下一 Tick 即按新键重建, 直接剔除避免新旧双份;
+ * 经济诊断累加器 haulBusyTicks/haulIdleTicks 改名并保留窗口计数。迁移幂等。
+ */
+export const migrateV13ToV14: MigrationFn = (memory) => {
+	const tasks = memory["tasks"];
+	if (isPlainObject(tasks)) {
+		for (const [id, entry] of Object.entries(tasks)) {
+			if (!isPlainObject(entry) || entry["kind"] === "haul") {
+				delete tasks[id];
+			}
+		}
+	}
+	const economy = memory["economy"];
+	if (isPlainObject(economy)) {
+		const accumulators = economy["accumulators"];
+		if (isPlainObject(accumulators)) {
+			if (
+				accumulators["carryBusyTicks"] === undefined &&
+				typeof accumulators["haulBusyTicks"] === "number"
+			) {
+				accumulators["carryBusyTicks"] = accumulators["haulBusyTicks"];
+			}
+			if (
+				accumulators["carryIdleTicks"] === undefined &&
+				typeof accumulators["haulIdleTicks"] === "number"
+			) {
+				accumulators["carryIdleTicks"] = accumulators["haulIdleTicks"];
+			}
+			delete accumulators["haulBusyTicks"];
+			delete accumulators["haulIdleTicks"];
+		}
+	}
+	return {};
+};
+
+/**
+ * v14 → v15: 任务池退役 (specs/mission-pool-retirement)——六池 (transport/build/
+ * repair/terminal/mine/boost) 语义已迁 planning 阶段任务板, 存量池单删除;
+ * spawn 键驻留 (warSpawn/external 的去重计数消费, 孵化基建非任务流)。
+ * 回退安全: 旧池代码对缺失池键 `??=` 惰性重建空数组, 不抛错。
+ * 迁移幂等: 已删键二次跑无变化。
+ */
+export const migrateV14ToV15: MigrationFn = (memory) => {
+	const RETIRED_POOL_KEYS = [
+		"transport",
+		"build",
+		"repair",
+		"terminal",
+		"mine",
+		"boost",
+	];
+	const pools = memory["MissionPools"];
+	if (isPlainObject(pools)) {
+		for (const roomName of Object.keys(pools)) {
+			const entry = pools[roomName];
+			if (!isPlainObject(entry)) {
+				delete pools[roomName];
+				continue;
+			}
+			for (const poolKey of RETIRED_POOL_KEYS) {
+				delete entry[poolKey];
+			}
+			if (Object.keys(entry).length === 0) {
+				delete pools[roomName];
+			}
+		}
+		if (Object.keys(pools).length === 0) {
+			delete memory["MissionPools"];
+		}
+	}
+	return {};
+};
+
+/**
+ * v15 → v16: 远程源注册表按母房分键 (economy.remoteSources → economy.remoteSourcesByHome)。
+ * 旧数组不分殖民地, 第二殖民地会读到第一殖民地的外矿列表与路程。注册表是可重建缓存
+ * (首次规划时按母房 PathFinder 重算), 迁移只删旧键、不搬数据。
+ * 回退安全: 旧代码读不到 remoteSources 时按原逻辑重建数组, 不抛错。
+ * 迁移幂等: 已删键二次跑无变化。
+ */
+export const migrateV15ToV16: MigrationFn = (memory) => {
+	const economy = memory["economy"];
+	if (isPlainObject(economy)) {
+		delete economy["remoteSources"];
+	}
+	return {};
+};
+
+/**
+ * v16 → v17 (多房 Intel 与外矿子系统, docs/nexus-design/13 §24.6.1):
+ * ① rooms[*] 补 kind (房名推导, 无需视野); 形状坏 (lastSeen 非数) 的条目删除。
+ * ② Memory 顶层 BotMemory.OutMineData[home].energy 中的房迁为
+ *    Nexus.remotes[home].rooms[room].manual = "pin" (钉选保留语义);
+ *    centerRoom / highway / RoadData 不动, OutMineData 本体收尾期再删。
+ * 幂等: kind 只在缺省时补; remotes 只在无 manual 时写; 坏条目二次跑已不存在。
+ */
+export const migrateV16ToV17: MigrationFn = (memory) => {
+	const resetSubsystems: string[] = [];
+
+	const rooms = memory["rooms"];
+	if (isPlainObject(rooms)) {
+		for (const key of Object.keys(rooms)) {
+			const entry = rooms[key];
+			if (!isPlainObject(entry) || typeof entry["lastSeen"] !== "number") {
+				delete rooms[key];
+				continue;
+			}
+			if (entry["kind"] === undefined) {
+				entry["kind"] = roomKindOf(key);
+			}
+		}
+	}
+
+	const outMine = (globalThis as { Memory?: { OutMineData?: Record<string, unknown> } }).Memory
+		?.OutMineData;
+	if (isPlainObject(outMine)) {
+		let remotes: Record<string, unknown> = isPlainObject(memory["remotes"])
+			? memory["remotes"]
+			: {};
+		memory["remotes"] = remotes;
+		for (const home of Object.keys(outMine)) {
+			const homeEntry = outMine[home];
+			if (!isPlainObject(homeEntry)) continue;
+			const energy = homeEntry["energy"];
+			if (!Array.isArray(energy)) continue;
+			let colony: Record<string, unknown> = isPlainObject(remotes[home])
+				? remotes[home]
+				: { rooms: {} };
+			remotes[home] = colony;
+			const colonyRooms: Record<string, unknown> = isPlainObject(colony["rooms"])
+				? colony["rooms"]
+				: {};
+			colony["rooms"] = colonyRooms;
+			for (const room of energy) {
+				if (typeof room !== "string") continue;
+				const record: Record<string, unknown> = isPlainObject(colonyRooms[room])
+					? colonyRooms[room]
+					: {};
+				colonyRooms[room] = record;
+				if (record["manual"] === undefined) {
+					record["manual"] = "pin";
+				}
+			}
+		}
+	}
+
+	return resetSubsystems.length ? { resetSubsystems } : {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -262,4 +560,11 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV7ToV8,
 	migrateV8ToV9,
 	migrateV9ToV10,
+	migrateV10ToV11,
+	migrateV11ToV12,
+	migrateV12ToV13,
+	migrateV13ToV14,
+	migrateV14ToV15,
+	migrateV15ToV16,
+	migrateV16ToV17,
 ];

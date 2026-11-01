@@ -8,12 +8,8 @@ import layout from '@/console/function/layout';
 import market from '@/console/function/market';
 import resource from '@/console/function/resource';
 import expand from '@/console/function/expand';
-import spawn from '@/modules/industry/console/spawn';
-import terminal from '@/modules/industry/console/terminal';
-import lab from '@/modules/industry/console/lab';
-import factory from '@/modules/industry/console/factory';
-import powerSpawn from '@/modules/industry/console/powerspawn';
-import nuker from '@/modules/industry/console/nuker';
+import { b2b } from '@/modules/comms';
+import { factory, lab, nuker, powerSpawn, spawn, terminal } from '@/modules/industry';
 import helps from '@/console/help'
 import { registerRoomAutoStartProvider } from '@/console/roomAutoStart';
 import { mountQoS } from '@/core/qos';
@@ -48,6 +44,8 @@ const plugins = [
     factory,
     terminal,
     powerSpawn,
+    // b2b 命令组: _.assign 摊的是插件属性, 需包一层才挂出 globalThis.b2b
+    { b2b },
 ]
 
 /** 控制台命令拓展 */

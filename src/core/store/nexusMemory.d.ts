@@ -10,4 +10,6 @@ declare global {
 	}
 }
 
-export {};
+/** 显式导出使本文件成为模块（保证 declare global 生效） */
+export type NexusMemoryRoot = NexusMemory;
+

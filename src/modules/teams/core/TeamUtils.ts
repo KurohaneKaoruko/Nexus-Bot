@@ -4,12 +4,12 @@
  */
 import { formationTemplate, shapeOfCount, type TowardName } from '@/modules/teams/core/FormationTables';
 
-export default class TeamUtils {
+const TeamUtils = {
     // 扩展队形形状判定
     /**
      * 成员位置是否与当前朝向的旋转模板完全一致（平移不变；跨房视为不满足）。
      */
-    private static matchShape(team: Team, shape: 'cross' | 'square3'): boolean {
+    matchShape(team: Team, shape: 'cross' | 'square3'): boolean {
         if (!TeamUtils.inSameRoom(team)) return false;
         const toward = team.toward as TowardName;
         const slots = formationTemplate(shape, toward);
@@ -19,35 +19,52 @@ export default class TeamUtils {
             return list.map(p => ({ x: p.x - minX, y: p.y - minY }))
                 .sort((a, b) => a.x - b.x || a.y - b.y);
         };
-        const actual = norm(team.creeps.map((c: any) => ({ x: c.pos.x, y: c.pos.y })));
+        const actual = norm(team.creeps.map((c: Creep) => ({ x: c.pos.x, y: c.pos.y })));
         const expected = norm(slots.map(s => ({ x: s.x, y: s.y })));
         return actual.every((p, i) => p.x === expected[i]!.x && p.y === expected[i]!.y);
-    }
+    },
 
     /** cross（5 人十字）当前朝向下是否成阵 */
-    public static isCross(team: Team): boolean {
+    isCross(team: Team): boolean {
         return team.creeps.length === 5 && TeamUtils.matchShape(team, 'cross');
-    }
+    },
 
     /** square3（9 人方阵）当前朝向下是否成阵 */
-    public static isSquare3(team: Team): boolean {
+    isSquare3(team: Team): boolean {
         return team.creeps.length === 9 && TeamUtils.matchShape(team, 'square3');
-    }
+    },
 
     /** 成员数对应的扩展队形是否已成阵（散队判定用） */
-    public static isExtendedShape(team: Team): boolean {
+    isExtendedShape(team: Team): boolean {
         const shape = shapeOfCount(team.creeps.length);
         if (!shape) return false;
         return shape === 'cross' ? TeamUtils.isCross(team) : TeamUtils.isSquare3(team);
-    }
+    },
 
     // 跨房移动：该引擎 creep.moveTo 不支持跨房寻路，用 findRoute 出口方向步进
-    public static routeExitDir(from: string, to: string): DirectionConstant | undefined {
+    routeExitDir(from: string, to: string): DirectionConstant | undefined {
         if (from === to) return undefined;
         const route = Game.map.findRoute(from, to);
         if (route === ERR_NO_PATH || !route.length) return undefined;
         return route[0]!.exit;
-    }
+    },
+
+    /**
+     * 家房侧集结点: 距目标房方向出口 3 格内侧 (绝不踩房缘, 防跨房传送弹回)。
+     * ready 期队伍满员前在家房门口聚齐, 不散队过房送死。
+     */
+    doorGatherPos(homeRoom: string, targetRoom: string): RoomPosition | undefined {
+        if (homeRoom === targetRoom) return new RoomPosition(25, 25, homeRoom);
+        const dir = this.routeExitDir(homeRoom, targetRoom);
+        if (!dir) return undefined;
+        switch (dir) {
+            case TOP: return new RoomPosition(25, 3, homeRoom);
+            case RIGHT: return new RoomPosition(46, 25, homeRoom);
+            case BOTTOM: return new RoomPosition(25, 46, homeRoom);
+            case LEFT: return new RoomPosition(3, 25, homeRoom);
+            default: return undefined;
+        }
+    },
 
     // 获取队伍坐标范围
     /**
@@ -56,15 +73,15 @@ export default class TeamUtils {
      * @param team 队伍实例
      * @returns {minX,maxX,minY,maxY}；队伍为空时返回 undefined
      */
-    public static getPosRange(team: Team): { minX: number; maxX: number; minY: number; maxY: number } | undefined {
+    getPosRange(team: Team): { minX: number; maxX: number; minY: number; maxY: number } | undefined {
         if (team.creeps.length == 0) return undefined;
         let creepPos = team.creeps.map((c: Creep) => c.pos);
-        let minX = Math.min(...creepPos.map((p: any) => p.x));
-        let maxX = Math.max(...creepPos.map((p: any) => p.x));
-        let minY = Math.min(...creepPos.map((p: any) => p.y));
-        let maxY = Math.max(...creepPos.map((p: any) => p.y));
+        let minX = Math.min(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let maxX = Math.max(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let minY = Math.min(...creepPos.map((p: { x: number; y: number }) => p.y));
+        let maxY = Math.max(...creepPos.map((p: { x: number; y: number }) => p.y));
         return { minX, maxX, minY, maxY };
-    }
+    },
 
     // 获取队伍全局坐标范围
     /**
@@ -73,15 +90,15 @@ export default class TeamUtils {
      * @remarks
      * 主要用于跨房场景下的相对位置判断，避免房间边界导致的坐标不连续。
      */
-    public static getGlobalPosRange(team: Team): { minX: number; maxX: number; minY: number; maxY: number } | undefined {
+    getGlobalPosRange(team: Team): { minX: number; maxX: number; minY: number; maxY: number } | undefined {
         if (team.creeps.length == 0) return undefined;
         let creepPos = team.creeps.map((c: Creep) => c.pos.toGlobal());
-        let minX = Math.min(...creepPos.map((p: any) => p.x));
-        let maxX = Math.max(...creepPos.map((p: any) => p.x));
-        let minY = Math.min(...creepPos.map((p: any) => p.y));
-        let maxY = Math.max(...creepPos.map((p: any) => p.y));
+        let minX = Math.min(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let maxX = Math.max(...creepPos.map((p: { x: number; y: number }) => p.x));
+        let minY = Math.min(...creepPos.map((p: { x: number; y: number }) => p.y));
+        let maxY = Math.max(...creepPos.map((p: { x: number; y: number }) => p.y));
         return { minX, maxX, minY, maxY };
-    }
+    },
 
     // 获取队伍左上角坐标
     /**
@@ -92,12 +109,12 @@ export default class TeamUtils {
      * - flee/avoid 且仅 2 人：取队尾作为参考（倒着走）。\n
      * - 结果会按 tick 缓存到 team['pos']/team['posTick']。
      */
-    public static getTeamPos(team: Team): RoomPosition {
-        if ((team as any) ['posTick'] === Game.time && (team as any) ['pos']) return (team as any) ['pos'];
+    getTeamPos(team: Team): RoomPosition {
+        if (team._posTick === Game.time && team._pos) return team._pos;
         let teamPos = null;
         if (team.creeps.length >= 3) {
             let s = Infinity;
-            team.creeps.forEach((c: any) => {
+            team.creeps.forEach((c: Creep) => {
                 let gp = c.pos.toGlobal();
                 if (gp.x + gp.y > s) return;
                 s = gp.x + gp.y;
@@ -108,10 +125,10 @@ export default class TeamUtils {
             teamPos = team.creeps[team.creeps.length - 1]!.pos;
         } else teamPos = team.creeps[0]!.pos;
         
-        (team as any) ['pos'] = teamPos;
-        (team as any) ['posTick'] = Game.time;
+        if (teamPos) team._pos = teamPos;
+        team._posTick = Game.time;
         return teamPos!;
-    }
+    },
 
     // 检查小队成员位置是否构成方形
     /**
@@ -122,9 +139,8 @@ export default class TeamUtils {
      * - 结果会按 tick 缓存到 team['isQuad']/team['isQuadTick']，减少重复计算。\n
      * - 该结果用于队形保持/集结逻辑的分支选择（例如是否需要 Gather 归位）。
      */
-    public static isQuad(team: Team): boolean {
-        const teamAny = team as any;
-        if (teamAny['isQuadTick'] === Game.time) return !!teamAny['isQuad'];
+    isQuad(team: Team): boolean {
+        if (team._isQuadTick === Game.time) return !!team._isQuad;
 
         // 跨房了不检查
         // if (new Set(creeps.map((creep) => creep.room.name)).size > 1) return
@@ -135,17 +151,17 @@ export default class TeamUtils {
             for (let j = 0; j < team.creeps.length; j++) {
                 if (i === j) continue
                 if (!creep!.pos.isCrossRoomNearTo!(team.creeps[j]!.pos)) {
-                    teamAny['isQuad'] = false
-                    teamAny['isQuadTick'] = Game.time
+                    team._isQuad = false
+                    team._isQuadTick = Game.time
                     return false
                 }
             }
         }
 
-        (team as any) ['isQuad'] = true;
-        (team as any) ['isQuadTick'] = Game.time
+        team._isQuad = true;
+        team._isQuadTick = Game.time
         return true;
-    }
+    },
 
     // 检查小队成员位置是否线性相连
     /**
@@ -154,7 +170,7 @@ export default class TeamUtils {
      * @remarks
      * 该判定会按特定顺序重排 3/4 人队伍的成员，以更贴近“队首→队尾”的链式相邻关系。
      */
-    public static isLinear(team: Team): boolean {
+    isLinear(team: Team): boolean {
         if (team.creeps.length < 2) return true;
         let creeps: Creep[] = []
         if (team.creeps.length === 4) {
@@ -174,28 +190,28 @@ export default class TeamUtils {
             }
         }
         return true;
-    }
+    },
 
     // 检查队伍是否均在同一房间
     /**
      * 判断队伍是否全部位于同一房间。
      */
-    public static inSameRoom(team: Team): boolean {
+    inSameRoom(team: Team): boolean {
         if (team.creeps.length == 0) return false;
         let roomName = team.creeps[0]!.room.name;
         return team.creeps.every((c: Creep) => c.room.name == roomName);
-    }
+    },
 
     /**
      * 判断队伍是否均未装备攻击部件（ATTACK/RANGED_ATTACK）。
      * @param team 
      * @returns 是否均未装备攻击部件
      */
-    public static isDisarmed(team: Team): boolean {
-        return team.creeps.every((c: any) =>
+    isDisarmed(team: Team): boolean {
+        return team.creeps.every((c: Creep) =>
                 !c.getActiveBodyparts(ATTACK) &&
                 !c.getActiveBodyparts(RANGED_ATTACK))
-    }
+    },
 
     /**
      * 预测某个 creep 在“下一 tick（tick 边界之后）”会处于的位置。
@@ -210,7 +226,7 @@ export default class TeamUtils {
      * - 往边界外移动：不会得到 room 内坐标（这里把越界 move 视为“坐标不变”，但随后仍会触发边界传送）。\n
      * - 该方法只用于队形/决策模拟，不做地形、障碍、对穿、疲劳等校验。
      */
-    public static simulateCreepNextPos(
+    simulateCreepNextPos(
         pos: { x: number; y: number; roomName: string },
         direction: DirectionConstant | undefined
     ): { x: number; y: number; roomName: string } {
@@ -265,7 +281,7 @@ export default class TeamUtils {
         }
 
         return { x, y, roomName: this.formatRoomCoord(nrx, nry) }
-    }
+    },
 
     /**
      * 判断队伍在“下一 tick”是否仍保持 quad（强邻近）状态。
@@ -280,15 +296,15 @@ export default class TeamUtils {
      * - 判定标准使用 Chebyshev 距离（max(|dx|,|dy|) <= 1），与 Screeps 的相邻定义一致。\n
      * - 该方法用于“跨房穿边时是否需要停 1 tick 等待传送”的决策：如果不动能保持 quad，而动会打散，就不动。
      */
-    public static willTeamBeQuadNextTick(team: Team, direction: DirectionConstant | undefined): boolean {
+    willTeamBeQuadNextTick(team: Team, direction: DirectionConstant | undefined): boolean {
         if (!team.creeps?.length) return true
         if (team.creeps.length === 1) return true
 
-        const sim = team.creeps.map((c: any) =>
+        const sim = team.creeps.map((c: Creep) =>
             this.simulateCreepNextPos({ x: c.pos.x, y: c.pos.y, roomName: c.pos.roomName }, direction),
         )
 
-        const globals = sim.map((p: any) => {
+        const globals = sim.map((p: { x: number; y: number; roomName: string }) => {
             const { rx, ry } = this.parseRoomCoord(p.roomName)
             return { gx: rx * 50 + p.x, gy: ry * 50 + p.y }
         })
@@ -301,7 +317,7 @@ export default class TeamUtils {
             }
         }
         return true
-    }
+    },
 
     /**
      * 将房间名解析为“连续坐标系”的房间坐标（rx/ry）。
@@ -311,7 +327,7 @@ export default class TeamUtils {
      * - 这里使用映射：E{x} → +x，W{x} → -(x+1)；S{y} → +y，N{y} → -(y+1)。\n
      * - 该映射让房间坐标在数轴上连续，便于做跨房距离计算与“全局坐标”拼接。
      */
-    private static parseRoomCoord(roomName: string): { rx: number; ry: number } {
+    parseRoomCoord(roomName: string): { rx: number; ry: number } {
         const m = roomName.match(/^([WE])(\d+)([NS])(\d+)$/)
         if (!m) return { rx: 0, ry: 0 }
         const ew = m[1]
@@ -321,29 +337,29 @@ export default class TeamUtils {
         const rx = ew === 'E' ? ex : -ex - 1
         const ry = ns === 'N' ? ny : -ny - 1
         return { rx, ry }
-    }
+    },
 
     /**
      * 将连续坐标系的房间坐标（rx/ry）反向格式化为 Screeps 房间名。
      */
-    private static formatRoomCoord(rx: number, ry: number): string {
+    formatRoomCoord(rx: number, ry: number): string {
         const ew = rx >= 0 ? 'E' : 'W'
         const ns = ry >= 0 ? 'N' : 'S'
         const ex = rx >= 0 ? rx : -rx - 1
         const ny = ry >= 0 ? ry : -ry - 1
         return `${ew}${ex}${ns}${ny}`
-    }
+    },
 
     // 检查队伍是否在目标房间
     /**
      * 判断队伍是否全部位于目标房间（team.targetRoom）。
      */
-    public static inTargetRoom(team: Team): boolean {
+    inTargetRoom(team: Team): boolean {
         let targetRoom = team.targetRoom;
         if (!targetRoom) return true;
         if (team.creeps.length == 0) return false;
         return team.creeps.every((c: Creep) => c.room.name == targetRoom);
-    }
+    },
 
 
     // 检查队伍是否符合设定的朝向
@@ -355,7 +371,7 @@ export default class TeamUtils {
      * - 当成员不足 4 时，角位会缺失（B2 可能为 undefined），因此此处只做“存在则校验”。\n
      * - 校验失败会触发 TeamAction.AdjustToward 做微调。
      */
-    public static checkToward(team: Team): boolean {
+    checkToward(team: Team): boolean {
         if (team.creeps.length == 0) return true;
         if (team.formation !== 'quad') return true;
         if (!this.isQuad(team)) return true;
@@ -397,16 +413,16 @@ export default class TeamUtils {
             default:
                 return false;
         }
-    }
+    },
 
     // 检查队伍是否到达指定位置
     /**
      * 判断队伍任意成员是否位于指定位置。
      */
-    public static isEqual(team: Team, pos: RoomPosition): boolean {
+    isEqual(team: Team, pos: RoomPosition): boolean {
         if (team.creeps.length == 0) return false;
         return team.creeps.some((c: Creep) => c.pos.isEqual(pos));
-    }
+    },
 
     // 检查队伍是否与目标相邻
     /**
@@ -416,26 +432,26 @@ export default class TeamUtils {
      * - 单人：isNear\n
      * - 多人：至少 2 名成员 isNear
      */
-    public static isNear(team: Team, pos: RoomPosition): boolean {
+    isNear(team: Team, pos: RoomPosition): boolean {
         if (team.creeps.length == 0) return false;
         if (team.creeps.length == 1) return team.creeps[0]!.pos.isNear!(pos);
         return team.creeps.filter((c: Creep) => c.pos.isNear(pos)).length >= 2;
-    }
+    },
 
     /**
      * 小队中是否有爬疲劳
      */
-    public static hasCreepFatigue(team: Team): boolean{
-        return team.creeps.some((creep: any) => creep.fatigue > 0)
-    }
+    hasCreepFatigue(team: Team): boolean{
+        return team.creeps.some((creep: Creep) => creep.fatigue > 0)
+    },
 
     /**
      * 小队中是否有爬在房间边缘
      */
-    public static hasCreepOnEdge(team: Team): boolean{
+    hasCreepOnEdge(team: Team): boolean{
         if (team.creeps.length == 0) return false;
-        return team.creeps.some((creep: any) => creep.pos.isRoomEdge())
-    }
+        return team.creeps.some((creep: Creep) => creep.pos.isRoomEdge())
+    },
 
     /**
      * 选择“最优攻击目标”（从缓存目标集合中取最近）。
@@ -443,38 +459,38 @@ export default class TeamUtils {
      * @remarks
      * 优先使用 team['_attackTargets']，否则从 team['_targets'] 里筛选可被攻击的对象。
      */
-    public static focusTarget(team: Team, originPos: RoomPosition) {
+    focusTarget(team: Team, originPos: RoomPosition) {
         let targets: (Creep | Structure)[] = []
         if (team['_attackTargets']?.length) {
-            targets = (team as any) ['_attackTargets']
+            targets = team._attackTargets
         } else if (team['_targets']?.length) {
-            targets = team['_targets'].filter((s: any) => 'hits' in s) as (Creep | Structure)[]
+            targets = (team._targets?.filter((s) => 'hits' in s) ?? []) as (Creep | Structure)[]
         }
         return originPos.findClosestByRange(targets)
-    }
+    },
 
     /**
      * 从 team.cache 中读取位置（以纯对象存储，运行时还原为 RoomPosition）
      */
-    public static getCachePos(team: Team, key: string): RoomPosition | undefined {
+    getCachePos(team: Team, key: string): RoomPosition | undefined {
         const data = team?.cache?.[key]
         if (!data) return undefined
         const { x, y, roomName } = data as { x: number; y: number; roomName: string }
         if (typeof x !== 'number' || typeof y !== 'number' || !roomName) return undefined
         return new RoomPosition(x, y, roomName)
-    }
+    },
 
     /**
      * 写入位置到 team.cache（避免直接存 RoomPosition 导致 memory 序列化问题）
      */
-    public static setCachePos(team: Team, key: string, pos: RoomPosition | undefined): void {
+    setCachePos(team: Team, key: string, pos: RoomPosition | undefined): void {
         if (!team.cache) team.cache = {}
         if (!pos) {
             delete team.cache[key]
             return
         }
         team.cache[key] = { x: pos.x, y: pos.y, roomName: pos.roomName }
-    }
+    },
 
     /**
      * 将房间坐标“夹到房间内侧”，避免返回边缘坐标（x=0/49 或 y=0/49）。
@@ -487,12 +503,12 @@ export default class TeamUtils {
      * @param pos 原始位置（同房间）
      * @param margin 内侧边距，默认 1 表示限制到 [1..48]
      */
-    public static pushInsideRoomPos(pos: RoomPosition, margin = 1): RoomPosition {
+    pushInsideRoomPos(pos: RoomPosition, margin = 1): RoomPosition {
         const x = Math.max(margin, Math.min(49 - margin, pos.x))
         const y = Math.max(margin, Math.min(49 - margin, pos.y))
         if (x === pos.x && y === pos.y) return pos
         return new RoomPosition(x, y, pos.roomName)
-    }
+    },
 
     /**
      * 生成 values 的 k-排列（有序、不重复抽取 k 个元素）。
@@ -501,9 +517,11 @@ export default class TeamUtils {
      * 例如 values=[0,1,2,3], k=3 会生成 P(4,3)=24 种序列。\n
      * 该函数用于预计算 quad 集结时的“角位分配方案”，运行时只需遍历结果，避免每 tick 递归生成。\n
      */
-    public static kPermutations(values: number[], k: number): number[][] {
+    kPermutations(values: number[], k: number): number[][] {
         const res: number[][] = []
-        const used = new Array(values.length).fill(false)
+        const used: boolean[] = []
+        used.length = values.length
+        used.fill(false)
         const cur: number[] = []
         const dfs = () => {
             if (cur.length === k) {
@@ -521,7 +539,7 @@ export default class TeamUtils {
         }
         dfs()
         return res
-    }
+    },
 
     /**
      * 二分匹配算法
@@ -530,7 +548,7 @@ export default class TeamUtils {
      * @param matchSet 匹配集合，包含左侧节点与右侧节点的匹配关系
      * @returns 匹配结果，记录右侧节点到左侧节点的映射
      */
-    private static bipartiteMatch(left: string[], right: string[], matchSet: Set<string>): Record<string, string> {
+    bipartiteMatch(left: string[], right: string[], matchSet: Set<string>): Record<string, string> {
         const result: Record<string, string> = {}
         const used = new Map<string, boolean>()
         const dfs = (u: string) => {
@@ -556,7 +574,7 @@ export default class TeamUtils {
             newResult[result[key] ?? ''] = key
         }
         return newResult
-    }
+    },
     
     
     /**
@@ -566,7 +584,7 @@ export default class TeamUtils {
      * @param range 匹配范围，默认1
      * @returns 匹配结果，记录爬群到位置的映射
      */
-    public static creepPosBipartiteMatch(creeps: Creep[], pos: RoomPosition[], range = 1): Record<string, RoomPosition> {
+    creepPosBipartiteMatch(creeps: Creep[], pos: RoomPosition[], range = 1): Record<string, RoomPosition> {
         const matchSet = new Set<string>()
         const left = creeps.map((creep) => creep.name)
         const right = pos.map((p) => `${p.x}/${p.y}`)
@@ -593,5 +611,7 @@ export default class TeamUtils {
         }
     
         return result
-    }
-}
+    },
+};
+
+export default TeamUtils;

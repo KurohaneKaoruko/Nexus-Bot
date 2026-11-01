@@ -74,8 +74,8 @@ const resolveResourceKey = (raw: string) => {
         if (!c) continue;
         if (seen.has(c)) continue;
         seen.add(c);
-        if ((LabMap as any)?.[c]) return c;
-        if ((COMMODITIES as any)?.[c]) return c;
+        if (LabMap[c as keyof typeof LabMap]) return c;
+        if (COMMODITIES[c as CommoditiesTypes]) return c;
     }
     return normalized;
 };
@@ -106,14 +106,14 @@ const getGlobalAvail = (res: string) => {
         if (!room?.controller?.my) continue;
         const storage = room.storage;
         const terminal = room.terminal;
-        const factory = (room as any).factory as StructureFactory | undefined;
-        if (storage) total += (storage.store as any)?.[res] || 0;
-        if (terminal) total += (terminal.store as any)?.[res] || 0;
-        if (factory) total += (factory.store as any)?.[res] || 0;
-        const labs = (room as any).lab as StructureLab[] | undefined;
+        const factory = room.factory;
+        if (storage) total += storage.store[res as ResourceConstant] || 0;
+        if (terminal) total += terminal.store[res as ResourceConstant] || 0;
+        if (factory) total += factory.store[res as ResourceConstant] || 0;
+        const labs = room.lab;
         if (Array.isArray(labs)) {
             for (const lab of labs) {
-                total += (lab.store as any)?.[res] || 0;
+                total += lab.store[res as ResourceConstant] || 0;
             }
         }
     }
@@ -130,7 +130,7 @@ const joinRecipe = (components: Record<string, number>, outAmount: number, produ
     const keys = Object.keys(components);
     keys.sort((a, b) => a.localeCompare(b));
     for (const c of keys) {
-        const need = Number((components as any)[c] || 0);
+        const need = Number(components[c as CommoditiesTypes] || 0);
         if (need <= 0) continue;
         parts.push(`${fmt(need)} ${resLabel(c)}`);
     }
@@ -148,8 +148,8 @@ export const showCraftableInfo = (filter?: string | number) => {
     if (parsed.kind === 'resource') {
         const product = parsed.resource;
         const have = getGlobalAvail(product);
-        const labRecipe = (LabMap as any)?.[product];
-        const commodityInfo = (COMMODITIES as any)?.[product];
+        const labRecipe = LabMap[product as keyof typeof LabMap];
+        const commodityInfo = COMMODITIES[product as CommoditiesTypes];
 
         if (labRecipe?.raw1 && labRecipe?.raw2) {
             const raw1 = String(labRecipe.raw1);
@@ -207,15 +207,15 @@ export const showCraftableInfo = (filter?: string | number) => {
 
     if (!isSingleResourceMode && (!onlyType || onlyType === 'LAB') && RESOURCE_PRODUCTION.enabled && RESOURCE_PRODUCTION.lab.enabled && RESOURCE_PRODUCTION.lab.chain.enabled) {
         const labProducts = new Set<string>([
-            ...(LAB_T1_PRIORITY as any),
-            ...(t1 as any),
-            ...(t2 as any),
-            ...(t3 as any),
+            ...LAB_T1_PRIORITY,
+            ...t1,
+            ...t2,
+            ...t3,
         ]);
         const tierSet = onlyTier === undefined ? undefined : LAB_TIER_SET[onlyTier];
         for (const product of labProducts) {
             if (tierSet && !tierSet.has(product)) continue;
-            const recipe = (LabMap as any)?.[product];
+            const recipe = LabMap[product as keyof typeof LabMap];
             const raw1 = recipe?.raw1 as string | undefined;
             const raw2 = recipe?.raw2 as string | undefined;
             if (!raw1 || !raw2) continue;
@@ -238,8 +238,8 @@ export const showCraftableInfo = (filter?: string | number) => {
     if (!isSingleResourceMode && (!onlyType || onlyType === 'FACTORY') && RESOURCE_PRODUCTION.enabled && RESOURCE_PRODUCTION.factory.enabled && RESOURCE_PRODUCTION.factory.chain.enabled) {
         const maxLevel = RESOURCE_PRODUCTION.factory.chain.maxLevel;
         if (onlyFactoryLevel !== undefined) {
-            for (const product of Object.keys(COMMODITIES as any)) {
-                const info = (COMMODITIES as any)[product];
+            for (const product of Object.keys(COMMODITIES) as CommoditiesTypes[]) {
+                const info = COMMODITIES[product];
                 const level = Number(info?.level ?? 0);
                 if (level !== onlyFactoryLevel) continue;
                 const components = info?.components as Record<string, number> | undefined;
@@ -268,7 +268,7 @@ export const showCraftableInfo = (filter?: string | number) => {
             }
         } else {
             const excludeWhite = RESOURCE_PRODUCTION.factory.chain.excludeWhite;
-            const specialKeep = (RESOURCE_PRODUCTION.factory.chain as any).specialKeep as Record<string, number> | undefined;
+            const specialKeep = (RESOURCE_PRODUCTION.factory.chain as { specialKeep?: Record<string, number> }).specialKeep;
 
             const WHITE_ROOTS = new Set<string>([RESOURCE_COMPOSITE, RESOURCE_CRYSTAL, RESOURCE_LIQUID]);
             const COLOR_ROOTS = new Set<string>([RESOURCE_METAL, RESOURCE_BIOMASS, RESOURCE_SILICON, RESOURCE_MIST]);
@@ -284,7 +284,7 @@ export const showCraftableInfo = (filter?: string | number) => {
                 if (hit) return hit;
                 const base = { colored: COLOR_ROOTS.has(res), white: WHITE_ROOTS.has(res), rootsMask: ROOT_BIT[res] || 0 };
                 classCache[res] = base;
-                const recipe = (COMMODITIES as any)?.[res];
+                const recipe = COMMODITIES[res as CommoditiesTypes];
                 const components = recipe?.components as Record<string, number> | undefined;
                 if (!components) return base;
                 for (const comp of Object.keys(components)) {
@@ -303,8 +303,8 @@ export const showCraftableInfo = (filter?: string | number) => {
                 (getGlobalAvail(RESOURCE_MIST) > 0 ? 8 : 0);
 
             const autoProducts = new Set<string>();
-            for (const product of Object.keys(COMMODITIES as any)) {
-                const info = (COMMODITIES as any)[product];
+            for (const product of Object.keys(COMMODITIES) as CommoditiesTypes[]) {
+                const info = COMMODITIES[product];
                 const level = Number(info?.level ?? 0);
                 if (level < 0 || level > maxLevel) continue;
                 const components = info?.components as Record<string, number> | undefined;
@@ -318,7 +318,7 @@ export const showCraftableInfo = (filter?: string | number) => {
             }
             if (specialKeep) {
                 for (const product of Object.keys(specialKeep)) {
-                    const info = (COMMODITIES as any)?.[product];
+                    const info = COMMODITIES[product as CommoditiesTypes];
                     const components = info?.components as Record<string, number> | undefined;
                     if (!info || !components) continue;
                     if (Object.keys(components).some(c => getGlobalAvail(c) <= 0)) continue;
@@ -327,7 +327,7 @@ export const showCraftableInfo = (filter?: string | number) => {
             }
 
             for (const product of autoProducts) {
-                const info = (COMMODITIES as any)?.[product];
+                const info = COMMODITIES[product as CommoditiesTypes];
                 const components = info?.components as Record<string, number> | undefined;
                 if (!components) continue;
                 let crafts = Infinity;

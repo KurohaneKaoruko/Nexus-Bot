@@ -1,3 +1,19 @@
+import { UPGRADER_BODY_CONFIG } from "@/config/economy";
+
+/**
+ * 引擎常量兜底表 (桩环境可能缺全局, 走静态值)。
+ * 本文件被 rush 生成器复用, 故不得假定全局常量一定存在。
+ */
+const PART_COST: Readonly<Record<string, number>> = {
+	work: 100,
+	carry: 50,
+	move: 50,
+	tough: 10,
+};
+const partCost = (part: string): number => PART_COST[part] ?? 100;
+const carryCapacity = (): number => (typeof CARRY_CAPACITY === "number" ? CARRY_CAPACITY : 50);
+const maxCreepSize = (): number => (typeof MAX_CREEP_SIZE === "number" ? MAX_CREEP_SIZE : 50);
+
 /**
  * rush 体型生成器: 按能量预算现算体型 (零依赖纯算法, 引擎常量为唯一触点)。
  * 契约: 任意预算下成本 ≤ 预算; 预算低于角色下限返回 null (调用方跳过, 不留死锁体型);
@@ -5,7 +21,8 @@
  *
  * 口径:
  * - harvester: [W×n, C×c, M×m] 定点矿工化, WORK 封顶单矿再生上限 (5W = 10 能量/tick);
- * - upgrader: [W×n, C×c, M×m], WORK 优先, move 增长门 work/move ≥ 4 (4 WORK 拖 1 MOVE);
+ * - upgrader: [W×n, C×c, M×m], WORK 密度优先, 自 maxWork 递减试装取容量装得下的最大 WORK,
+ *   配比 CARRY=ceil(work×carryEnergyPerWork/容量)、MOVE=ceil(work/workPerMove) (见 UPGRADER_BODY_CONFIG);
  * - worker: [W,C,M] 三件套整组扩展, 整组付不起时回退 [W+M] / [M+C] 半组。
  */
 
@@ -15,8 +32,11 @@ export function maxHarvestWork(): number {
 	return Math.max(1, Math.floor(perTick / HARVEST_POWER));
 }
 
-/** harvester 最低孵化预算: [W1,M1] */
-export const RUSH_HARVESTER_MIN_BUDGET = BODYPART_COST[WORK] + BODYPART_COST[MOVE];
+/** harvester 最低孵化预算: [W2,M1] = 250——双 WORK 起步, 单源收入 4/t。
+ *  W1 起步把双源房经济锁死在 2/t (sprint sim 实锤 50k 仅 L2, 源能量 2500+ 堆积);
+ *  能量不足 250 时攒能等待, 攒不齐由 replacement 短窗超时降档与 bootstrap
+ *  (starterBudget 300) 兜底, 不设 W2 硬跳闸 (docs/bugs 涓流断采教训)。 */
+export const RUSH_HARVESTER_MIN_BUDGET = BODYPART_COST[WORK] * 2 + BODYPART_COST[MOVE];
 /** upgrader 最低孵化预算: [W1,C1,M1] */
 export const RUSH_UPGRADER_MIN_BUDGET =
 	BODYPART_COST[WORK] + BODYPART_COST[CARRY] + BODYPART_COST[MOVE];
@@ -109,10 +129,48 @@ export function buildRushHarvesterBody(
 }
 
 /**
- * upgrader 体型:
- * 1W1C1M 起步 → CARRY 增长门为容量比 (CARRY_CAPACITY×carry)/work < carryRatio
- * (carryRatio=1 即长期维持 1 个 CARRY 缓冲) → MOVE 增长门 work/move ≥ 4 →
- * 其余预算全部转 WORK, WORK 达 maxWork (定编缺口) 即停。
+ * 驻点远程矿工体型 (批次 AD, 上游 remoteMiner 口径): W 拉满 (单矿再生上限封顶),
+ * M = ceil(W/2) 平地 (沼泽 ceil(W/3)), 收尾 1 CARRY 承接换源/自喂。
+ * 上游 body: W×w + C×1 + M×ceil(w/2); w = floor((cap-150)/100), 预算不足时 w 递减。
+ * 返回 null 表示预算 < W2M1C1 (250), 调用方跳过本轮。
+ */
+export function buildStationaryRemoteMinerBody(
+	budget: number,
+	options: { slowTerrain?: boolean } = {},
+): BodyPartConstant[] | null {
+	if (budget < BODYPART_COST[WORK] * 2 + BODYPART_COST[MOVE] + BODYPART_COST[CARRY]) {
+		return null;
+	}
+	let work = Math.min(
+		maxHarvestWork(),
+		Math.floor((budget - BODYPART_COST[CARRY] - BODYPART_COST[MOVE]) / BODYPART_COST[WORK]),
+	);
+	while (
+		work >= 2 &&
+		work * BODYPART_COST[WORK] + BODYPART_COST[MOVE] + BODYPART_COST[CARRY] > budget
+	) {
+		work -= 1;
+	}
+	const perMove = options.slowTerrain ? 3 : 2;
+	const move = Math.max(1, Math.ceil(work / perMove));
+	const body: BodyPartConstant[] = [];
+	appendParts(body, WORK, work);
+	appendParts(body, MOVE, move);
+	body.push(CARRY);
+	return body;
+}
+
+/**
+ * upgrader 体型 (WORK 密度优先):
+ * 以 maxWork (定编缺口) 为上限, 自高向低试装 WORK, 取能量容量装得下的最大 WORK 数。
+ *
+ * 配比按「升级体就近取能、移动占比低」设定: CARRY = ceil(work × carryEnergyPerWork /
+ * CARRY_CAPACITY) 保证随身缓冲够摊在几个 WORK 上, MOVE = ceil(work / workPerMove)
+ * 每 10 个 WORK 才配 1 个 MOVE —— 预算因此几乎全转成 WORK, 同能量下火力密度最大化。
+ * 试装失败即 work 减一重算 (CARRY/MOVE 随 work 收敛), 返回首个可行体型。
+ *
+ * 与旧「逐件加预算」路径的差异: 旧路径 MOVE 增长门为 work/move ≥ 4 (即 4 WORK 配 1 MOVE),
+ * 同预算下 WORK 密度显著更低, 火力被 MOVE 分走。
  */
 export function buildRushUpgraderBody(
 	budget: number,
@@ -123,53 +181,35 @@ export function buildRushUpgraderBody(
 		return null;
 	}
 
-	const maxParts = MAX_CREEP_SIZE;
-	let cost = BODYPART_COST[WORK] + BODYPART_COST[CARRY] + BODYPART_COST[MOVE];
-	let work = 1;
-	let move = 1;
-	let carry = 1;
-
-	while (budget > cost) {
-		if ((CARRY_CAPACITY * carry) / work < carryRatio && budget >= cost + BODYPART_COST[CARRY]) {
-			if (work + move + carry + 1 > maxParts) {
-				break;
-			}
-			carry += 1;
-			cost += BODYPART_COST[CARRY];
+	// 预算隐含的 WORK 上界 (先按最少配比粗估, 再由试装收敛)
+	const capacity = carryCapacity();
+	const partsCap = maxCreepSize();
+	const upperWork = maxWork ?? Math.min(partsCap, Math.floor(budget / partCost("work")));
+	for (let work = upperWork; work >= 1; work -= 1) {
+		// carryRatio ≥ 1 时维持至少 1 CARRY; carryEnergyPerWork 决定超过 1 时的增长
+		const carry = Math.max(
+			1,
+			Math.max(
+				Math.ceil((carryRatio * work) / capacity),
+				Math.ceil((UPGRADER_BODY_CONFIG.carryEnergyPerWork * work) / capacity),
+			),
+		);
+		const move = Math.max(UPGRADER_BODY_CONFIG.minMove, Math.ceil(work / UPGRADER_BODY_CONFIG.workPerMove));
+		if (work + carry + move > partsCap) {
 			continue;
 		}
-
-		if ((move === 0 || work / move >= 4) && budget >= cost + BODYPART_COST[MOVE]) {
-			if (work + move + carry + 1 > maxParts) {
-				break;
-			}
-			move += 1;
-			cost += BODYPART_COST[MOVE];
+		const cost = work * partCost("work") + carry * partCost("carry") + move * partCost("move");
+		if (cost > budget) {
 			continue;
 		}
-
-		if (maxWork && work >= maxWork) {
-			break;
-		}
-
-		if (budget >= cost + BODYPART_COST[WORK]) {
-			if (work + move + carry + 1 > maxParts) {
-				break;
-			}
-			work += 1;
-			cost += BODYPART_COST[WORK];
-			continue;
-		}
-
-		break;
+		const body: BodyPartConstant[] = [];
+		appendParts(body, WORK, work - 1);
+		appendParts(body, CARRY, carry);
+		appendParts(body, MOVE, move);
+		body.push(WORK);
+		return body;
 	}
-
-	const body: BodyPartConstant[] = [];
-	appendParts(body, WORK, work - 1);
-	appendParts(body, CARRY, carry);
-	appendParts(body, MOVE, move);
-	body.push(WORK);
-	return body;
+	return null;
 }
 
 /**

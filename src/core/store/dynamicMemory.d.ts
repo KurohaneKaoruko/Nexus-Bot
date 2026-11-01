@@ -44,4 +44,10 @@ declare global {
 	var log: (message: string, ...args: unknown[]) => void;
 }
 
-export {};
+/** 动态内存通道的显式导出（保持本文件模块身份，使 declare global 生效） */
+export type DynamicMemoryChannel = {
+	room: typeof room;
+	layout: typeof layout;
+	log: typeof log;
+};
+

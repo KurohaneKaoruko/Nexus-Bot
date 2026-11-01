@@ -9,16 +9,17 @@ export type GridVisitor = (x: number, y: number, value: GridValue) => void;
 
 /** POI 位置缓存槽 */
 export interface PointCache {
-	extractor?: Array<{ x: number; y: number }>;
-	container?: Array<{ x: number; y: number }>;
-	link?: Array<{ x: number; y: number }>;
+	extractor?: Array<[number, number]>;
+	container?: Array<[number, number]>;
+	link?: Array<[number, number]>;
 }
 
 export class RoomArray implements PointCache {
-	private readonly arr: GridValue[];
-	extractor?: Array<{ x: number; y: number }>;
-	container?: Array<{ x: number; y: number }>;
-	link?: Array<{ x: number; y: number }>;
+	/** 2500 格线性底层数组 (索引 x*50+y); 热路径直访入口, 经由本类方法封装的遍历器共用 */
+	readonly arr: GridValue[];
+	extractor?: Array<[number, number]>;
+	container?: Array<[number, number]>;
+	link?: Array<[number, number]>;
 
 	constructor() {
 		this.arr = Array.from({ length: 2500 }, () => 0 as GridValue);

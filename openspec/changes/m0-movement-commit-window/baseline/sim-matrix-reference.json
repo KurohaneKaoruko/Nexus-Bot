@@ -1,0 +1,61 @@
+{
+	"speedrun": {
+		"green": false,
+		"ticks": 40000,
+		"rcl": {
+			"L1": 0,
+			"L2": 458,
+			"L3": 11839,
+			"L4": 33413
+		},
+		"cpuP95": 9
+	},
+	"arena": {
+		"green": false,
+		"ticks": 40000,
+		"rcl": {
+			"L1": 0,
+			"L2": 330,
+			"L3": 8352,
+			"L4": 27618
+		},
+		"cpuP95": 9
+	},
+	"sprint": {
+		"green": false,
+		"ticks": 50000,
+		"rcl": {
+			"L1": 0,
+			"L2": 834,
+			"L3": 38308
+		},
+		"cpuP95": 9
+	},
+	"boot": {
+		"green": true,
+		"ticks": 20000,
+		"rcl": {
+			"L1": 0,
+			"L2": 330,
+			"L3": 8557
+		},
+		"cpuP95": 8
+	},
+	"race-body-audit": {
+		"green": true,
+		"ticks": 6000,
+		"rcl": {
+			"L1": 0,
+			"L2": 458
+		},
+		"cpuP95": 9
+	},
+	"remote-mine": {
+		"green": true,
+		"ticks": 30000,
+		"rcl": {
+			"L3": 0
+		},
+		"cpuP95": 5
+	}
+}

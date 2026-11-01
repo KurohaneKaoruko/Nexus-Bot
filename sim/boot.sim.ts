@@ -1,4 +1,4 @@
-// boot-from-scratch: 空房间从零启动 (回归基线: RCL2 ≤5000 / 断言 3/3)
+// boot-from-scratch: 空房间从零启动 (回归基线: RCL2 ≤500 / 断言 3/3)
 import { defineSim } from 'screeps-sim'
 
 /** 主房周围的 8 个邻房 (跨房视野/远征行为的舞台) */
@@ -29,7 +29,9 @@ export default defineSim({
 		...neighbors,
 	],
 	asserts: [
-		{ kind: 'rclReachedBy', value: 2, tick: 5000 },
+		// RCL2 达标线 (用户口径 2026-10-20): ≤500 达标, >1000 视为不合格。
+		// 旧值 5000 形同虚设 (实测 L2@330, 探针图 L2@458)。
+		{ kind: 'rclReachedBy', value: 2, tick: 500 },
 		{ kind: 'creepCountAtLeast', value: 2 },
 		{ kind: 'noErrors' },
 	],

@@ -10,9 +10,9 @@ const CARRY_COST = 50;
 const MOVE_COST = 50;
 
 /** 接力模式单程携带上限：小体型快周转（controller 等级 < 7） */
-export const RELAY_HAULER_CARRY_SIZE = 4;
+export const RELAY_CARRIER_CARRY_SIZE = 4;
 /** 直运模式单程携带上限（controller 等级 >= 7，基础设施成熟） */
-export const DIRECT_HAULER_CARRY_SIZE = 32;
+export const DIRECT_CARRIER_CARRY_SIZE = 32;
 
 type BodyConfig = ((BodyPartConstant | number)[])[];
 
@@ -65,7 +65,7 @@ export function buildRemoteMinerBody(
     return body;
 }
 
-export function buildHaulerBodyConfig(
+export function buildCarrierBodyConfig(
     energyCapacity: number,
     options: { forRoad?: boolean; maxCarry?: number } = {},
 ): BodyConfig {
@@ -94,8 +94,8 @@ export function buildHaulerBodyConfig(
  *
  * - WORK 占半：建造/维修的主力；CARRY 自取能量（容器/掉落/工地旁）；M 半数保证
  *   无路平原的远程机动；
- * - RoleData[ROLES['out-build']].bodypart 是空数组且 RoleLevelData 无分级表——不传显式
- *   体型时 GetRoleBodys 解析出空 body，孵化端按「无法孵化」永久跳过
+ * - UnitData[UNITS['out-build']].bodypart 是空数组且 UnitLevelData 无分级表——不传显式
+ *   体型时 GetUnitBodys 解析出空 body，孵化端按「无法孵化」永久跳过
  *   （race 实测：外矿路网工地铺满却没有一只建造工）。
  */
 export function buildOutBuildBody(energyCapacity: number): BodyConfig {

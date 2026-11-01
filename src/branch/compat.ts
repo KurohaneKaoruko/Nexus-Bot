@@ -21,7 +21,6 @@ const RACE_MISSING_GLOBALS = [
 	"OwnedStructure",
 	"PathFinder",
 	"PowerCreep",
-	"RawMemory",
 	"Resource",
 	"RoomObject",
 	"RoomPosition",

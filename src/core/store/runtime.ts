@@ -8,7 +8,7 @@
  */
 import { STRATEGY_CONFIG } from "@/config/strategy";
 import { CLUSTER_CONFIG } from "@/config/cluster";
-import type { Posture, SquadKind } from "@/core/store/memorySchema";
+import type { Posture, SquadKind, SquadSlotDef } from "@/core/store/memorySchema";
 import type { TaskKind } from "@/core/store/taskSchema";
 
 export interface StrategyTransitionRecord {
@@ -41,8 +41,10 @@ export interface StrategyRuntime {
 export interface SquadRequest {
 	kind: SquadKind;
 	roomName: string;
-	/** 期望槽位数 (= 期望成员数), 编队模块按配置上限收敛 */
+	/** 期望槽位数 (= 期望成员数), 编队模块按配置上限收敛; 异构时由 slotDefs 决定 */
 	slots: number;
+	/** 异构槽位定义 (specs/squad-heterogeneous-slots): 缺省时按 slots/taskKind/capabilities 构造单条目同质定义 */
+	slotDefs?: SquadSlotDef[];
 	/** 槽位任务种类 */
 	taskKind: TaskKind;
 	/** 每槽位所需能力 */
@@ -151,7 +153,24 @@ export function requestSquad(request: SquadRequest): void {
 		(candidate) => candidate.kind === request.kind && candidate.roomName === request.roomName,
 	);
 	if (existing) {
-		existing.slots = Math.max(existing.slots, request.slots);
+		// 异构槽位合并按定义逐项取大 (同 taskKind 合并 count), 异 kind 追加;
+		// 收敛在 applyRequest 的 clampSlotDefs, 此处只保证「需求放大」不被压小。
+		if (request.slotDefs?.length) {
+			const merged = [...(existing.slotDefs ?? [])];
+			for (const def of request.slotDefs) {
+				const same = merged.find((d) => d.taskKind === def.taskKind);
+				if (same) {
+					same.count = Math.max(same.count, def.count);
+					same.capabilities = [...def.capabilities];
+				} else {
+					merged.push({ ...def, capabilities: [...def.capabilities] });
+				}
+			}
+			existing.slotDefs = merged;
+			existing.slots = merged.reduce((sum, d) => sum + d.count, 0);
+		} else {
+			existing.slots = Math.max(existing.slots, request.slots);
+		}
 		existing.priority = Math.max(existing.priority, request.priority);
 		existing.taskKind = request.taskKind;
 		existing.capabilities = [...request.capabilities];

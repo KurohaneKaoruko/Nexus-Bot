@@ -200,15 +200,18 @@ export default defineConfig(() => {
 	// 缺省 main；其余回退约定 src/main.ts / src/branch/<variant>/main.ts
 	const variant = process.env.VARIANT ?? config?.entry ?? 'main';
 	const branchPath = secret?.branches?.[variant]?.path;
-	const input = branchPath
+	const baseInput = branchPath
 		?? (variant === 'main' ? 'src/main.ts' : `src/branch/${variant}/main.ts`);
+	const input = baseInput;
 	const entryAbs = path.resolve(process.cwd(), input);
 	if (!fs.existsSync(entryAbs)) {
 		throw new Error(`分支 ${variant} 的入口不存在: ${input}`);
 	}
 	console.log(`[build] 入口: ${input} (分支: ${variant})`);
 
-	const outputFile = 'dist/main.js';
+	// race 变体产物独立目录 dist-race/main.js (sim 场景专用, 不进部署链):
+	// collectDir 按输出目录整目录上传, race 产物若留在 dist/ 会随 main 一起上传
+	const outputFile = variant === 'race' ? 'dist-race/main.js' : 'dist/main.js';
 	const distDir = path.dirname(path.resolve(process.cwd(), outputFile));
 	const enableSourceMap = process.env.SOURCE_MAP !== '0';
 	const enableObfuscation = process.env.OBFUSCATE !== '0';
@@ -236,8 +239,21 @@ export default defineConfig(() => {
 		checks: {
 			pluginTimings: false
 		},
+		// race 变体恒烘焙 SPEEDRUN_PROFILE=1: 私服 GCL1 账号的 PRIVATE_PROFILE
+		// 必须无条件生效 (speedrun 服 GCL 恒 1, 自动门 gcl>=6 永不触发)。
+		// SPEEDRUN_KNOBS='{"swap":1,...}': 构建期烧死实验旋钮 (不触碰 __K, 不影响 PRIVATE_PROFILE)
 		transform: {
-			target: 'node8.9.3'
+			target: 'node8.9.3',
+			...(variant === 'race'
+				? {
+						define: {
+							SPEEDRUN_PROFILE: JSON.stringify(process.env.SPEEDRUN_PROFILE !== '0'),
+							...(process.env.SPEEDRUN_KNOBS
+								? { SPEEDRUN_KNOBS: process.env.SPEEDRUN_KNOBS }
+								: {}),
+						},
+					}
+				: {}),
 		},
 		// @/ 别名统一指向 src/
 		resolve: {

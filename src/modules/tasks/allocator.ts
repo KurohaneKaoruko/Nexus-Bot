@@ -5,10 +5,13 @@
  */
 import type { CreepSummary } from "@/core/world";
 import type { NexusTask } from "@/core/store/taskSchema";
-import { leaseTicksFor } from "@/core/store/taskSchema";
+import { leaseTicksFor, remoteLeaseTicksFor } from "@/core/store/taskSchema";
+import { UNIT_CODES } from "@/constant/UnitConstant";
 
 export interface CapabilityProfile {
 	creepName: string;
+	/** 角色代号 (感知侧从名称解析): 亲和评分用 */
+	unitCode: string;
 	roomName: string;
 	x: number;
 	y: number;
@@ -24,6 +27,8 @@ export interface CapabilityProfile {
 	freeCapacity: number;
 	ttlRemaining: number;
 	spawning: boolean;
+	/** 外派驻地房 (UnitRecord.remote, docs/24 §24.8.3): 外矿/家内单位隔离口径 */
+	remoteTag?: string;
 }
 
 export interface AllocationCandidate {
@@ -43,22 +48,44 @@ export const SCORE_WEIGHTS = {
 	criticality: 100,
 	urgency: 30,
 	utility: 20,
+	/**
+	 * 亲和加分 (bugs/P1-14 派发段): 阈值算式 W > 90 —— 最坏情形 fill_spawn(95,
+	 * 无亲和得分 137+滞回 15) vs upgrade(30, 亲和得分 62+W), W=95 时专职升级体
+	 * 能从 fill_spawn 逃回同族任务且反向不可夺; 生存类 (defend/retreat ≥ 抢占线)
+	 * 豁免滞回, 不受本权重压制。
+	 */
+	affinity: 95,
 	capabilityFit: 15,
 	travel: 2,
 	risk: 10,
 	switch: 8,
 } as const;
 
-/** 切换阈值: 新任务须比当前任务高出的分数 (除非紧急抢占) */
+/** 切换阈值: 新任务须比当前任务高出的分数 (零滞回抢占除外) */
 export const SWITCH_MARGIN = 15;
-/** 紧急抢占线: 任务优先级达到该值可无视滞回直接抢占 */
-export const CRITICAL_PRIORITY = 90;
+/**
+ * 零滞回抢占种类: 紧急防御/撤离 + 孵化线供能 (design/05 §5.6「紧急事件可以抢占」,
+ * fill_spawn 是 spawn 队列的生存线)。判据必须是种类语义, 不得用 priority 数值档位——
+ * 专线 carry 的星饥加速会把 priority 压到 0~1.5, 数值落入与 survival 档相同的区间,
+ * 按数值豁免等于让物流任务每 tick 零成本换绑: 被换下的任务回池后下 tick 按亲和
+ * 又被同一只夺回, 形成 A→B→A 零进度振荡 (实测: 驻点矿工被专线 carry 反复抽走做
+ * 容器 withdraw/transfer 对冲; 载体被两地货源的两件任务拉成原地往返, 窗口期 62.7%
+ * creep-tick 换手)。
+ * 同族之间不豁免: 紧急任务只抢「非紧急」, 不与另一个紧急任务互相热土豆——
+ * 同类任务间的再平衡交给 travel 差 + 滞回阈值。
+ */
+export const SWITCH_EXEMPT_KINDS: ReadonlySet<string> = new Set([
+	"defend",
+	"retreat",
+	"fill_spawn",
+]);
 /** 最低剩余寿命: 低于此值不接新任务 */
 const MIN_TTL = 150;
 
-export function profileOf(summary: CreepSummary): CapabilityProfile {
+export function profileOf(summary: CreepSummary, remoteTag?: string): CapabilityProfile {
 	return {
 		creepName: summary.name,
+		unitCode: summary.unitCode,
 		roomName: summary.roomName,
 		x: summary.x,
 		y: summary.y,
@@ -73,11 +100,16 @@ export function profileOf(summary: CreepSummary): CapabilityProfile {
 		freeCapacity: summary.freeCapacity,
 		ttlRemaining: summary.ticksToLive,
 		spawning: summary.spawning,
+		...(remoteTag !== undefined ? { remoteTag } : {}),
 	};
 }
 
 /** 硬性资格过滤: 不可执行的候选直接出局 */
-export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean {
+export function canExecute(
+	profile: CapabilityProfile,
+	task: NexusTask,
+	remoteMinerExclusive = false,
+): boolean {
 	if (profile.spawning) {
 		return false;
 	}
@@ -85,18 +117,105 @@ export function canExecute(profile: CapabilityProfile, task: NexusTask): boolean
 		return false;
 	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim: 本矿孵化 → 远程目标) 放行, 由评分的 travel 成本约束
-		if (task.kind !== "claim") {
+		// 跨房任务 (claim/reserve: 本矿孵化 → 远程目标; harvest/carry: 本矿登记的外矿源/容器) 放行,
+		// 由评分的 travel 成本约束
+		if (
+			task.kind !== "claim" &&
+			task.kind !== "reserve" &&
+			task.kind !== "harvest" &&
+			task.kind !== "carry"
+		) {
 			return false;
 		}
+	}
+	// 升级体钉死本房: 外矿 harvest/carry 是长腿差事, 升级体越界会被几百 tick
+	// 困在邻房取能, 本房 cc 断供 (工位任务同房, 不依赖跨房货源)
+	if (profile.unitCode === UNIT_CODES.upgrader) {
+		const targetRoom = task.targetPos?.roomName;
+		const destRoom = task.destPos?.roomName;
+		if (
+			(task.roomName !== profile.roomName) ||
+			(targetRoom !== undefined && targetRoom !== profile.roomName) ||
+			(destRoom !== undefined && destRoom !== profile.roomName)
+		) {
+			return false;
+		}
+	}
+	// 外矿矿工钉死外矿 (批次 AD): 本地 upgrade/fill_spawn 等短腿任务在 priority
+	// 序上先于远程 harvest, rush 档 affinityExclusive 关闭拦不住——站在孵化
+	// 口旁的 remoteMiner 被本地任务先抓走, 7 个正式远程任务全 available
+	// (20k 实证 4 只 remoteMiner 2 只在升级控制器)。反向对称于上面的硬排:
+	// 编制互不侵占才是整套语义。
+	if (
+		remoteMinerExclusive &&
+		profile.unitCode === UNIT_CODES.remoteMiner &&
+		task.kind !== "harvest"
+	) {
+		return false;
 	}
 	// 侦查是纯移动差事: 生产件 (work/carry) 不得抢占, 留给专职 scout
 	if (task.kind === "scout" && profile.work + profile.carry > 0) {
 		return false;
 	}
-	// 反向: 侦查件只接侦查 (单 MOVE 身体不参与生产/搬运竞争)
-	if (task.kind !== "scout" && profile.work + profile.carry === 0 && profile.claim === 0 && profile.attack + profile.ranged + profile.heal === 0) {
+	// 外矿采集是 remoteMiner 专职 (批次 AD): 远程 harvest 任务禁止本矿编制
+	// 跨界认领 (含 harvester——affinityExclusive 在 rush 关, 不硬排则本矿
+	// harvester 虹吸跨房: 本矿采集面虚编 + 自回运长途占坑, 30k 实证
+	// W6N8 被采集体 H-6B98 自回运占用, remoteMiner 全程 1 只)。
+	// 判据 = 任务房 ≠ 目标房 (跨房才排, 本矿 harvest 不受限)。
+	// 仅 rush/auto 开启: manual 系本矿 harvester 兼差外矿自回运是承重设计
+	// (batch H 环), 硬排即断其外矿供给。
+	if (
+		remoteMinerExclusive &&
+		task.kind === "harvest" &&
+		task.resourceType === undefined &&
+		task.targetPos?.roomName !== undefined &&
+		task.targetPos.roomName !== task.roomName &&
+		profile.unitCode !== UNIT_CODES.remoteMiner
+	) {
 		return false;
+	}
+	// 矿物合约 (带 resourceType 的 harvest): agentSystem 尚无矿物执行分支,
+	// 通用件误领会把矿物当 Source 空转重规划; 待矿物执行分支落地后放行
+	if (task.kind === "harvest" && task.resourceType !== undefined) {
+		return false;
+	}
+	// 矿物 terminal_transfer (carry 执行分支为能量口径): 通用件领了只能空转,
+	// 能量方向的 terminal_transfer 不受限; 待矿物搬运执行分支落地后放行
+	if (task.kind === "terminal_transfer" && task.resourceType !== RESOURCE_ENERGY) {
+		return false;
+	}
+	// 反向: 侦查件只接侦查 (单 MOVE 身体不参与生产/搬运竞争)
+	if (
+		task.kind !== "scout" &&
+		profile.work + profile.carry === 0 &&
+		profile.claim === 0 &&
+		profile.attack + profile.ranged + profile.heal === 0
+	) {
+		return false;
+	}
+	// 外矿/家内单位隔离 (docs/24 §24.8.3): remote: 任务只给同母房且带 remote
+	// 标记的单位; 家内任务只给无标记单位——两编制互不抢任务, 家内定编与
+	// P1-14 校准口径不受外矿影响。
+	// 例外 (spec 原文「scout 与 reserver 只接 remote: 任务」——任务域限制,
+	// 非驻地匹配): scout 单 MOVE 一次性件不占编制, 按 kind 豁免标记要求;
+	// reserver 任务域恒 remote:, 但孵化走 standing 编制 (L12 档), 同样豁免
+	// ——否则无标记孵出的 reserver 接不了任务, standing 编制无限重发
+	const isRemoteTask = task.dedupeKey.startsWith("remote:");
+	const scoutOrReserver = task.kind === "scout" || task.kind === "reserve";
+	if (isRemoteTask && !scoutOrReserver) {
+		if (profile.remoteTag === undefined) return false;
+		const targetRoom = task.targetPos?.roomName;
+		if (targetRoom !== undefined && profile.remoteTag !== targetRoom) {
+			// 母房锚点的例外: 目标即母房本身 (haul 交付腿) 不限驻地房
+			if (task.kind !== "carry" || targetRoom !== task.roomName) return false;
+		}
+	} else if (!isRemoteTask && profile.remoteTag !== undefined) {
+		// 外矿单位不接家内任务 (含旧链 harvest:/carry: 跨房形态——其目标房
+		// 是外矿房, 按 remoteTag 匹配放行)
+		const targetRoom = task.targetPos?.roomName;
+		if (targetRoom === undefined || targetRoom === profile.remoteTag) {
+			return false;
+		}
 	}
 	for (const capability of task.requiredCapabilities) {
 		if (capability === "work" && profile.work === 0) {
@@ -130,11 +249,40 @@ const KIND_UTILITY: Record<string, number> = {
 	defend: 0.9,
 	retreat: 0.8,
 	harvest: 0.8,
-	haul: 0.6,
+	carry: 0.6,
+	// 维修压过新建: decay 结构 (容器 25k tick 寿命) 死后重建 5000e + 数千 tick,
+	// 而及时维修只花 decay 速率的血 (容器 10e/t 血) —— 断供代价远高于新建收益
+	// (sim 实证 cc 容器 decay 死后升级链断供 8.9k tick, 损失 ~35k 进度)
 	build: 0.6,
-	repair: 0.5,
+	repair: 0.65,
 	upgrade: 0.4,
 };
+
+/**
+ * 角色 ↔ 任务类型亲和表 (bugs/P1-14 派发段): 专职编制的体对同族任务加分,
+ * 防高优任务 (fill_spawn 95 vs upgrade 85) 把专职升级体吸走——否则升级任务
+ * 成「烫手山芋」循环易主 (30k tick 前程进度零增长的根因)。
+ * 代号键从 UNIT_CODES 单源派生 (禁止手抄代号字符串);
+ * 无亲和角色 (universal 等) 全表可接, 兜底行为不受影响。
+ */
+const UNIT_TASK_AFFINITY: Record<string, readonly string[]> = {
+	[UNIT_CODES.upgrader]: ["upgrade"],
+	// worker 缺位期 cc/ext 建造由 harvester 兼 (race 换班制语义: 工地存在
+	// 全员转建造; 无亲和时 build 恒无人认领, cc 不成 → 升级体长腿死循环)
+	[UNIT_CODES.worker]: ["build", "repair"],
+	[UNIT_CODES.harvester]: ["harvest", "build"],
+	// 外矿驻点矿工 (批次 AD): 只认采集 (跨房 harvest), 与本矿 harvester
+	// 编制彻底分离——AC 病理根因即远程任务污染 harvester 定编
+	[UNIT_CODES.remoteMiner]: ["harvest"],
+	[UNIT_CODES.reserver]: ["reserve"],
+	[UNIT_CODES.carrier]: ["fill_spawn", "carry"],
+	[UNIT_CODES.defender]: ["defend"],
+};
+
+/** 角色对任务是否亲和 (无表项角色恒不加分) */
+function isAffine(unitCode: string, kind: string): boolean {
+	return (UNIT_TASK_AFFINITY[unitCode] ?? []).includes(kind);
+}
 
 export function scoreCandidate(
 	profile: CapabilityProfile,
@@ -143,7 +291,7 @@ export function scoreCandidate(
 	switchCost: number,
 	now: number,
 ): number {
-	const criticality = task.priority / 100;
+	const criticality = Math.max(0, (11 - task.priority) / 11);
 	const urgency =
 		task.deadline !== undefined ? Math.max(0, Math.min(1, 1 - (task.deadline - now) / 300)) : 0.3;
 	const utility = KIND_UTILITY[task.kind] ?? 0.4;
@@ -159,21 +307,60 @@ export function scoreCandidate(
 		return false;
 	}).length;
 	const capabilityFit = matched / required;
+	const affinity = isAffine(profile.unitCode, task.kind) ? 1 : 0;
 	const w = SCORE_WEIGHTS;
 	return (
 		w.criticality * criticality +
 		w.urgency * urgency +
 		w.utility * utility +
+		w.affinity * affinity +
 		w.capabilityFit * capabilityFit -
 		w.travel * travelCost -
 		w.switch * switchCost
 	);
 }
 
-function travelCostOf(profile: CapabilityProfile, task: NexusTask, world: WorldViewLike): number {
+function travelCostOf(
+	profile: CapabilityProfile,
+	task: NexusTask,
+	world: WorldViewLike,
+	remotePathOf?: (task: NexusTask) => number | undefined,
+): number {
+	// 外矿任务 (remote: 前缀) 的实测路程 (docs/24 §24.8.3): 单位在母房时读
+	// RemoteSourceRecord.pathLength (PathFinder 首评缓存), 同房切比雪夫兜底
+	const isRemoteTask = task.dedupeKey.startsWith("remote:");
+	if (isRemoteTask && remotePathOf) {
+		const pathLength = remotePathOf(task);
+		if (pathLength !== undefined) {
+			const targetRoom = task.targetPos?.roomName;
+			if (targetRoom !== undefined && profile.roomName === targetRoom) {
+				// 单位已在目标房: 同房切比雪夫
+				return Math.max(Math.abs(profile.x - (task.targetPos?.x ?? profile.x)),
+					Math.abs(profile.y - (task.targetPos?.y ?? profile.y)));
+			}
+			return pathLength;
+		}
+	}
+	// 目标在异房 (外矿 harvest 的 targetPos 指向邻房源): 距离按房名坐标差折算,
+	// 不能拿异房坐标当同房切比雪夫算——那会把 25 格惩罚错加到本矿爬头上
+	const targetRoom = task.targetPos?.roomName;
+	if (targetRoom !== undefined && targetRoom !== task.roomName) {
+		const m1 = task.roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+		const m2 = targetRoom.match(/^([WE])(\d+)([NS])(\d+)$/);
+		if (!m1 || !m2) return Number.POSITIVE_INFINITY;
+		const dist =
+			Math.abs((parseInt(m2[2] ?? "0", 10) || 0) - (parseInt(m1[2] ?? "0", 10) || 0)) +
+			Math.abs((parseInt(m2[4] ?? "0", 10) || 0) - (parseInt(m1[4] ?? "0", 10) || 0));
+		return 50 + dist * 50;
+	}
 	if (profile.roomName !== task.roomName) {
-		// 跨房任务 (claim) 用房名线性距离折算, 不做无穷大排除
-		if (task.kind !== "claim") {
+		// 跨房任务 (claim/reserve/harvest/carry) 用房名线性距离折算, 不做无穷大排除
+		if (
+			task.kind !== "claim" &&
+			task.kind !== "reserve" &&
+			task.kind !== "harvest" &&
+			task.kind !== "carry"
+		) {
 			return Number.POSITIVE_INFINITY;
 		}
 		const m1 = profile.roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
@@ -232,18 +419,49 @@ export interface AssignInput {
 	currentTaskOf: (creepName: string) => string | undefined;
 	getTask: (taskId: string) => NexusTask | undefined;
 	claim: (taskId: string, creepName: string, now: number, leaseTicks?: number) => boolean;
+	/**
+	 * 亲和排他开关 (bugs (十三)): 开 = 有专属角色在岗的 kind 禁止跨界认领。
+	 * main 系 (无 courier 投喂) 开——升级体钉死工位; rush/mini 关——churn 经济
+	 * 里升级体兼差 fill_spawn 是承重的 (全员顶孵化线), arena 实证排他即回退
+	 * (L3 18140→21684)。
+	 */
+	affinityExclusive?: boolean;
+	/**
+	 * 外矿专职开关 (批次 AD): 开 = 跨房 harvest 仅 remoteMiner 可认领。
+	 * rush/auto 开——防止本矿 harvester 虹吸跨房任务 (30k 实证 remoteMiner
+	 * 全程 1 只); manual 关——本矿 harvester 自回运外矿是 batch H 环承重设计。
+	 */
+	remoteMinerExclusive?: boolean;
+	/** 外矿任务实测路程 (remote: 前缀): dedupeKey → pathLength, 缺省回退房名折算 */
+	remotePathOf?: (task: NexusTask) => number | undefined;
 }
 
 /**
  * 贪心分配: 任务按优先级降序, 每个任务取合格候选中的最高分;
  * 持有任务的 creep 参与分配时需过滞回阈值, 紧急任务可抢占。
+ *
+ * 亲和排他 (bugs (十三)): fill_spawn 等高优先物流任务按序先处理, 专属角色
+ * (carrier) 耗尽后会溢出捕获带 carry 的其他专属编制 (升级体被 fill_spawn
+ * 掏空 → upgrade 任务全 available 无人可领)。规则: kind 有专属角色在场
+ * (非孵化) 时, 非专属角色不得认领; 专属角色全灭/孵化中则放行跨界兜底
+ * (保 bootstrap: 无 harvester 时 universal 可采)。
  */
 export function assignBatch(input: AssignInput): readonly Assignment[] {
 	const assignments: Assignment[] = [];
 	const taken = new Set<string>();
+
+	// 本 tick 有在岗专属角色的 kind 集合
+	const affinityOwnedKinds = new Set<string>();
+	for (const profile of input.profiles) {
+		if (profile.spawning) continue;
+		for (const kind of UNIT_TASK_AFFINITY[profile.unitCode] ?? []) {
+			affinityOwnedKinds.add(kind);
+		}
+	}
+
 	const byPriority = [...input.tasks]
 		.filter((task) => task.status === "available")
-		.sort((a, b) => b.priority - a.priority || a.createdAt - b.createdAt);
+		.sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt);
 
 	for (const task of byPriority) {
 		let best: { profile: CapabilityProfile; score: number } | null = null;
@@ -251,10 +469,17 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			if (taken.has(profile.creepName)) {
 				continue;
 			}
-			if (!canExecute(profile, task)) {
+			if (!canExecute(profile, task, input.remoteMinerExclusive)) {
 				continue;
 			}
-			const travel = travelCostOf(profile, task, input.world);
+			if (
+				input.affinityExclusive &&
+				affinityOwnedKinds.has(task.kind) &&
+				!isAffine(profile.unitCode, task.kind)
+			) {
+				continue;
+			}
+			const travel = travelCostOf(profile, task, input.world, input.remotePathOf);
 			if (!Number.isFinite(travel)) {
 				continue;
 			}
@@ -262,9 +487,24 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			const isSwitch = currentTaskId !== undefined && currentTaskId !== task.id;
 			const switchCost = isSwitch ? 1 : 0;
 			const candidateScore = scoreCandidate(profile, task, travel, switchCost, input.now);
-			if (isSwitch && task.priority < CRITICAL_PRIORITY) {
+			if (isSwitch) {
 				const current = input.getTask(currentTaskId);
-				if (current) {
+				// 外矿驻场保护 (批次 H 环 1): 跨房采集/回运的持有者在途无产出,
+				// 按分抢走 = 反复 preempted (实证: failureReason=preempted 链,
+				// 39 只交互者接力粥)——回程卸货是采集环的组成部分, 不可被本地任务虹吸
+				const holdingRemote =
+					current !== undefined &&
+					current.targetPos?.roomName !== undefined &&
+					current.targetPos.roomName !== current.roomName &&
+					(current.kind === "harvest" || current.kind === "carry");
+				if (holdingRemote) {
+					continue;
+				}
+				// 紧急任务抢非紧急: 零滞回; 其余 (含紧急抢紧急) 需过阈值
+				const freePreempt =
+					SWITCH_EXEMPT_KINDS.has(task.kind) &&
+					(current === undefined || !SWITCH_EXEMPT_KINDS.has(current.kind));
+				if (!freePreempt && current) {
 					const currentScore = scoreCandidate(profile, current, 0, 0, input.now);
 					if (candidateScore < currentScore + SWITCH_MARGIN) {
 						continue;
@@ -275,7 +515,17 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 				best = { profile, score: candidateScore };
 			}
 		}
-		if (best && input.claim(task.id, best.profile.creepName, input.now, leaseTicksFor(task.kind))) {
+		if (
+			best &&
+			input.claim(
+				task.id,
+				best.profile.creepName,
+				input.now,
+				task.targetPos?.roomName !== undefined && task.targetPos.roomName !== task.roomName
+					? remoteLeaseTicksFor(task.kind)
+					: leaseTicksFor(task.kind),
+			)
+		) {
 			taken.add(best.profile.creepName);
 			assignments.push({ creepName: best.profile.creepName, taskId: task.id, score: best.score });
 		}

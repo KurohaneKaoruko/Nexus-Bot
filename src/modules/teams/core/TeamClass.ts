@@ -3,6 +3,7 @@ import TeamUtils from '@/modules/teams/core/TeamUtils';
 import TeamAction from '@/modules/teams/core/TeamAction';
 import TeamBattle from '@/modules/teams/core/TeamBattle';
 import TeamVisual from '@/modules/teams/core/TeamVisual';
+import { combatMove } from '@/modules/combat';
 import { type TeamFormationName, type TowardName } from '@/modules/teams/core/FormationTables';
 
 /**
@@ -22,10 +23,13 @@ class Team {
     homeRoom: string;    // 孵化房间
     targetRoom: string;  // 目标房间
     creeps: Creep[];     // 成员数组
-    cache: { [key: string]: any };    // 缓存
+    cache: { [key: string]: unknown };    // 缓存
     flag: Flag;          // 小队指挥旗
     actionMode: 'normal' | 'rush' | 'press';
     targetMode: 'default' | 'structure' | 'creep' | 'flag';
+    structurePriority?: StructureConstant | undefined;  // 结构优先集火类型 (取自 TeamData)
+    holdFire?: boolean | undefined;   // 集结期禁火 (不索敌, 推进点回落到指挥旗)
+    anchorLock?: boolean | undefined; // 推进点锚定指挥旗 (只走到旗位, 攻击仍就地开火)
     moved: boolean;       // 本tick是否移动过
     _targets?: (Creep | Structure | RoomPosition)[];          // 当前攻击目标集
     _attackTargets?: (Creep | Structure)[];    // 本 tick 已提交攻击的目标
@@ -53,9 +57,12 @@ class Team {
         this.targetMode = 'default'
         this.updateModesFromFlag()
         this.moved = false;
+        this.structurePriority = teamData.structurePriority;
+        this.holdFire = teamData.holdFire;
+        this.anchorLock = teamData.anchorLock;
 
         const creepIds = teamData.creeps || [];
-        const liveCreeps = creepIds.map((id: any) => Game.getObjectById(id)).filter(Boolean) as Creep[];
+        const liveCreeps = creepIds.map((id: Id<Creep>) => Game.getObjectById(id)).filter(Boolean) as Creep[];
         this.creeps = liveCreeps;
     }
 
@@ -106,7 +113,7 @@ class Team {
         teamData.formation = this.formation;
         teamData.targetRoom = this.targetRoom;
         teamData.moveMode = this.moveMode;
-        teamData.cache = this.cache as any;
+        teamData.cache = this.cache as TeamCacheMemory;
         if (this.creeps) {
             teamData.creeps = this.creeps.map((c: Creep) => c.id);
             if (this.creeps.length > 0) {
@@ -126,13 +133,10 @@ class Team {
      * - 防止对穿：当队形稳定时设置 creep.memory.dontPullMe=true，减少 moveOptimization 的对穿打散。
      */
     execUpdate(): void {
-        // 指挥旗丢失时在队首脚下补建（官方口径），但队首还在孵化房时不补——
-        // 孵化房里的旗会把 targetRoom 牵引回自己家（要塞服无视野建旗必失败的场景）
-        if (!this.flag && this.creeps && this.creeps.length > 0) {
-            const head = this.creeps[0];
-            if (head?.pos && head.room.name !== this.homeRoom) {
-                try { head.room.createFlag(head.pos.x, head.pos.y, `Team-${this.name}`); } catch { /* 引擎拒绝时下 tick 重试 */ }
-            }
+        // 指挥旗丢失时在目标房中心补建 (pos.createFlag 原型重写, 无视野可用)。
+        // 不建在队首脚下: 队首还在孵化房时, 旗会把 targetRoom 牵引回孵化房。
+        if (!this.flag && this.creeps && this.creeps.length > 0 && this.targetRoom) {
+            try { new RoomPosition(25, 25, this.targetRoom).createFlag(`Team-${this.name}`) as number; } catch { /* 引擎拒绝时下 tick 重试 */ }
         }
         // 指挥旗位置重定义目标房（已有逻辑）
         if (this.flag && this.targetRoom != this.flag.pos.roomName) {
@@ -260,7 +264,28 @@ class Team {
             : this.targetRoom ? new RoomPosition(25, 25, this.targetRoom)
             : undefined;
         if (!anchor) return;
-        if (this.creeps.some(c => c.fatigue > 0)) return;
+        // 阵型同步冻结: 有成员疲劳时全队停走 (奶盾一体, 散开=脱奶死)。
+        // 唯一豁免: 站出口格的无疲劳成员必须收到指令, 否则 tick 末被引擎
+        // 自动传送弹回原房 (跨房穿边死锁根源)。只放行朝房内的一步:
+        // 已在锚点房 → 朝锚点走; 在路径房 → 朝下一出口走 (方向指向房外
+        // 的等传送不发)。掉队者疲劳恢复后 Gather 重新收紧阵型。
+        // 单爬队伍没有队形要同步: 满负荷机体 (50 部件 / 15 MOVE) 每走一步都会留疲劳,
+        // 套用这条规则会让它永远半速, 在塔火区多站一倍时间
+        if (this.creeps.length > 1 && this.creeps.some(c => c.fatigue > 0)) {
+            for (const c of this.creeps) {
+                if (c.fatigue > 0 || !c.pos.isRoomEdge()) continue;
+                let dir: DirectionConstant | undefined;
+                if (c.pos.roomName === anchor.roomName) {
+                    const d = c.pos.getDirectionTo(anchor) as DirectionConstant;
+                    if (c.pos.getDirectPos(d).roomName === c.pos.roomName) dir = d;
+                } else {
+                    const d = TeamUtils.routeExitDir(c.pos.roomName, anchor.roomName);
+                    if (d && c.pos.getDirectPos(d).roomName === c.pos.roomName) dir = d;
+                }
+                if (dir) combatMove(c, dir);
+            }
+            return;
+        }
 
         // 扩展队形（cross/square3）：模板集结与八向推进
         if (this.formation === 'cross' || this.formation === 'square3') {
@@ -313,7 +338,7 @@ class Team {
             this.creeps.length >= 4 && hasOnEdge
         ) {
             if (!this._targets) this._targets = [anchor];
-            const moveGoals: any[] = this._targets ?? [anchor]
+            const moveGoals: (Creep | Structure | RoomPosition | Flag)[] = this._targets ?? [anchor]
             let direction = TeamAction.getTeamMoveDirection(this, moveGoals)
             if (!direction && this.status === 'avoid') {
                 direction = TeamAction.getTeamMoveDirection(this, moveGoals, 'flee')
@@ -325,13 +350,15 @@ class Team {
                 return;
             }
 
-            TeamAction.LinearMove(this, this.creeps[this.creeps.length - 1]!.pos, true);
+            // 穿边破阵且无路: 不倒退拉扯 (会在门口反复横跳), 散装推进穿过
+            TeamAction.noteStuck(this);
+            TeamAction.looseAdvance(this, anchor);
             this.moved = true;
         } else if (this.formation === 'quad') {
             if (isQuad || this.status === 'flee') {
                 if (hasOnEdge || !TeamAction.switchTeam4Pos(this)) {
                     if (!this._targets) this._targets = [anchor];
-                    let moveGoals: any[] = this._targets
+                    let moveGoals: (Creep | Structure | RoomPosition | Flag)[] = this._targets ?? []
                     let direction = TeamAction.getTeamMoveDirection(this, moveGoals)
                     if (!direction && this.status === 'avoid') {
                         direction = TeamAction.getTeamMoveDirection(this, moveGoals, 'flee')
@@ -340,10 +367,31 @@ class Team {
                         TeamAction.move(this, direction);
                         this.moved = true;
                         TeamVisual.drawMoveDirection(this)
+                    } else if (isQuad) {
+                        // 成阵但整阵无路 (窄门摆不下 2x2): 散装窗口内直接散装穿门,
+                        // 否则累计受卡到阈值切散装窗口——鱼贯而过, 过门后再重组
+                        const isLoose = ((this.cache.looseUntilTick as number | undefined) ?? 0) > Game.time;
+                        if (isLoose) {
+                            TeamAction.looseAdvance(this, anchor);
+                            this.moved = true;
+                        } else {
+                            TeamAction.noteStuck(this);
+                        }
                     }
                 }
             }
-            if (!this.moved && !isQuad) this.moved = TeamAction.Gather(this);
+            if (!this.moved && !isQuad) {
+                // 破阵集结: 散装窗口内直接散装推进 (窄口永远凑不齐 2x2 = 死锁);
+                // 否则尝试集结, 受卡累计到阈值自动切散装窗口
+                const isLoose = ((this.cache.looseUntilTick as number | undefined) ?? 0) > Game.time;
+                if (isLoose) {
+                    TeamAction.looseAdvance(this, anchor);
+                    this.moved = true;
+                } else {
+                    TeamAction.noteStuck(this);
+                    this.moved = TeamAction.Gather(this);
+                }
+            }
         }
     }
 

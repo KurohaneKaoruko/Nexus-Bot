@@ -4,6 +4,8 @@ import { getNukerData } from "@/core/store/accessor";
 export default {
     nuker: {
         launch(...rooms: string[]) {
+            // 发射实现未随迁 (docs/bugs/nuker-launch-missing-impl.md), 无实现时直接返回而不是抛 TypeError
+            if (typeof Room.prototype.NukerLaunchTo !== "function") return "核弹发射未实现 (docs/bugs/nuker-launch-missing-impl.md)";
             const cpu0 = Game.cpu.getUsed();
             const flags = Object.keys(Game.flags).filter(flagName => flagName.startsWith('nuke-') || flagName.startsWith('nuke_'));
             for (const flagName of flags) {

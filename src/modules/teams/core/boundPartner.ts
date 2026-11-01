@@ -1,5 +1,6 @@
 
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
+import { combatHeal, combatMoveTo, combatRangedHeal } from '@/modules/combat';
 
 /**
  * 战斗搭档的绑定与跟随。
@@ -98,17 +99,17 @@ export const runHealAndFollow = (
 
     let healed = false;
     if (shouldSelfHeal) {
-        creep.heal(creep);
+        combatHeal(creep, creep);
         healed = true;
     }
 
     if (!healed && creep.pos.isNearTo(partner)) {
-        creep.heal(partner);
+        combatHeal(creep, partner);
     } else if (!healed && creep.pos.inRangeTo(partner, 3)) {
-        creep.rangedHeal(partner);
-        creep.moveTo(partner);
+        combatRangedHeal(creep, partner);
+        combatMoveTo(creep, partner);
     } else {
-        creep.moveTo(partner);
+        combatMoveTo(creep, partner);
     }
 
     return healed;

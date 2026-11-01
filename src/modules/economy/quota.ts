@@ -4,7 +4,7 @@
  * 最低库存保障未满足时低优先级目标不抢占; 在途承诺 (账本预留) 计入已承诺,
  * 防止对同一目的地超发搬运; 富余能量兜底转入 Storage。
  */
-import { CONTROLLER_BUFFER_CONFIG, HAUL_CONFIG } from "@/config/economy";
+import { CONTROLLER_BUFFER_CONFIG, CARRY_CONFIG } from "@/config/economy";
 import { TOWER_CONFIG } from "@/config/defense";
 import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
@@ -22,17 +22,17 @@ export interface QuotaDestination {
 	headroom: number;
 }
 
-/** 供能专线优先级序 (specs/controller-supply-line): 孵化线 > 受威胁塔 > 控制器线 > 常态塔 > 储备库 */
+/** 供能专线等级序 (specs/controller-supply-line, 小者优先): 孵化线 > 受威胁塔 > 控制器线 > 常态塔 > 储备库 */
 export const SUPPLY_LINE_PRIORITY = {
 	/** 孵化线: spawn/extension 供能是出生引擎, 恒最高 */
-	spawn: 5,
-	extension: 4.7,
-	/** 受威胁塔 (房内可见敌人): 提权至孵化线之下、控制器线之上 */
-	towerThreatened: 4.5,
+	spawn: 1,
+	extension: 1,
+	/** 受威胁塔 (房内可见敌人): 提级至孵化线之下、控制器线之上 */
+	towerThreatened: 2,
 	/** 常态塔 (无敌情): 让位控制器线, 仍高于储备库 */
-	towerNormal: 3.5,
+	towerNormal: 4,
 	/** 储备库兜底 */
-	storage: 1,
+	storage: 5,
 } as const;
 
 /** 目的地优先级表: 统一走 SUPPLY_LINE_PRIORITY (specs/controller-supply-line),
@@ -54,7 +54,7 @@ export function destinationQuotas(
 	floorBias: number,
 ): QuotaDestination[] {
 	const ledger = createLedger(ctx);
-	const ratio = HAUL_CONFIG.structureFloorRatio + Math.max(-0.3, Math.min(0.3, floorBias));
+	const ratio = CARRY_CONFIG.structureFloorRatio + Math.max(-0.3, Math.min(0.3, floorBias));
 	const destinations: QuotaDestination[] = [];
 
 	for (const tower of room.towers) {
@@ -99,7 +99,7 @@ export function destinationQuotas(
 			continue;
 		}
 		const headroom =
-			HAUL_CONFIG.storageFloorAmount - store.energy - ledger.committedTo(room.roomName, store.id);
+			CARRY_CONFIG.storageFloorAmount - store.energy - ledger.committedTo(room.roomName, store.id);
 		if (headroom <= 0) {
 			continue;
 		}
@@ -152,7 +152,7 @@ function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 }
 
 /** 目的地最少承接量: 低于该值不值得为一趟运输建任务 */
-const HAUL_MIN_DEST_AMOUNT = HAUL_CONFIG.minHaulAmount;
+const CARRY_MIN_DEST_AMOUNT = CARRY_CONFIG.minCarryAmount;
 
 /**
  * 为货源选目的地: 只考虑余量足够承接一批的目的地;
@@ -164,14 +164,15 @@ export function pickDestination(
 	fromY: number,
 ): QuotaDestination | undefined {
 	let best: QuotaDestination | undefined;
-	let bestScore = -Infinity;
+	let bestScore = Infinity;
 	for (const destination of destinations) {
-		if (destination.headroom < HAUL_MIN_DEST_AMOUNT) {
+		if (destination.headroom < CARRY_MIN_DEST_AMOUNT) {
 			continue;
 		}
+		// 等级小者优先, 同级 (1000 内合并) 近者优先
 		const score =
-			destination.priority * 1000 - chebyshev(fromX, fromY, destination.x, destination.y);
-		if (score > bestScore) {
+			destination.priority * 1000 + chebyshev(fromX, fromY, destination.x, destination.y);
+		if (score < bestScore) {
 			best = destination;
 			bestScore = score;
 		}
@@ -181,6 +182,6 @@ export function pickDestination(
 
 /** 预计往返耗时: 批次数 × (往返距离 + 装卸余量), 单格移动按 1.5 tick 估算 */
 export function roundTripEstimate(amount: number, distance: number): number {
-	const trips = Math.max(1, Math.ceil(amount / HAUL_CONFIG.batchSize));
+	const trips = Math.max(1, Math.ceil(amount / CARRY_CONFIG.batchSize));
 	return Math.ceil(trips * (distance * 2 * 1.5 + 20));
 }

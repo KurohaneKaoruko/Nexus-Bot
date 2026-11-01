@@ -4,6 +4,8 @@
  */
 import { clearRoomRelatedMemory, getMissionPools, getRoomData } from '@/core/store/accessor';
 import { hasMarketOrderApi } from '@/utils/marketUtils';
+import { sharedBrokerForDirectCommands } from '@/modules/agents/actionBroker';
+import { engineSpawningNames } from '@/modules/spawning/spawningRoster';
 
 export const ClearModule = {
     end: () => {
@@ -18,9 +20,20 @@ export const ClearModule = {
 }
 
 function  memoryClear() {
+    // 孵化中名单白名单 (bugs/P0-16): spawnCreep 意图执行后 creep 下一 tick 才进
+    // Game.creeps 快照, 清理窗口与孵化期重叠会把孵化单 memory 判为孤儿删除,
+    // 造成出生即丢角色。孵化中的名字一律不清理 (判据统一走 spawningRoster, 6.3)。
+    // 第二道: 本 bot 簿记的 units 名册 (spawn 受理即登记)——覆盖 sim shim
+    // 当 tick 写 memory 但 spawning 未上快照的同 tick 窗口。
+    const spawningNames = engineSpawningNames();
+    const roster = (Memory as { Nexus?: { units?: Record<string, unknown> } }).Nexus?.units;
+    if (roster) {
+        for (const name of Object.keys(roster)) spawningNames.add(name);
+    }
     // 清理不存在的 creeps 的 memory
     for (let name in Memory.creeps) {
         if (Game.creeps[name]) continue;
+        if (spawningNames.has(name)) continue; // 孵化中/已受理不清理 (P0-16a)
         delete Memory.creeps[name];
     }
     // 清理不存在的 powerCreeps 的 memory
@@ -131,7 +144,17 @@ function orderClear() {
     if (ordersToDelete.length <= 0) return;
 
     for (const orderId of ordersToDelete) {
-        Game.market.cancelOrder(orderId);
+        // 经命令边界同步执行 (api/17 market 管线): 原生调用权收编进 broker
+        sharedBrokerForDirectCommands().executeNow({
+            id: `order-clear:${orderId}:${Game.time}`,
+            tick: Game.time,
+            actorName: "market-clear",
+            kind: "cancelMarketOrder",
+            pipeline: "market",
+            priority: 30,
+            payload: { orderId },
+            dedupeKey: `order-clear:${orderId}:${Game.time}`,
+        });
     }
     console.log(`已清理 ${ordersToDelete.length} 个订单（完成 ${completedCount}，超时 ${expiredCount}，压缩 ${reduceCount}）`);
 }

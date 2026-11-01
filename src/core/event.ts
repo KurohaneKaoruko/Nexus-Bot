@@ -32,7 +32,7 @@ export type EventPhase = 'start' | 'tick' | 'end';
  * - `runCount` 是“执行前”的历史执行次数
  *   例如第一次执行时这里是 0，第二次执行时这里是 1
  */
-export type DelayEventContext<T = any> = {
+export type DelayEventContext<T = unknown> = {
     id: string;
     life: EventPhase;
     tick: number;
@@ -46,25 +46,25 @@ export type DelayEventContext<T = any> = {
  * - 数字：表示延后多少 tick 后执行
  * - 函数：每次轮到该阶段时动态判断是否执行
  */
-export type EventWhen<T = any> = number | ((ctx: DelayEventContext<T>) => boolean);
+export type EventWhen<T = unknown> = number | ((ctx: DelayEventContext<T>) => boolean);
 
 /**
  * 事件终止条件。
  * - 数字：最多执行多少次
  * - 函数：每次执行后根据上下文决定是否移除
  */
-export type EventTimes<T = any> = number | ((ctx: DelayEventContext<T>) => boolean);
+export type EventTimes<T = unknown> = number | ((ctx: DelayEventContext<T>) => boolean);
 
 /**
  * 事件真正要执行的业务逻辑。
  */
-export type EventExec<T = any> = (ctx: DelayEventContext<T>) => void;
+export type EventExec<T = unknown> = (ctx: DelayEventContext<T>) => void;
 
 /**
  * 外部添加事件时可传入的配置。
  * 这里故意只保留最少字段，避免模块重新膨胀。
  */
-export interface DelayEventSpec<T = any> {
+export interface DelayEventSpec<T = unknown> {
     life?: EventPhase;
     when?: EventWhen<T>;
     times?: EventTimes<T>;
@@ -81,7 +81,7 @@ export interface DelayEventSpec<T = any> {
  * - `dueTick` 用于数字延时场景，避免每次重复计算
  * - `runCount` 记录已经执行过多少次
  */
-export interface DelayEventRecord<T = any> extends DelayEventSpec<T> {
+export interface DelayEventRecord<T = unknown> extends DelayEventSpec<T> {
     id: string;
     life: EventPhase;
     when: EventWhen<T>;
@@ -96,10 +96,10 @@ export interface DelayEventRecord<T = any> extends DelayEventSpec<T> {
  * 这样项目其它地方不需要 import 也能直接调度事件。
  */
 export interface EventAPI {
-    add<T = any>(spec: DelayEventSpec<T>): string;
+    add<T = unknown>(spec: DelayEventSpec<T>): string;
     cancel(id: string): boolean;
-    get<T = any>(id: string): DelayEventRecord<T> | null;
-    list<T = any>(phase?: EventPhase): DelayEventRecord<T>[];
+    get<T = unknown>(id: string): DelayEventRecord<T> | null;
+    list<T = unknown>(phase?: EventPhase): DelayEventRecord<T>[];
 }
 
 // 默认阶段：不给 `life` 时，事件默认在常规 `tick` 阶段执行。
@@ -112,7 +112,7 @@ const DEFAULT_WHEN = 0;
 const DEFAULT_TIMES = 1;
 
 // 事件只放内存，不做跨 tick 序列化，由运行时统一驱动。
-const events = new Map<string, DelayEventRecord<any>>();
+const events = new Map<string, DelayEventRecord<unknown>>();
 
 // 用于在同一个 tick 内生成不重复的事件 ID。
 let seq = 0;
@@ -231,7 +231,7 @@ const shouldRemoveAfterRun = <T>(event: DelayEventRecord<T>): boolean => {
  * 1. 校验外部传入的配置是否合法
  * 2. 把可选字段补齐成内部统一格式
  */
-export const addEvent = <T = any>(spec: DelayEventSpec<T>): string => {
+export const addEvent = <T = unknown>(spec: DelayEventSpec<T>): string => {
     if (!spec || typeof spec.exec !== 'function') {
         throw new Error('[Event] invalid event spec: exec must be a function');
     }
@@ -259,7 +259,7 @@ export const addEvent = <T = any>(spec: DelayEventSpec<T>): string => {
         runCount: 0,
     };
 
-    events.set(id, record);
+    events.set(id, record as DelayEventRecord<unknown>);
     return id;
 };
 
@@ -273,7 +273,7 @@ export const cancelEvent = (id: string): boolean => events.delete(id);
  * 按 ID 获取事件快照。
  * 返回副本而不是原对象，避免外部直接污染内部状态。
  */
-export const getEvent = <T = any>(id: string): DelayEventRecord<T> | null => {
+export const getEvent = <T = unknown>(id: string): DelayEventRecord<T> | null => {
     const event = events.get(id) as DelayEventRecord<T> | undefined;
     return event ? cloneEvent(event) : null;
 };
@@ -282,7 +282,7 @@ export const getEvent = <T = any>(id: string): DelayEventRecord<T> | null => {
  * 列出当前事件队列。
  * 如果传了 `phase`，只返回对应阶段的事件。
  */
-export const listEvents = <T = any>(phase?: EventPhase): DelayEventRecord<T>[] => {
+export const listEvents = <T = unknown>(phase?: EventPhase): DelayEventRecord<T>[] => {
     const list = Array.from(events.values()) as DelayEventRecord<T>[];
     return list
         .filter((event) => !phase || event.life === phase)
@@ -341,8 +341,8 @@ const eventApi: EventAPI = {
  * 多次调用也安全，只会在第一次真正赋值。
  */
 export const ensureEventApi = (): EventAPI => {
-    (globalThis as any).event ??= eventApi;
-    return (globalThis as any).event;
+    (globalThis as { event?: EventAPI }).event ??= eventApi;
+    return (globalThis as { event?: EventAPI }).event!;
 };
 
 /**

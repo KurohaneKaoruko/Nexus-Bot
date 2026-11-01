@@ -55,11 +55,15 @@ function reserveFactorOf(globalRecord: unknown, posture: Posture): number {
 /**
  * 纯派生: 任意损坏输入 → 中性指令, 不抛异常。
  * stock 仅影响 suppress 判定 (survive 下的节流开关)。
+ * 无 storage 的涓流期豁免: 低 RCL 库存天然贴地 (孵化即时消费), 瞬时存量击穿
+ * reserveFloor 是常态而非危机; 压 upgrade 任务只会让开局升级链停摆
+ * (sim 实证 upgrade 任务被压 5300t, L2 拖到 5900+, race 参照 676)。
  */
 export function directiveOf(
 	globalRecord: unknown,
 	sourceCount: number,
 	stock: number,
+	storagePresent = false,
 ): StrategyDirective {
 	const posture = postureOf(globalRecord);
 	const reserveFloor =
@@ -68,7 +72,7 @@ export function directiveOf(
 		posture,
 		reserveFloor,
 		kindBias: STRATEGY_CONFIG.postureBias[posture],
-		suppressUpgradeBuild: posture === "survive" && stock < reserveFloor,
+		suppressUpgradeBuild: storagePresent && posture === "survive" && stock < reserveFloor,
 	};
 }
 
@@ -88,7 +92,11 @@ export function directiveFor(ctx: TickContext): StrategyDirective {
 	const world = ctx.world.current;
 	const sourceCount = sourceCountOf(world);
 	const stock = ctx.memory.economy.lastStockTotal;
-	const directive = directiveOf(ctx.memory.global, sourceCount, stock);
+	// storage 在场判定: 涓流期 (无 storage) suppress 豁免的输入
+	const storagePresent = Object.values(world?.rooms ?? {}).some(
+		(room) => room.stores.some((store) => store.structureType === "storage"),
+	);
+	const directive = directiveOf(ctx.memory.global, sourceCount, stock, storagePresent);
 	if (
 		directive.posture !== "survive" &&
 		sourceCount > 0 &&

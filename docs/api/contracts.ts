@@ -19,7 +19,7 @@ export type TaskStatus =
 
 export type TaskKind =
 	| "harvest"
-	| "haul"
+	| "carry"
 	| "fill_spawn"
 	| "upgrade"
 	| "build"

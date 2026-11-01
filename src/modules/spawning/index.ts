@@ -14,3 +14,15 @@ export const Spawning: TickModule = {
 		runSpawnDirector(ctx, createTaskBoard(ctx.memory.tasks));
 	},
 };
+
+// ── 公共面: 任务池 / 任务更新器 / 孵化执行 ──
+export {
+	addMissionToPool,
+	deleteMissionFromPool,
+	getAllMissionFromPool,
+	getMissionNumInPool,
+} from "@/modules/spawning/mission/pool/MissionPools";
+export { default as MissionSubmit } from "@/modules/spawning/mission/pool/MissionSubmit";
+export { default as SpawnMission } from "@/modules/spawning/mission/updaters/spawnMission";
+export { directSpawn } from "@/modules/spawning/spawnDirector";
+export { buildBody } from "@/modules/spawning/bodyFactory";

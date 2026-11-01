@@ -1,16 +1,11 @@
 /**
- * 任务池词表（单一来源）。
- * 池名常量供池操作与提交方引用；类型联合以 interface/mission.interface.ts 的 ambient 声明为准，
- * MISSION_POOL_NAMES 用 satisfies 与 MissionPoolName 编译期互检，新增池名必须两处同步。
+ * 任务池词表（单一来源，spawn 池驻留）。
+ * 六池 (transport/build/repair/terminal/mine/boost) 已随域 3.4 退役——语义在
+ * planning 阶段任务板 (specs/mission-pool-retirement); spawn 池是孵化队列
+ * 基建 (warSpawn/external 去重计数消费), 与 MissionPools 共栖保留。
  */
 export const MISSION_POOL_NAMES = [
-    'transport',
-    'build',
-    'repair',
-    'terminal',
     'spawn',
-    'mine',
-    'boost',
 ] as const satisfies readonly MissionPoolName[];
 
 export type MissionPoolId = (typeof MISSION_POOL_NAMES)[number];

@@ -1,0 +1,22 @@
+▶ speedrun (参考: ✗ L1@0 L2@458 L3@11839 L4@33413 p95 9ms)
+  ✗ speedrun  40000 ticks · 231.9s · 172 t/s · RCL L1@0 L2@458 L3@11839 L4@33413 · cpu p95 9.0ms
+▶ arena (参考: ✗ L1@0 L2@330 L3@8352 L4@27618 p95 9ms)
+  ✗ arena  40000 ticks · 225.6s · 177 t/s · RCL L1@0 L2@330 L3@8352 L4@27618 · cpu p95 9.0ms
+▶ sprint (参考: ✗ L1@0 L2@834 L3@38308 p95 9ms)
+  ✗ sprint  50000 ticks · 219.4s · 228 t/s · RCL L1@0 L2@834 L3@38308 · cpu p95 9.0ms
+▶ boot (参考: ✓ L1@0 L2@330 L3@8557 p95 8ms)
+  ✓ boot  20000 ticks · 93.7s · 213 t/s · RCL L1@0 L2@330 L3@8557 · cpu p95 8.0ms
+▶ race-body-audit (参考: ✓ L1@0 L2@458 p95 9ms)
+  ✓ race-body-audit  6000 ticks · 23.8s · 252 t/s · RCL L1@0 L2@458 · cpu p95 9.0ms
+▶ remote-mine (参考: ✓ L3@0 p95 5ms)
+  ✓ remote-mine  30000 ticks · 94.1s · 319 t/s · RCL L3@0 · cpu p95 5.0ms
+
+════════ 汇总 ════════
+  GREEN speedrun
+  GREEN arena
+  GREEN sprint
+  GREEN boot
+  GREEN race-body-audit
+  GREEN remote-mine
+
+✓ 全场景门通过

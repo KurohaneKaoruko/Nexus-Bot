@@ -39,6 +39,8 @@ function createMinimal(currentVersion: number, tick: number): NexusMemory {
 		spawn: { ...SUBSYSTEM_DEFAULTS.spawn },
 		layout: { rooms: {} },
 		metrics: { ...SUBSYSTEM_DEFAULTS.metrics },
+		ownership: { ...SUBSYSTEM_DEFAULTS.ownership, actors: {} },
+		remotes: {},
 	};
 }
 

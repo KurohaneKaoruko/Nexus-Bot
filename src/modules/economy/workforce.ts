@@ -6,17 +6,19 @@
  * 升级饥饿记账负反馈收缩编制 (惰性衰减)。
  * 与参照实现的口径差异 (主线架构适配, 见 openspec workforce-logistics design D1):
  * - 让位闸门只保留保级窗口语义 (主线降级走 DOWNGRADE 紧急通道, 不归零升级);
- * - rush 净收入折旧口径未移植 (miner/hauler 折旧模型属外矿步), 以毛收入×EMA 乘数近似;
+ * - rush 净收入折旧口径未移植 (miner/carrier 折旧模型属外矿步), 以毛收入×EMA 乘数近似;
  * - 源定编的多采集位窗口不移植 (主线 worksite 单座语义, 饱和由攒能升体型承接)。
  */
 import type { TickContext } from "@/core";
 import type { RoomObservation } from "@/core/world";
 import type { NexusTask } from "@/core/store/taskSchema";
-import { CARRY_STAFFING_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
+import type { HarvestSplitRecord } from "@/core/store/memorySchema";
+import { CARRY_STAFFING_CONFIG, RELAY_CONFIG, REPLACEMENT_CONFIG, WORKFORCE_CONFIG } from "@/config/economy";
 import { UNIT_CODES } from "@/constant/UnitConstant";
-import { roomModeProfileFor } from "@/modules/strategy";
-import { buildBody } from "@/modules/spawning/bodyFactory";
+import { roomModeFor, roomModeProfileFor } from "@/modules/strategy";
+import { buildBody } from "@/modules/spawning";
 import { destinationQuotas } from "@/modules/economy/quota";
+import { incomeWithRemoteOf } from "@/modules/economy/income";
 import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 
 const HARVEST_POWER = 2;
@@ -86,6 +88,124 @@ export function harvestIncomeOf(ctx: TickContext, room: RoomObservation): number
 	return income;
 }
 
+/**
+ * 含外矿折算的采集收入 (升级定编口径, bugs (十二)): 本矿实测 + 远程源统一折算
+ * (specs/resource-ledger「收入估计口径统一」): 己方预订源记满采上限, 未预订减半——
+ * 统一走 income.ts 单一口径, 定编/孵化门/外矿评分同源。远程源无本地绑定数据
+ * (跨房), 按折算上限计入——升级定编用它是保守上界, 不会因外矿断供而超编。
+ */
+export function harvestIncomeWithRemoteOf(ctx: TickContext, room: RoomObservation): number {
+	return incomeWithRemoteOf(ctx, room.roomName, harvestIncomeOf(ctx, room));
+}
+
+// ==================== 源饱和口径实测分解 ====================
+
+/**
+ * 按源记录采集工时间去向 (specs harvest-supply-convergence「源饱和口径实测分解」):
+ * 在源 / 往返 / 等待 三类占比的 EMA。收入未达饱和时, 该分解是定位「时间花在何处」
+ * 的证据口径 (docs/bugs P1-14 结论: 差距在采集工在源时间占比, 不在单体体型旋钮)。
+ *
+ * 定长存储: 每源三项, 随源增减而非随 tick 增长。
+ */
+export function harvestTimeSplitOf(
+	ctx: TickContext,
+	room: RoomObservation,
+): Map<string, HarvestSplitRecord> {
+	const cfg = WORKFORCE_CONFIG.harvestSplit;
+	const intel = ctx.memory.rooms[room.roomName];
+	const out = new Map<string, HarvestSplitRecord>();
+	if (!intel) {
+		return out;
+	}
+
+	// 源 → 在编采集体名 (租约优先, 无租约时回退驻点在位启发, 与收入口径同源)
+	const bound = harvesterBindingOf(ctx, room);
+	const bySource = new Map<string, string[]>();
+	for (const task of Object.values(ctx.memory.tasks) as NexusTask[]) {
+		if (task.kind !== "harvest" || task.roomName !== room.roomName || !task.targetId || !task.assignedTo) {
+			continue;
+		}
+		if (task.status !== "leased" && task.status !== "in_progress") {
+			continue;
+		}
+		const list = bySource.get(task.targetId);
+		if (list) {
+			list.push(task.assignedTo);
+		} else {
+			bySource.set(task.targetId, [task.assignedTo]);
+		}
+	}
+	const sites = intel.worksites;
+	if (sites) {
+		for (const creep of room.creeps) {
+			if (creep.spawning || creep.unitCode !== UNIT_CODES.harvester) {
+				continue;
+			}
+			if (bySource.get(creep.name)) {
+				continue;
+			}
+			for (const [sourceId, site] of Object.entries(sites)) {
+				if (creep.x === site.x && creep.y === site.y) {
+					const list = bySource.get(sourceId);
+					if (list) {
+						list.push(creep.name);
+					} else {
+						bySource.set(sourceId, [creep.name]);
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	const alpha = 1 - 2 ** (-1 / cfg.emaTicks);
+	const record = intel.harvestSplit ?? {};
+	for (const source of room.sources) {
+		// 无在编采集工时不写入 EMA: 缺失即「无人采集」, 避免零占比污染证据口径
+		if ((bound.get(source.id) ?? 0) <= 0) {
+			continue;
+		}
+		const names = bySource.get(source.id) ?? [];
+		let atSource = 0;
+		let waiting = 0;
+		for (const name of names) {
+			const creep = room.creeps.find((c) => c.name === name);
+			if (!creep) {
+				continue;
+			}
+			const near =
+				Math.max(Math.abs(creep.x - source.x), Math.abs(creep.y - source.y)) <= cfg.sourceRange;
+			if (near) {
+				// 源枯竭时在位不产出, 记为等待而非在源采集
+				if (source.energy > 0) {
+					atSource += 1;
+				} else {
+					waiting += 1;
+				}
+			}
+			// 其余计入往返 (不在源旁即在路上/在交付)
+		}
+		const total = Math.max(1, names.length);
+		const prev = record[source.id] ?? { atSource: 1, transit: 0, waiting: 0 };
+		const next: HarvestSplitRecord = {
+			atSource: prev.atSource + (atSource / total - prev.atSource) * alpha,
+			transit: prev.transit + ((total - atSource - waiting) / total - prev.transit) * alpha,
+			waiting: prev.waiting + (waiting / total - prev.waiting) * alpha,
+		};
+		record[source.id] = next;
+		out.set(source.id, next);
+	}
+
+	// 清理消失的源: 记录随源增减, 不随 tick 增长 (specs 存储有界)
+	for (const sourceId of Object.keys(record)) {
+		if (!room.sources.some((s) => s.id === sourceId)) {
+			delete record[sourceId];
+		}
+	}
+	intel.harvestSplit = record;
+	return out;
+}
+
 /** 储备水位 (storage+terminal 口径): 存量 < 标准线按百分比, 超线后每 surplusStep 折 1 点 */
 export function energyLevelOf(room: RoomObservation): number {
 	const config = WORKFORCE_CONFIG.upgrade;
@@ -103,7 +223,7 @@ export function energyLevelOf(room: RoomObservation): number {
 }
 
 /** 地面掉落能量总额 (≥100 才计入): 采集快于搬运消耗的直接信号 */
-function droppedPileEnergy(room: RoomObservation): number {
+export function droppedPileEnergy(room: RoomObservation): number {
 	let total = 0;
 	for (const pile of room.piles) {
 		if (pile.amount >= 100) {
@@ -181,17 +301,46 @@ export function upgradeWorkTargetOf(ctx: TickContext, room: RoomObservation): nu
 	if (!controller) {
 		return 0;
 	}
-	// 吞吐上限: RCL8 固定; 无 cc 收紧; 有 cc 全额 (link 几何封顶留待 RCL5+ 链路)
+	// 吞吐上限: RCL8 固定; 无 cc 收紧; 有 cc 全额; link 双链在位时按几何封顶
+	// (race-speedrun 任务4.1, race bot getUpgradeCapacity 口径):
+	// floor(800/(range+1))——800 = LINK_CAPACITY×0.97/15t 折算, range = 控制器
+	// link 到最近其他 link 的切比雪夫距离; 无链路期 (RCL<5) 走 cc/无缓冲口径
+	const linkCapacity = room.upgradeLinkRange !== undefined
+		? Math.floor(WORKFORCE_CONFIG.upgrade.linkThroughputBase / (room.upgradeLinkRange + 1))
+		: undefined;
 	const capacity = room.rcl >= 8
 		? config.rcl8WorkCap
-		: room.controllerBuffer
-			? config.bufferedWorkCap
-			: config.noBufferWorkCap;
+		: linkCapacity !== undefined
+			? linkCapacity
+			: room.controllerBuffer
+				? config.bufferedWorkCap
+				: config.noBufferWorkCap;
 
 	const ttd = controller.ticksToDowngrade ?? Infinity;
 	const upgradeNeeded = ttd < config.neededTtd;
 	const level = energyLevelOf(room);
-	const income = harvestIncomeOf(ctx, room);
+	// 升级定编收入口径含外矿折算 (bugs (十二)): 外矿收入是冲级期升级火力的
+	// 直接供给, 不计则外矿起量后升级定编反被本地口径锁死
+	const income = harvestIncomeWithRemoteOf(ctx, room);
+
+	// 止升让位 (race-speedrun 任务4.2, race bot 口径): building 标志 = 主基地
+	// 完建后的防御建造期 (rampart/wall 工地, race bot 的 building 仅在布局
+	// 模板放量后开启); 该期升级定编归零——建造与升级抢同一批边际能量。
+	// 保级窗口 (upgradeNeeded) 恒豁免; 冲级建设期 (ext/storage/cc/link 工地)
+	// 不让位——那是升级的助推器而非竞争者 (race bot 的 building 不含此期)。
+	// rush 档恒豁免 (race-speedrun 6.1): rush 档 rampartMinRcl=4 起例行放量
+	// rampart 工地 (防御例行, 非 building 期), 误判为 building 会让升级定编
+	// 归零——40k 实证 L3 后 upgrader 定编跌到 1, 末段段速 4384→1433 崩;
+	// race 本体 building 只在布局模板全部建完后开启, 冲级档无此语义
+	if (
+		room.rcl >= 2 &&
+		room.rcl < 8 &&
+		!upgradeNeeded &&
+		roomModeFor(ctx, room.roomName) !== "rush" &&
+		room.sites.some((site) => site.structureType === "rampart" || site.structureType === "wall")
+	) {
+		return 0;
+	}
 
 	// RCL1: 固定小队起步 (保级窗口恒保底)
 	if (room.rcl < 2) {
@@ -318,7 +467,15 @@ export function carryCapacityPerBody(ctx: TickContext, roomName: string): number
 /** 当前孵化口径下单只搬运体的 CARRY 部件数 (运力公式分母是部件口径, 勿与容量混用) */
 export function carryPartsPerBody(ctx: TickContext, roomName: string): number {
 	const capacity = roomCapacity(ctx, roomName);
-	const body = buildBody("carrier", capacity);
+	// 与孵化侧同口径 (spawnArbiter hints): RCL < 等级门孵化的是接力件, 定编必须
+	// 按同一分段折算 CARRY 数——旧口径按默认直运段 [C,C,M] (6 C/件) 折算, 而
+	// 实际 relay 件是低配比件, 运力目标被高估 → carry 积压无人认领 (sim 实证
+	// 21 条 available + 升级体利用率 11%)
+	const rcl = ctx.memory.rooms[roomName]?.rclTimeline
+		? Math.max(...Object.values(ctx.memory.rooms[roomName].rclTimeline as Record<string, number>))
+		: 0;
+	const relay = rcl < RELAY_CONFIG.maxRcl;
+	const body = buildBody("carrier", capacity, relay ? { slowTerrain: false, relayCarrier: true } : undefined);
 	let parts = 0;
 	for (const part of body ?? []) {
 		if (part === CARRY) {
@@ -332,6 +489,10 @@ export function carryPartsPerBody(ctx: TickContext, roomName: string): number {
  * 搬运体只数目标 (specs/workforce-staffing 运力下界):
  * Σ(源采集速率 × 2 × 实测单程路程) × 冗余 ÷ 单件运力, 向上取整;
  * 任一源路程未实测 → 返回 null (调用方回退保守基线, 不按猜测路程编队)。
+ * 远程源入编实验 (race-speedrun 任务6.1): race bot maxCarryPower 口径的
+ * 逐源折算 (2×房距路程×速率) 实测种群塌方 (见 race-strategy-port.md C 轮
+ * 二分记录)——单 spawn 串行吞吐被 carrier 置换流占满, 采集/升级体饿死。
+ * 远程运力由 pileBoost 阶梯与诊断乘数自适应承接, 不做公式入编。
  */
 export function carrierCountTargetOf(ctx: TickContext, room: RoomObservation): number | null {
 	const timing = ctx.memory.rooms[room.roomName]?.sourceTiming;

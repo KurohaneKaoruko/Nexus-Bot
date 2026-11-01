@@ -1,0 +1,40 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"title": "架构守护豁免清单",
+	"description": "src/ 直连突变调用的豁免登记; 条目单调只减不增 (legacy-removal-gate spec)",
+	"type": "object",
+	"required": ["version", "entries"],
+	"properties": {
+		"version": { "type": "integer", "const": 1 },
+		"entries": {
+			"type": "object",
+			"additionalProperties": { "$ref": "#/definitions/entry" },
+			"propertyNames": { "pattern": "^src/.+::.+$" }
+		}
+	},
+	"definitions": {
+		"entry": {
+			"type": "object",
+			"required": ["track", "calls"],
+			"properties": {
+				"track": {
+					"type": "string",
+					"description": "计划收编轨道 (Phase 编号 + 域); '人操豁免' 为永久豁免"
+				},
+				"calls": {
+					"type": "integer",
+					"minimum": 0,
+					"description": "实测调用次数 (arch:update 刷新)"
+				},
+				"plannedRemoval": {
+					"type": "object",
+					"required": ["track", "due"],
+					"properties": {
+						"track": { "type": "string" },
+						"due": { "type": "string", "format": "date" }
+					}
+				}
+			}
+		}
+	}
+}

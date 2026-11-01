@@ -18,24 +18,26 @@
 
 ## 文档导航
 
-- [API 源头、版本与构建规范](docs/api/01-baseline-and-versioning.md)
-- [原生 Screeps API 分类目录与使用契约](docs/api/02-native-api-surface.md)
-- [Kernel、TickContext、CPU 与错误边界](docs/api/03-kernel-runtime.md)
-- [Memory、迁移、Perception 与 World Model](docs/api/04-persistence-world-model.md)
-- [TaskBoard、任务租约与 Allocator](docs/api/05-task-allocation.md)
-- [Agent、ActionPlan 与 ActionBroker](docs/api/06-agent-action-broker.md)
-- [经济账本、物流与 Spawn API](docs/api/07-economy-spawn.md)
-- [导航、战斗、扩张、工业 API](docs/api/08-navigation-combat-industry.md)
-- [错误码、重试策略与不变量](docs/api/09-errors-and-invariants.md)
-- [TypeScript 项目级契约声明](docs/api/contracts.ts)
-- [验收、测试和发布清单](docs/api/10-test-and-release-checklist.md)
+- [API 源头、版本与构建规范](01-baseline-and-versioning.md)
+- [原生 Screeps API 分类目录与使用契约](02-native-api-surface.md)
+- [Kernel、TickContext、CPU 与错误边界](03-kernel-runtime.md)
+- [Memory、迁移、Perception 与 World Model](04-persistence-world-model.md)
+- [TaskBoard、任务租约与 Allocator](05-task-allocation.md)
+- [Agent、ActionPlan 与 ActionBroker](06-agent-action-broker.md)
+- [经济账本、物流与 Spawn API](07-economy-spawn.md)
+- [导航、战斗、扩张、工业 API](08-navigation-combat-industry.md)
+- [错误码、重试策略与不变量](09-errors-and-invariants.md)
+- [TypeScript 项目级契约声明](contracts.ts)
+- [验收、测试和发布清单](10-test-and-release-checklist.md)
 
 ## 架构文档导航（非 API，但为协作必需）
 
-- [总体架构、模块职责与 Tick 生命周期](03-system-architecture.md)
-- [智械连结：分层架构落地与扩展契约](19-智械连结扩展.md)
-- [**智能连结集群：架构、接口与进度**](20-智能连结集群.md) — 集群层唯一权威（`SquadRequest` / `SquadRecord` / 槽位任务约定）
-- [**多 Agent 并行协作规范**](21-multi-agent-collaboration.md) — 单一事实源、接口冻结、交接协议、DoD
+目标架构与重构程序的唯一事实源是 `../Nexus-Bot-01-架构设计.md` / `../Nexus-Bot-02-重构指导.md` / `../Nexus-Bot-03-BUG清单.md`；下列专题篇冲突时以前三篇为准。
+
+- [**架构公约**](../nexus-design/02-architecture-charter.md) — 分层落地（§19）、架构定案与 src 顶层结构现行权威（§21）、三循环与数据所有权（§22）
+- [**智能连结集群：架构、接口与进度**](../nexus-design/03-cluster-squads.md) — 集群层唯一权威（`SquadRequest` / `SquadRecord` / 槽位任务约定）
+- [基础：游戏机制 / 设计原则 / 术语与来源](../nexus-design/04-foundations.md)
+- [历史设计存档](../nexus-design/09-legacy-archive.md) — 原 03–17 共 12 篇，不得作为实现依据
 
 ## 控制台查询入口（运行时）
 

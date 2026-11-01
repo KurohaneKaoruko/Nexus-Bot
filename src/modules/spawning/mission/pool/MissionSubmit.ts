@@ -1,28 +1,12 @@
 
 /**
- * 任务提交
+ * 任务提交 (spawn 池链; transport/mine 提交面随域 3.4 池退役删除)
  */
-import { getMissionFromPoolById, deleteMissionFromPool, submitMission } from '@/modules/spawning/mission/pool/MissionPools';
+import { getMissionFromPoolById, deleteMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
 import { getMissionPools } from '@/core/store/accessor';
 
 export default class MissionSubmit extends Room {
-    // 提交运输任务
-    override submitTransportMission(id: Task['id'], amount: TransportTask['amount']) {
-        const task = getMissionFromPoolById(this.name, MISSION_POOLS.transport, id);
-        if (!task) return;
-        amount = (task.data as TransportTask).amount - amount;
-        if (amount < 0) amount = 0;
-        
-        const deleteFunc = (taskdata: TransportTask) =>{
-            if(taskdata.amount <= 0) return true;
-            return false;
-        }
-
-        submitMission(this.name, MISSION_POOLS.transport, id, {amount} as any, deleteFunc);
-        return OK;
-    }
-
     // 提交孵化任务
     override submitSpawnMission(id: Task['id']) {
         const task = getMissionFromPoolById(this.name, MISSION_POOLS.spawn, id);
@@ -32,11 +16,11 @@ export default class MissionSubmit extends Room {
     }
 
     /**
-     * 删除指定 role 的孵化任务
+     * 删除指定 unit 的孵化任务
      * @description 用于防御结束后撤销未孵化的防御兵孵化队列，避免继续出兵浪费能量。
      */
-    override deleteSpawnMissionsByRole(roles: string[] | string): number {
-        const roleSet = new Set(Array.isArray(roles) ? roles : [roles]);
+    override deleteSpawnMissionsByRole(units: string[] | string): number {
+        const unitSet = new Set(Array.isArray(units) ? units : [units]);
         const pools = getMissionPools()?.[this.name];
         const tasks = pools?.spawn;
         if (!Array.isArray(tasks) || tasks.length === 0) return 0;
@@ -46,8 +30,8 @@ export default class MissionSubmit extends Room {
 
         for (const task of tasks) {
             const data = task?.data as SpawnTask | undefined;
-            const role = data?.memory?.role;
-            if (role && roleSet.has(role)) {
+            const unit = data?.memory?.unit;
+            if (unit && unitSet.has(unit)) {
                 removed++;
                 continue;
             }
@@ -61,26 +45,4 @@ export default class MissionSubmit extends Room {
         return removed;
     }
 
-    // 提交mine任务
-    submitMineMission(id: Task['id'], data: Partial<MineTask>) {
-        const task = getMissionFromPoolById(this.name, MISSION_POOLS.mine, id);
-        if (!task) return;
-        
-        // 合并数据
-        const newData = { ...task.data, ...data };
-        
-        const deleteFunc = (taskdata: MineTask) => {
-            // 如果被标记为非激活且没有特定条件保留，则可能需要删除
-            // 但目前 mine 任务主要由 UpdateMineMission 管理生命周期，这里主要用于更新状态
-            if (task.type === 'deposit' && (taskdata as DepositMineTask).active === false) {
-                // 可以选择在这里删除，或者等待 UpdateMineMission 清理
-                // 这里我们仅更新状态，让 UpdateMineMission 决定是否删除
-                return false;
-            }
-            return false;
-        }
-
-        submitMission(this.name, MISSION_POOLS.mine, id, newData, deleteFunc);
-        return OK;
-    }
 }

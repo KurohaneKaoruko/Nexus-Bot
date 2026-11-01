@@ -11,7 +11,6 @@
 import type { TickContext, TickModule } from "@/core";
 import TeamSpawner from "@/modules/teams/runtime/TeamSpawner";
 import TeamController from "@/modules/teams/runtime/TeamController";
-import { NukeModule } from "@/modules/teams/NukeModule";
 
 export { TeamSpawner, TeamController };
 
@@ -25,11 +24,13 @@ export const Teams: TickModule = {
 	},
 };
 
-export const Nukes: TickModule = {
-	name: "nukes",
-	phase: "commit",
-	band: "P2",
-	run(_ctx: TickContext): void {
-		NukeModule.tick?.();
-	},
-};
+// ── 公共面: 角色单位 + 战争旗标配置 ──
+export { default as aio } from "@/modules/teams/units/aio";
+export {
+	AIO_CONFIG,
+	LOOT_CONFIG,
+	type BoostMap,
+	type BoostConfig,
+	type AioConfig,
+	type LootConfig,
+} from "@/modules/teams/config/spawnFlagConfig";

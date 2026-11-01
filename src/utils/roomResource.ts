@@ -1,4 +1,3 @@
-// @ts-nocheck
 const RES_COLOR_MAP = {"empty":"rgba(0,0,0,0)","energy":"rgb(255,242,0)","battery":"rgb(255,242,0)","Z":"rgb(247, 212, 146)","L":"rgb(108, 240, 169)","U":"rgb(76, 167, 229)","K":"rgb(218, 107, 245)","X":"rgb(255, 192, 203)","G":"rgb(255,255,255)","zynthium_bar":"rgb(247, 212, 146)","lemergium_bar":"rgb(108, 240, 169)","utrium_bar":"rgb(76, 167, 229)","keanium_bar":"rgb(218, 107, 245)","purifier":"rgb(255, 192, 203)","ghodium_melt":"rgb(255,255,255)","power":"rgb(224,90,90)","ops":"rgb(224,90,90)","composite":"#ccc","crystal":"#ccc","liquid":"#ccc","device":"rgb(76, 167,229)","circuit":"rgb(76, 167,229)","microchip":"rgb(76, 167,229)","transistor":"rgb(76, 167,229)","switch":"rgb(76, 167,229)","wire":"rgb(76, 167,229)","silicon":"rgb(76, 167,229)","machine":"rgb(247,212,146)","hydraulics":"rgb(247,212,146)","frame":"rgb(247,212,146)","fixtures":"rgb(247,212,146)","tube":"rgb(247,212,146)","alloy":"rgb(247,212,146)","metal":"rgb(247,212,146)","essence":"rgb(218,107,245)","emanation":"rgb(218,107,245)","spirit":"rgb(218,107,245)","extract":"rgb(218,107,245)","concentrate":"rgb(218,107,245)","condensate":"rgb(218,107,245)","mist":"rgb(218,107,245)","organism":"rgb(108,240,169)","organoid":"rgb(108,240,169)","muscle":"rgb(108,240,169)","tissue":"rgb(108,240,169)","phlegm":"rgb(108,240,169)","cell":"rgb(108,240,169)","biomass":"rgb(108,240,169)","OH":"#ccc","ZK":"#ccc","UL":"#ccc","UH":"rgb(76, 167,229)","UH2O":"rgb(76, 167,229)","XUH2O":"rgb(76, 167,229)","UO":"rgb(76, 167,229)","UHO2":"rgb(76, 167,229)","XUHO2":"rgb(76, 167,229)","ZH":"rgb(247,212,146)","ZH2O":"rgb(247,212,146)","XZH2O":"rgb(247,212,146)","ZO":"rgb(247,212,146)","ZHO2":"rgb(247,212,146)","XZHO2":"rgb(247,212,146)","KH":"rgb(218,107,245)","KH2O":"rgb(218,107,245)","XKH2O":"rgb(218,107,245)","KO":"rgb(218,107,245)","KHO2":"rgb(218,107,245)","XKHO2":"rgb(218,107,245)","LH":"rgb(108,240,169)","LH2O":"rgb(108,240,169)","XLH2O":"rgb(108,240,169)","LO":"rgb(108,240,169)","LHO2":"rgb(108,240,169)","XLHO2":"rgb(108,240,169)","GH":"rgb(255,255,255)","GH2O":"rgb(255,255,255)","XGH2O":"rgb(255,255,255)","GO":"rgb(255,255,255)","GHO2":"rgb(255,255,255)","XGHO2":"rgb(255,255,255)","H":"#ccc","O":"#ccc","oxidant":"#ccc","reductant":"#ccc"};
 const RES_TREE = {"POWER资源":{"POWER资源":["power","ops"]},"基础资源":{"能量":["energy","battery"],"原矿":["U","L","K","Z","X","O","H","G"],"压缩":["utrium_bar","lemergium_bar","keanium_bar","zynthium_bar","purifier","oxidant","reductant","ghodium_melt"]},"商品资源":{"无色":["liquid","crystal","composite"],"蓝色":["silicon","wire","switch","transistor","microchip","circuit","device"],"黄色":["metal","alloy","tube","fixtures","frame","hydraulics","machine"],"紫色":["mist","condensate","concentrate","extract","spirit","emanation","essence"],"绿色":["biomass","cell","phlegm","tissue","muscle","organoid","organism"]},"LAB资源":{"蓝色":["UH","UH2O","XUH2O","UO","UHO2","XUHO2"],"黄色":["ZH","ZH2O","XZH2O","ZO","ZHO2","XZHO2"],"紫色":["KH","KH2O","XKH2O","KO","KHO2","XKHO2"],"绿色":["LH","LH2O","XLH2O","LO","LHO2","XLHO2"],"白色":["GH","GH2O","XGH2O","GO","GHO2","XGHO2"]},"empty":{"empty":["empty"]}};
 
@@ -16,12 +15,12 @@ const RR_COLORS = {
     bgHeader: '#15171A',
 } as const;
 
-const roomResSvg=(res: any, allCnt: any, len: any)=>{
+const roomResSvg=(res: Record<string, number>, allCnt: number, len: number)=>{
     let r = Object.entries(res).sort((a,b)=>b[1]-a[1])
     let left = 0;
     let svgs = r.map(e=>{
         if (e[0] == "empty") return;
-        let t = `<rect x="${left/allCnt*len}" width="${e[1]/allCnt*len}" height="12" fill="${(RES_COLOR_MAP as any) [e[0]]}"/>`
+        let t = `<rect x="${left/allCnt*len}" width="${e[1]/allCnt*len}" height="12" fill="${(RES_COLOR_MAP as Record<string, string>)[e[0] as string]}"/>`
         left+=e[1];
         return t;
     }).join("")
@@ -119,7 +118,7 @@ myChart.setOption(option);
     // .replace("script>","c>")
 }
 
-function roomResTips(roomName: any, data: any){
+function roomResTips(roomName: string, data: unknown){
     let divName = "a-"+roomName + Game.time;
     let divNameShow = "a-"+roomName + Game.time+"-";
 return`
@@ -149,10 +148,10 @@ return`
 `.replace(/[\r\n]/g, "");
 }
 
-function allResTips(text: any, tipStrArray: any, id: any, left: any){
+function allResTips(text: string, tipStrArray: string[], id: number, left: number){
     left = left-1;
     left*=100;
-    let showCore = tipStrArray.map((e: any) =>`<div style="padding:2px 5px;margin:0;background:${RR_COLORS.bgLight};border:1px solid ${RR_COLORS.border};border-radius:4px;font-size:12px;line-height:1.15;"><t onclick="goto('${e}')" style="cursor:pointer;"> ${e} </t></div>`.replace(/[\\"]/g,'%')).join("")
+    let showCore = tipStrArray.map((e: string) =>`<div style="padding:2px 5px;margin:0;background:${RR_COLORS.bgLight};border:1px solid ${RR_COLORS.border};border-radius:4px;font-size:12px;line-height:1.15;"><t onclick="goto('${e}')" style="cursor:pointer;"> ${e} </t></div>`.replace(/[\\"]/g,'%')).join("")
     let time = Game.time;
     return `<t class="a${id}-a${time}" style="cursor:pointer;display:inline-flex;align-items:center;padding:1px 5px;border-radius:3px;transition:all 0.2s;font-size:12px;line-height:1.15;">${text}</t><script>
     function goto(e){
@@ -188,7 +187,7 @@ function allResTips(text: any, tipStrArray: any, id: any, left: any){
 `.replace(/[\r\n]/g, "");
 }
 
-function getResourceIcon(resourceType: any) {
+function getResourceIcon(resourceType: string) {
     if (resourceType === 'empty') {
         return `<span style="display:inline-block;width:12px;height:12px;border:1px dashed #555;border-radius:2px;margin-right:2px;vertical-align:middle;"></span>`;
     }
@@ -202,46 +201,47 @@ function getResourceIcon(resourceType: any) {
 
 let pro = {
 
-    getStorageTerminalRes (room: any){
-        let store = {};
+    getStorageTerminalRes (room: Room): Record<string, number> {
+        let store: Record<string, number> = {};
         if(room.storage)pro.addStore(store,room.storage.store)
         if(room.terminal)pro.addStore(store,room.terminal.store)
-        if(room.factory)pro.addStore(store,room.factory.store)
+        if(room.factory)pro.addStore(store,room.factory.store as StoreDefinition)
         return store
     },
-    addStore:(store: any,b: any)=> {for(let v in b) if(b[v]>0)store[v]=(store[v]||0)+b[v];return store},
+    addStore:(store: Record<string, number>, b: StoreDefinition)=> {const src = b as unknown as Record<string, number | undefined>;for(let v in src) if((src[v] ?? 0)>0)store[v]=(store[v]||0)+src[v]!;return store},
     
     showAllRes(){
         const time = Game.cpu.getUsed()
         void time
 
-        let rooms = _.values(Game.rooms).filter(e=>e.controller&&e.controller.my&&(e.storage||e.terminal));
-        let roomResAll = rooms.map(e=>[e.name,pro.getStorageTerminalRes(e)]).reduce((map,entry)=>{(map as any) [entry[0]] = entry[1];return map},{})
+        let rooms = (Object.values(Game.rooms) as Room[]).filter(e=>e.controller&&e.controller.my&&(e.storage||e.terminal));
+        let roomResAll = rooms.map((e): [string, Record<string, number>] => [e.name,pro.getStorageTerminalRes(e)]).reduce((map,entry)=>{map[entry[0]] = entry[1];return map},{} as Record<string, Record<string, number>>)
 
-        let all = rooms.reduce((all, room)=> pro.addStore(all,(roomResAll as any) [room.name]),{});
+        let all: Record<string, number> = rooms.reduce((sum, room)=> pro.addStore(sum, (roomResAll[room.name] ?? {}) as unknown as StoreDefinition), {} as Record<string, number>);
 
         // 资源类别定义...
         let base = [RESOURCE_ENERGY,"U","L","K","Z","X","O","H","G",RESOURCE_POWER,RESOURCE_OPS]
         let bars = [RESOURCE_BATTERY,RESOURCE_UTRIUM_BAR,RESOURCE_LEMERGIUM_BAR,RESOURCE_KEANIUM_BAR,RESOURCE_ZYNTHIUM_BAR,RESOURCE_PURIFIER,RESOURCE_OXIDANT,RESOURCE_REDUCTANT,RESOURCE_GHODIUM_MELT]
         let c_grey =[RESOURCE_COMPOSITE,RESOURCE_CRYSTAL,RESOURCE_LIQUID]
-        let c_blue = [RESOURCE_DEVICE,RESOURCE_CIRCUIT,RESOURCE_MICROCHIP,RESOURCE_TRANSISTOR,RESOURCE_SWITCH,RESOURCE_WIRE,RESOURCE_SILICON].reverse()
-        let c_yellow=[RESOURCE_MACHINE,RESOURCE_HYDRAULICS,RESOURCE_FRAME,RESOURCE_FIXTURES,RESOURCE_TUBE,RESOURCE_ALLOY,RESOURCE_METAL].reverse()
-        let c_pink = [RESOURCE_ESSENCE,RESOURCE_EMANATION,RESOURCE_SPIRIT,RESOURCE_EXTRACT,RESOURCE_CONCENTRATE,RESOURCE_CONDENSATE,RESOURCE_MIST].reverse()
-        let c_green =[RESOURCE_ORGANISM,RESOURCE_ORGANOID,RESOURCE_MUSCLE,RESOURCE_TISSUE,RESOURCE_PHLEGM,RESOURCE_CELL,RESOURCE_BIOMASS].reverse()
+        let c_blue = [RESOURCE_DEVICE,RESOURCE_CIRCUIT,RESOURCE_MICROCHIP,RESOURCE_TRANSISTOR,RESOURCE_SWITCH,RESOURCE_WIRE,RESOURCE_SILICON].slice().reverse()
+        let c_yellow=[RESOURCE_MACHINE,RESOURCE_HYDRAULICS,RESOURCE_FRAME,RESOURCE_FIXTURES,RESOURCE_TUBE,RESOURCE_ALLOY,RESOURCE_METAL].slice().reverse()
+        let c_pink = [RESOURCE_ESSENCE,RESOURCE_EMANATION,RESOURCE_SPIRIT,RESOURCE_EXTRACT,RESOURCE_CONCENTRATE,RESOURCE_CONDENSATE,RESOURCE_MIST].slice().reverse()
+        let c_green =[RESOURCE_ORGANISM,RESOURCE_ORGANOID,RESOURCE_MUSCLE,RESOURCE_TISSUE,RESOURCE_PHLEGM,RESOURCE_CELL,RESOURCE_BIOMASS].slice().reverse()
         let b_grey =["OH","ZK","UL","G"]
-        let gent =  (r: any)=> [r+"H",r+"H2O","X"+r+"H2O",r+"O",r+"HO2","X"+r+"HO2"]
+        let gent =  (r: string)=> [r+"H",r+"H2O","X"+r+"H2O",r+"O",r+"HO2","X"+r+"HO2"]
         let b_blue = gent("U")
         let b_yellow=gent("Z")
         let b_pink = gent("K")
         let b_green =gent("L")
         let b_withe =gent("G")
 
-        let formatNumber=function (n: any) {
-            var b = parseInt(n).toString();
+        let formatNumber=function (n: number) {
+            var b = parseInt(String(n)).toString();
             var len = b.length;
             if (len <= 3) { return b; }
             var r = len % 3;
-            return r > 0 ? b.slice(0, r) + "," + b.slice(r, len).match(/\d{3}/g).join(",") : b.slice(r, len).match(/\d{3}/g).join(",");
+            const groupsTail = b.slice(r, len).match(/\d{3}/g) ?? [];
+            return r > 0 ? b.slice(0, r) + "," + groupsTail.join(",") : groupsTail.join(",");
         }
 
         let html = `
@@ -263,17 +263,17 @@ let pro = {
         let categoryStyle = `background-color: ${RR_COLORS.bgHeader}; color: ${RR_COLORS.text}; font-weight: 700; padding: 6px 8px; border-radius: 6px; margin: 8px 0 4px 0; display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; border: 1px solid ${RR_COLORS.border};`;
         
         // 创建资源单元格
-        let createResourceCell = function(resType: any, amount: any) {
+        let createResourceCell = function(resType: string, amount: number) {
             const icon = getResourceIcon(resType);
             const bgColor = amount > 0 ? RR_COLORS.bgLight : RR_COLORS.bgHeader;
-            const textColor = amount > 0 ? ((RES_COLOR_MAP as any) [resType] || '#ccc') : RR_COLORS.textMuted;
+            const textColor = amount > 0 ? ((RES_COLOR_MAP as Record<string, string>)[resType] || '#ccc') : RR_COLORS.textMuted;
             const labelClass = amount > 0 ? 'rr-label' : 'rr-label rr-mute';
-            const labelHtml = `<span class="${labelClass}" style="color: ${(RES_COLOR_MAP as any) [resType] || '#ccc'};">${icon}<span>${resType}</span></span>`;
+            const labelHtml = `<span class="${labelClass}" style="color: ${(RES_COLOR_MAP as Record<string, string>)[resType] || '#ccc'};">${icon}<span>${resType}</span></span>`;
             
             let arr = [];
             for(let roomName in roomResAll){
-                if(((roomResAll as any) [roomName] as any) [resType] && ((roomResAll as any) [roomName] as any) [resType] > 0) {
-                    arr.push(_.padLeft(roomName, 6) + ": " + _.padLeft(formatNumber(((roomResAll as any) [roomName] as any) [resType]), 9));
+                if((roomResAll[roomName] as Record<string, number> | undefined)?.[resType] && ((roomResAll[roomName] as Record<string, number>)[resType] ?? 0) > 0) {
+                    arr.push(_.padLeft(roomName, 6) + ": " + _.padLeft(formatNumber((roomResAll[roomName] as Record<string, number>)[resType]!), 9));
                 }
             }
             
@@ -292,11 +292,11 @@ let pro = {
         };
         
         // 为每个资源类别创建表格式布局
-        let addResourceTable = function(resourceList: any, title: any) {
+        let addResourceTable = function(resourceList: string[], title: string) {
             html += `<div style="${categoryStyle}">${title}</div>`;
             
             // 过滤掉数量为0的资源，减少显示项
-            const filteredList = resourceList.filter((type: any) => all[type] > 0);
+            const filteredList = resourceList.filter((type) => (all[type] ?? 0) > 0);
             
             // 如果某个类别所有资源数量都为0，显示一个简化的提示
             if (filteredList.length === 0) {
@@ -319,6 +319,7 @@ let pro = {
                 // 添加当前行的资源
                 for (let j = i; j < i + itemsPerRow && j < filteredList.length; j++) {
                     const resType = filteredList[j];
+                    if (!resType) continue;
                     const amount = all[resType] || 0;
                     html += createResourceCell(resType, amount);
                 }
@@ -349,22 +350,22 @@ let pro = {
             
             <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;">
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${b_grey.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${b_grey.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${b_blue.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${b_blue.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${b_yellow.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${b_yellow.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${b_pink.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${b_pink.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${b_green.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${b_green.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${b_withe.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${b_withe.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
             </div>
         </div>
@@ -381,19 +382,19 @@ let pro = {
             
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;">
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${c_grey.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${c_grey.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${c_blue.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${c_blue.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${c_yellow.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${c_yellow.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${c_pink.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${c_pink.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                    ${c_green.map(type => createResourceCell(type, all[type] || 0)).join('')}
+                    ${c_green.map(type => createResourceCell(type, all[type] ?? 0)).join('')}
                 </div>
             </div>
         </div>`;
@@ -407,8 +408,8 @@ let pro = {
         let time = Game.cpu.getUsed()
         
         // 获取房间数据并排序
-        const roomData = _.values(Game.rooms)
-            .filter(e => e.my)
+        const roomData = (Object.values(Game.rooms) as Room[])
+            .filter(e => e.controller?.my)
             .map(room => {
             let res = pro.getStorageTerminalRes(room)
                 let storageCap = room.storage ? room.storage.store.getCapacity(RESOURCE_ENERGY) : 0
@@ -416,14 +417,14 @@ let pro = {
                 let storageFreeCap = room.storage ? room.storage.store.getFreeCapacity() : 0
                 let terminalFreeCap = room.terminal ? room.terminal.store.getFreeCapacity() : 0
                 
-                if(storageFreeCap || terminalFreeCap) (res as any) ["empty"] = storageFreeCap + terminalFreeCap;
+                if(storageFreeCap || terminalFreeCap) res["empty"] = storageFreeCap + terminalFreeCap;
 
                 let storage = room.storage ? room.storage.store : {};
                 let terminal = room.terminal ? room.terminal.store : {};
                 
                 // 计算总资源数量
                 const totalResources = Object.entries(res).reduce((sum, [type, amount]) => {
-                    if (type !== 'empty') return sum + amount;
+                    if (type !== 'empty') return sum + (amount as number);
                     return sum;
                 }, 0);
                 
@@ -451,13 +452,13 @@ let pro = {
         
         // 为每个房间创建卡片
         roomData.forEach(data => {
-            const getRoomLevelIcon = (level: any) => {
+            const getRoomLevelIcon = (level: number | undefined) => {
                 if (!level) return '';
                 // 使用Unicode字符代替数字，避免偏移问题
                 const levelSymbols = ['⓪', '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
                 
                 // 创建带颜色的徽章
-                const colors = {
+                const colors: Record<number, string> = {
                     1: '#717171', // 灰色
                     2: '#717171',
                     3: '#717171',
@@ -468,7 +469,7 @@ let pro = {
                     8: '#B29E6F'
                 };
                 
-                const color = (colors as any) [level] || '#717171';
+                const color = colors[level] || '#717171';
                 
                 return `<span style="color: ${color}; font-weight: bold; margin-right: 5px; font-size: 16px;">${levelSymbols[level]}</span>`;
             };

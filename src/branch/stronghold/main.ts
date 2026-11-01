@@ -1,56 +1,32 @@
 /**
- * stronghold 变体入口: 要塞挑战服 (RCL8 锁定/无限能量 spawn/无源房, 占位)。
- * 模块清单与 main 一致; 服务器规则差异走 STRONGHOLD_PROFILE (体型/定编适配待校准)。
+ * stronghold 变体入口: 要塞挑战服 (RCL8 锁定 / 无限能量 spawn / 无源房)。
+ *
+ * 只挂载孵化与战斗: 原型扩展 + BetterMove 钩子 + Teams + 指挥旗落位。
+ * 经济/扩张/工业/战略/感知等模块不加载。
  */
 import "../compat";
 import { STRONGHOLD_PROFILE } from "./profile";
+import { configureServerCaps } from "@/config/capabilities";
+import { STRONGHOLD_SERVER_CAPS } from "./config";
 import { createNexus } from "@/core/nexus";
-import { Perception } from "@/modules/world";
-import { Defense } from "@/modules/defense";
-import { StrategyCore } from "@/modules/strategy";
-import { Economy } from "@/modules/economy";
-import { Cluster } from "@/modules/cluster";
-import { Tasks } from "@/modules/tasks";
-import { Spawning } from "@/modules/spawning";
-import { Agents, Broker } from "@/modules/agents";
-import { Planner } from "@/modules/planner";
-import { RoomFeatures } from "@/modules/agents/prototype/features";
+import { mountStrongholdPrototypes } from "./prototypes";
+import { StrongholdMoveStart, StrongholdMoveEnd } from "./movement";
 import { Teams } from "@/modules/teams";
-import { Industry } from "@/modules/industry";
-import { PowerCreeps } from "@/modules/industry/powerCreep";
-import { EventBus } from "@/core/event";
-import { Nukes } from "@/modules/teams";
-import { InterShard } from "@/modules/intershard";
-import { Expansion } from "@/modules/external/expand";
-import { EndPhase } from "@/core/endPhase";
-import { Visuals } from "@/modules/visuals";
-import { Pixel } from "@/modules/economy/pixel";
+import { StrongholdAnchor } from "./team/anchor";
+import { StrongholdBlitz } from "./team/blitz";
+import "./team";
 
 const nexus = createNexus(STRONGHOLD_PROFILE);
 
-nexus.use(
-	Perception,
-	Defense,
-	StrategyCore,
-	Economy,
+configureServerCaps(STRONGHOLD_SERVER_CAPS);
+mountStrongholdPrototypes();
 
-	Cluster,
-	Tasks,
-	Spawning,
-	Agents,
-	Broker,
-	Planner,
-	RoomFeatures,
-	Industry,
+nexus.use(
+	StrongholdMoveStart,
 	Teams,
-	PowerCreeps,
-	EventBus,
-	Nukes,
-	InterShard,
-	Expansion,
-	EndPhase,
-	Visuals,
-	Pixel,
+	StrongholdMoveEnd,
+	StrongholdBlitz,
+	StrongholdAnchor,
 );
 
 export const loop = nexus.loop();

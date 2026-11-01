@@ -1,13 +1,12 @@
 
 import Team from "@/modules/teams/core/TeamClass";
 import TeamCalc from "@/modules/teams/core/TeamCalc";
-import TeamAction from "@/modules/teams/core/TeamAction";
 import TeamUtils from "@/modules/teams/core/TeamUtils";
 import { getTeamData } from "@/core/store/accessor";
 import { getTeamCreeps } from "@/utils/creepTickIndex";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
-import { getBoostCache } from "@/modules/spawning/legacy/boostFunction";
-
+import { getBoostCache } from "@/proto";
+import { combatMove, combatMoveTo, combatRemoveFlag, combatSuicide, holdActor, releaseTeamActors } from "@/modules/combat";
 /**
  * Team 执行调度器（运行时）。
  *
@@ -16,7 +15,7 @@ import { getBoostCache } from "@/modules/spawning/legacy/boostFunction";
  * - 生成端（创建 TeamData、下发孵化）在 TeamSpawner。\n
  * - 数据源：Memory.Nexus.TeamData[teamID]（队伍状态与成员列表）。
  */
-export default class TeamController {
+const TeamController = {
     /**
      * Team 主入口（每 tick 调用）。
      *
@@ -25,27 +24,28 @@ export default class TeamController {
      * 1) 处理 Team creep：boost、归队、异常清理\n
      * 2) 处理 Team：集结/移动/战斗/解散
      */
-    static run(): void {
+    run(): void {
         this.runCreeps();
         this.runTeams();
-    }
+    },
 
     /**
      * 驱动 Team creep 行为（boost 与归队）。
      *
      * @remarks
-     * - Team creep 判定：role 以 `team` 开头。\n
+     * - Team creep 判定：unit 以 `team` 开头。\n
      * - boost：若 creep.memory.boostmap 存在，则调用 creep.goBoost({ must: true })，直到完成。\n
      * - 归队：首次完成 boost 后，把 creep.id 推入 Memory.Nexus.TeamData[teamID].creeps。\n
      * - 若 TeamData 已被删除，则 creep 自杀，避免残留占用资源。
      */
-    private static runCreeps(): void {
+    runCreeps(): void {
         // 小队成员的行为
         for (const creep of getTeamCreeps()) {
             if (!creep || creep.spawning) continue;
             // getTeamCreeps() 已筛选 team 角色，这里保留兜底判断避免脏内存导致异常
-            const role = creep.memory.role || '';
-            if (!role.startsWith('team')) continue;
+            const unit = creep.memory.unit || '';
+            if (!unit.startsWith('team')) continue;
+            holdActor(creep.name);
 
             // 关闭 notify（只设置一次）
             if (!creep.memory.notified) {
@@ -75,14 +75,18 @@ export default class TeamController {
             if (!creep.memory['rejoin']) {
                 const teamID = creep.memory['teamID'];
                 const team = getTeamData(teamID);
-                if (!team) continue;
+                if (!team) {
+                    // 队伍已删 (减员解散/重建): 未归队成员成孤儿无人指挥, 自杀回收
+                    combatSuicide(creep);
+                    continue;
+                }
                 team.creeps.push(creep.id);
                 creep.memory['rejoin'] = true;
             }
             const teamID = creep.memory['teamID'];
-            if (!getTeamData(teamID)) creep.suicide();
+            if (!getTeamData(teamID)) combatSuicide(creep);
         }
-    }
+    },
 
     /**
      * 驱动队伍状态机（TeamClass.exec）。
@@ -93,7 +97,7 @@ export default class TeamController {
      * - 成员全部死亡：解散。\n
      * - 仅剩治疗者：把 healer 重新分配到未满员的队伍，尽量提高存活率。
      */
-    private static runTeams(): void {
+    runTeams(): void {
         // 独立的治疗者
         let soloHealers = [];
         // 未满的队伍
@@ -112,41 +116,75 @@ export default class TeamController {
             // 检查小队成员是否齐全
             if (teamData.status === 'ready') {
                 // 清理无效 Creep ID
-                teamData.creeps = teamData.creeps.filter((id: any) => Game.getObjectById(id));
+                teamData.creeps = teamData.creeps.filter((id: Id<Creep>) => Game.getObjectById(id));
 
                 // 检查小队是否超时未集结
                 // 1. 长期超时 (50000 tick)
                 // 2. 空队超时 (5000 tick): 如果 creep 死光了还没组建好，说明失败
-                if (Game.time - teamData['time'] > 50000 || 
+                if (Game.time - teamData['time'] > 50000 ||
                    (teamData.creeps.length === 0 && Game.time - teamData['time'] > 5000)) {
+                    // 解散交接: 先归还成员控制权再清队伍数据, 无真空 (控制权立即可被再获取)
+                    releaseTeamActors(teamData.creeps);
                     delete teamRoot[teamID];
                     console.log(`${teamID}小队因组建超时或失败已解散.`);
-                    Game.flags[`Team-${teamID}`]?.remove();
+                    combatRemoveFlag(`Team-${teamID}`);
                     continue;
                 }
                 // 如果成员未齐: 有指挥旗走旗位集结；无旗（目标房无视野建不出）
                 // 未进目标房的成员向目标房中心行进；已进目标房的在进门处原地待机（房间门口待机），
                 // 聚齐后由 attack 状态整队推进
                 if (teamData.creeps.length < teamData.num) {
-                    const teamFlag = Game.flags[`Team-${teamID}`]
+                    let teamFlag = Game.flags[`Team-${teamID}`]
+                    // 指挥旗自愈: 目标房中心补建 (pos.createFlag 原型重写, 无视野可用)。
+                    // 不建在孵化房: 旗位置会牵引 targetRoom 回老家 (以旗为准口径)。
+                    if (!teamFlag && teamData.targetRoom) {
+                        try {
+                            new RoomPosition(25, 25, teamData.targetRoom).createFlag(`Team-${teamID}`) as number;
+                            teamFlag = Game.flags[`Team-${teamID}`];
+                        } catch { /* 引擎拒绝时下 tick 重试 */ }
+                    }
                     if (teamFlag) {
-                        teamData.creeps.forEach((creepID: any) => {
-                            const creep = Game.getObjectById(creepID) as Creep;
-                            if (!creep) return;
-                            if (creep.room.name == teamData.homeRoom &&
-                                !creep.pos.isNearEdge(4) &&
-                                !creep.pos.inRangeTo(teamFlag, 3)
-                            ) {
-                                creep.moveTo(teamFlag, { range: 3 });
-                            }
-                        });
+                        // 家房侧门口集结: 满员前绝不过房 (散队过房 = 被守军逐个吃掉)。
+                        // 指挥旗在目标房深处, 朝旗直走会把单个成员牵出房缘送死
+                        const doorPos = teamData.homeRoom && teamData.targetRoom
+                            ? TeamUtils.doorGatherPos(teamData.homeRoom, teamData.targetRoom)
+                            : undefined;
+                        if (doorPos) {
+                            teamData.creeps.forEach((creepID: Id<Creep>) => {
+                                const creep = Game.getObjectById(creepID) as Creep;
+                                if (!creep) return;
+                                if (creep.room.name === teamData.homeRoom) {
+                                    if (!creep.pos.inRangeTo(doorPos, 2)) {
+                                        combatMoveTo(creep, doorPos, { range: 2 });
+                                    }
+                                } else if (creep.room.name === teamData.targetRoom) {
+                                    // 已过房成员 (掉队/补孵迟到): 贴门内侧待命, 不深入
+                                    const back = TeamUtils.routeExitDir(creep.room.name, teamData.homeRoom!);
+                                    if (back) combatMove(creep, ((back + 3) % 8 + 1) as DirectionConstant);
+                                }
+                            });
+                        } else {
+                            teamData.creeps.forEach((creepID: Id<Creep>) => {
+                                const creep = Game.getObjectById(creepID) as Creep;
+                                if (!creep) return;
+                                if (creep.room.name == teamData.homeRoom &&
+                                    !creep.pos.isNearEdge(4) &&
+                                    !creep.pos.inRangeTo(teamFlag, 3)
+                                ) {
+                                    combatMoveTo(creep, teamFlag, { range: 3 });
+                                }
+                            });
+                        }
                     } else {
-                        // 无指挥旗：跨房用 findRoute 出口方向步进（moveTo 不支持跨房）；
-                        // 已进目标房的在进门边缘待机（房间门口待机），聚齐后整队推进
-                        for (const creep of teamData.creeps.map(Game.getObjectById).filter(Boolean) as Creep[]) {
-                            if (creep.room.name === teamData.targetRoom) continue;
-                            const dir = TeamUtils.routeExitDir(creep.room.name, teamData.targetRoom!);
-                            if (dir) creep.move(dir);
+                        // 无指挥旗：目标房无视野时按兵不动（在孵化房待命）。
+                        // 指挥旗落点通常在无视野的目标房, 建旗失败/延迟期间若按目标房推进,
+                        // 未集齐的散队会被要塞火力逐个击杀。目标房有视野时仍向房门推进。
+                        if (Game.rooms[teamData.targetRoom!]) {
+                            for (const creep of teamData.creeps.map(Game.getObjectById).filter(Boolean) as Creep[]) {
+                                if (creep.room.name === teamData.targetRoom) continue;
+                                const dir = TeamUtils.routeExitDir(creep.room.name, teamData.targetRoom!);
+                                if (dir) combatMove(creep, dir);
+                            }
                         }
                     }
                     continue;
@@ -167,9 +205,11 @@ export default class TeamController {
 
             // 检查小队是否全部死亡
             if (!team.creeps || team.creeps.length === 0) {
+                // 解散交接: 先归还成员控制权 (空队为无操作) 再清队伍数据
+                releaseTeamActors(teamData.creeps);
                 delete teamRoot[teamID];
                 console.log(`${teamID}小队因成员全部死亡已解散.`);
-                Game.flags[`Team-${teamID}`]?.remove();
+                combatRemoveFlag(`Team-${teamID}`);
                 continue;
             }
 
@@ -179,7 +219,7 @@ export default class TeamController {
             team.save(teamData);
 
             // 将剩余的heal分配到其他不满员的队伍中
-            if (team.creeps.every(creep => creep.memory.role === 'team-heal')) {
+            if (team.creeps.every(creep => creep.memory.unit === 'team-heal')) {
                 // 如果一个队伍只剩heal, 标记为独立治疗者
                 soloHealers.push(...team.creeps);
             } else if (team.creeps.length < teamData.num) {
@@ -204,5 +244,7 @@ export default class TeamController {
             (teamData as TeamMemory).creeps.push(healer!.id!);
             healer!.memory['teamID'] = teamID;
         }
-    }
-}
+    },
+};
+
+export default TeamController;

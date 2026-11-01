@@ -1,10 +1,10 @@
 
 /** 统计模块 */
-import { getAllMissionFromPool } from '@/modules/spawning/mission/pool/MissionPools';
+import { getAllMissionFromPool } from '@/modules/spawning';
 import { getStatsMemory } from '@/core/store/accessor';
 import { MISSION_POOLS } from '@/constant/MissionConstant';
-import { ROLES } from '@/constant/CreepConstant';
-import { RoleData } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
+import { UnitData } from '@/constant/CreepConstant';
 import { getCreepRoleCountsAll } from '@/utils/creepTickIndex';
 import { getAllOrdersCached, hasMarketCredits, hasMarketOrderApi } from '@/utils/marketUtils';
 import { getOutMineData } from '@/core/store/accessor';
@@ -15,10 +15,6 @@ const STAT_INTERVAL = 20;           // 常规统计间隔 (ticks)
 const LONG_STAT_INTERVAL = 100;     // 长周期统计间隔 (ticks) - 用于升级速度、市场均价等
 const CPU_AVG_WINDOW = 1000;        // CPU 平均值统计窗口 (ticks)
 const MARKET_ORDER_LIMIT = 10;      // 市场订单统计数量 (top N)
-const HUD_INTERVAL_NORMAL = 1;       // HUD 正常刷新间隔
-const HUD_INTERVAL_CONSTRAINED = 5;  // HUD 在低桶/节流时的刷新间隔
-const HUD_INTERVAL_EMERGENCY = 10;   // HUD 在极低桶/紧急时的刷新间隔
-const HUD_MIN_BUCKET = 1200;         // HUD 极低桶阈值
 const TARGET_REFRESH_INTERVAL = 5;  // HUD 目标缓存刷新间隔 (ticks)
 
 let cachedStatTargets: string[] = [];
@@ -50,7 +46,7 @@ function updateCPUinfo() {
     getStatsMemory().cpu = used;   // 统计 CPU 总使用量
     // bucket 当前剩余量
     try { getStatsMemory().bucket = Game.cpu.bucket; }
-    catch (e) { getStatsMemory().bucket = 0; };
+    catch { getStatsMemory().bucket = 0; }
 
     if(!getStatsMemory().cpuUsed) getStatsMemory().cpuUsed = { total: 0,count: 0 };
 
@@ -127,8 +123,8 @@ function updateRoomStats() {
         }
 
         // 能量储备
-        const storageEnergy = room!.storage?.store[RESOURCE_ENERGY]! || 0;
-        const terminalEnergy = room!.terminal?.store[RESOURCE_ENERGY]! || 0;
+        const storageEnergy = room!.storage?.store[RESOURCE_ENERGY] || 0;
+        const terminalEnergy = room!.terminal?.store[RESOURCE_ENERGY] || 0;
         stats.energy[roomName] = storageEnergy + terminalEnergy;
         stats.energyRise[roomName] = stats.energy[roomName] - stats.energyHistory[roomName]! || 0;
         stats.SpawnEnergy[roomName] = room!.energyCapacityAvailable!;
@@ -179,8 +175,8 @@ function updateCreepCount() {
     const roleCounts = getCreepRoleCountsAll();
     getStatsMemory().creeps = { ...roleCounts };
     let creepCount = 0;
-    for (const role in roleCounts) {
-        creepCount += roleCounts[role] || 0;
+    for (const unit in roleCounts) {
+        creepCount += roleCounts[unit] || 0;
     }
     getStatsMemory().creepCount = creepCount;
 }
@@ -323,11 +319,11 @@ function gatherRoomLive(room: Room) {
     if (outList.length > 0) {
         for (const name in Game.creeps) {
             const c = Game.creeps[name];
-            const role = c!.memory?.role!;
-            if (role !== ROLES.harvester && role !== ROLES.carrier) continue;
+            const unit = c!.memory?.unit;
+            if (unit !== UNITS.harvester && unit !== UNITS.carrier) continue;
             if (c!.memory?.sourceRoom!== room.name) continue;
-            if (!outList.includes(c!.memory?.targetRoom! || '')) continue;
-            if (role === ROLES.harvester) outHarvest += 1;
+            if (!outList.includes(c!.memory?.targetRoom || '')) continue;
+            if (unit === UNITS.harvester) outHarvest += 1;
             else outCarry += 1;
         }
     }
@@ -374,11 +370,11 @@ const ENERGY_STATE_STYLE: Record<string, { text: string; color: string }> = {
 function drawStatsHUD(roomNames: string[]) {
     const stats = getStatsMemory() || {};
     const creepCount = stats.creepCount || 0;
-    const roleSummaryLines = getTopRolesSummaryLines(stats.creeps);
+    const unitSummaryLines = getTopRolesSummaryLines(stats.creeps);
     for (const roomName of roomNames) {
         if (!Game.rooms[roomName]) continue;
         const live = gatherRoomLive(Game.rooms[roomName]);
-        renderStatsHUD(Game.rooms[roomName].visual, roomName, stats, creepCount, roleSummaryLines, live);
+        renderStatsHUD(Game.rooms[roomName].visual, roomName, stats, creepCount, unitSummaryLines, live);
     }
 }
 
@@ -405,7 +401,7 @@ function renderStatsHUD(
     roomName: string,
     stats: any,
     creepCount: number,
-    roleSummaryLines: string[],
+    unitSummaryLines: string[],
     live: ReturnType<typeof gatherRoomLive>,
 ) {
     const x = 0.5;
@@ -421,7 +417,6 @@ function renderStatsHUD(
     const gplLvl = stats.gplLevel || 0;
     const gplPct = stats.gpl || 0;
     const gclEta = typeof stats.gclUpTime === 'number' ? stats.gclUpTime : 0;
-    const gplEta = typeof stats.gplUpTime === 'number' ? stats.gplUpTime : 0;
     const credit = stats.credit || 0;
     const creditChange = stats.creditChanges || 0;
     const energy = stats.energy?.[roomName] || 0;
@@ -502,8 +497,8 @@ function renderStatsHUD(
     rows.push({ kind: 'text', text: threatBits.join('  '), color: live.hostiles > 0 ? STYLE.colorErr : ttdColor, font: STYLE.font });
 
     // ── 角色摘要 ──
-    if (roleSummaryLines.length > 0) {
-        for (const line of roleSummaryLines) {
+    if (unitSummaryLines.length > 0) {
+        for (const line of unitSummaryLines) {
             rows.push({ kind: 'text', text: line, color: STYLE.colorSub, font: STYLE.fontSmall });
         }
     }
@@ -607,9 +602,9 @@ function getTopRolesSummaryLines(creepsByRole: any): string[] {
     
     // Aggregate by abbreviation
     const aggregated: Record<string, number> = {};
-    for (const [role, count] of Object.entries(creepsByRole)) {
+    for (const [unit, count] of Object.entries(creepsByRole)) {
         if (typeof count !== 'number') continue;
-        const code = (RoleData as Record<string, { code: string }>)[role]?.code || role;
+        const code = (UnitData as Record<string, { code: string }>)[unit]?.code || unit;
         aggregated[code] = (aggregated[code] || 0) + count;
     }
     

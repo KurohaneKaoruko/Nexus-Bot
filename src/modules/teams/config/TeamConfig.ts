@@ -9,12 +9,12 @@
  * - `A/W/R/H`：attack / dismantle / ranged / heal
  * - `25/28/29/35/40`：成员模板档位
  * - 低 RCL 配置用 `AH/4L7` / `AR/2L5` 这类格式表示，且默认无 boost
- * - `/4`：四人队，`/2`：二人队；`N`：不使用 boost
+ * - `/4`：连结队，`/2`：二人队；`N`：不使用 boost
  *
  * 成员模板名就是体型描述，由 member() 解析成配置：
  * - 语法为 `字母+数字` 序列，字母取 A/W/R/H/T/M = attack/work/ranged/heal/tough/move
  * - 名字以 `N` 结尾 = 无 boost；否则挂全套 T3 boost
- * - role 默认按第一个 A/W/R/H 部件推导，编队不同时显式覆盖
+ * - unit 默认按第一个 A/W/R/H 部件推导，编队不同时显式覆盖
  */
 
 /** T3 boost 对照表：部件 -> 化合物 */
@@ -28,7 +28,7 @@ const T3_BOOST_MAP = {
 } as const;
 
 export type TeamMemberConfig = {
-    role: string;
+    unit: string;
     bodypart: (BodyPartConstant | number)[][];
     boostmap?: { [part: string]: string };
 };
@@ -36,7 +36,7 @@ export type TeamMemberConfig = {
 const PART = { A: ATTACK, W: WORK, R: RANGED_ATTACK, H: HEAL, T: TOUGH, M: MOVE } as const;
 const ROLE = { A: 'team-attack', W: 'team-dismantle', R: 'team-ranged', H: 'team-heal' } as const;
 
-/** 把体型名（如 `A10T15A15M10`）解析成成员配置；分支表层定义自有模板复用同一语法 */
+/** 把体型名（如 `A10T15A15M10`、`T40M10`）解析成成员配置；分支表层定义自有模板复用同一语法 */
 export const member = (name: string): TeamMemberConfig => {
     const plain = name.endsWith('N');
     const spec = plain ? name.slice(0, -1) : name;
@@ -44,13 +44,12 @@ export const member = (name: string): TeamMemberConfig => {
     if (parts.length === 0 || parts.join('') !== spec) {
         throw new Error(`无法解析体型名: ${name}`);
     }
+    // unit 按首个角色部件推导; 纯功能体型 (T/M, 如肉盾) 缺省 team-ranged,
+    // 需要其他行为的由配置方显式覆盖 unit
     const rolePart = parts.find((p) => (p[0] ?? '') in ROLE);
-    if (!rolePart) {
-        throw new Error(`体型名 ${name} 缺少角色部件(A/W/R/H)`);
-    }
-    const role = ROLE[rolePart[0] as keyof typeof ROLE];
+    const unit = rolePart ? ROLE[rolePart[0] as keyof typeof ROLE] : 'team-ranged';
     const bodypart = parts.map((p) => [PART[p[0] as keyof typeof PART], Number(p.slice(1))]);
-    return plain ? { role, bodypart } : { role, bodypart, boostmap: T3_BOOST_MAP };
+    return plain ? { unit, bodypart } : { unit, bodypart, boostmap: T3_BOOST_MAP };
 };
 
 // ── T3 boost 成员模板 ──────────────────────────────────────────
@@ -79,7 +78,7 @@ const R15T10R15M10 = member('R15T10R15M10');
 const T12M10H28 = member('T12M10H28');
 const T5M10H35 = member('T5M10H35');
 // 特例：带 1 远程补刀，但仍按奶妈编队（默认推导会误判成远程）
-const T10R1H29M10 = { ...member('T10R1H29M10'), role: 'team-heal' };
+const T10R1H29M10 = { ...member('T10R1H29M10'), unit: 'team-heal' };
 
 // 40 档顶配：X40 M10，无 TOUGH
 const A40M10 = member('A40M10');
@@ -90,7 +89,7 @@ const H40M10 = member('H40M10');
 // RH 一体化：前排 R 重 / 后排 H 重，都按远程编队
 const R10T10R10H10M10 = member('R10T10R10H10M10');
 // 特例：后排 H 更多，但按远程编队
-const H10T10R10H10M10 = { ...member('H10T10R10H10M10'), role: 'team-ranged' };
+const H10T10R10H10M10 = { ...member('H10T10R10H10M10'), unit: 'team-ranged' };
 
 // ── 无 boost 成员模板（无 TOUGH，以 N 结尾）───────────────────
 

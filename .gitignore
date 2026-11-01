@@ -1,8 +1,11 @@
 .*/
-.secret.json
-node_modules/
-dist/
-target/
-.dev/
 AGENTS.md
+.dev/
+dist/
+dist-race/
+node_modules/
+race-daemon.log
+race-runs.jsonl
+.secret.json
+target/
 tests/

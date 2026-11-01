@@ -67,14 +67,14 @@ export default {
                 return Error(`房间 ${roomName} 不存在、未拥有或未添加。`);
             }
             product = RES[product] || product;
-            if(!(COMMODITIES as any) [product]) {
+            if(!COMMODITIES[product as CommoditiesTypes]) {
                 return Error(`生产目标 ${product} 不存在。`);
             }
             const flv = room.factory?.level || 0;
-            if((COMMODITIES as any)[product]?.level && (COMMODITIES as any)[product].level != flv) {
-                return Error(`生产目标 ${product} 需要factory等级为 ${(COMMODITIES as any)[product]?.level}, 而factory等级不匹配或未设置等级。`);
+            if(COMMODITIES[product as CommoditiesTypes]?.level && COMMODITIES[product as CommoditiesTypes].level != flv) {
+                return Error(`生产目标 ${product} 需要factory等级为 ${COMMODITIES[product as CommoditiesTypes]?.level}, 而factory等级不匹配或未设置等级。`);
             }
-            BotMemStructures[roomName]['factoryProduct'] = product as any;
+            BotMemStructures[roomName]['factoryProduct'] = product as ResourceConstant;
             BotMemStructures[roomName]['factoryAmount'] = Math.max(0, amount);
             globalThis.log(`[${roomName}] 已设置factory生产任务为 ${product}。`);
             if (!BotMemStructures[roomName]['factory']) {
@@ -92,13 +92,13 @@ export default {
                     globalThis.log(`房间 ${roomName} 不存在或未拥有。`);
                     return;
                 }
-                if(!(COMMODITIES as any) [product]) {
+                if(!COMMODITIES[product as CommoditiesTypes]) {
                     globalThis.log(`资源 ${product} 不存在。`);
                     return;
                 }
                 const flv = room.factory?.level || 0;
-                if((COMMODITIES as any)[product]?.level && (COMMODITIES as any)[product].level != flv) {
-                    globalThis.log(`资源 ${product} 的等级 ${(COMMODITIES as any)[product]?.level} 不匹配 factory 等级 ${flv}。`);
+                if(COMMODITIES[product as CommoditiesTypes]?.level && COMMODITIES[product as CommoditiesTypes].level != flv) {
+                    globalThis.log(`资源 ${product} 的等级 ${COMMODITIES[product as CommoditiesTypes]?.level} 不匹配 factory 等级 ${flv}。`);
                     return;
                 }
                 const BotMemStructures = getAutoFactoryData(roomName);
@@ -115,7 +115,7 @@ export default {
                     globalThis.log(`房间 ${roomName} 不存在或未拥有。`);
                     return;
                 }
-                if(!(COMMODITIES as any) [product]) {
+                if(!COMMODITIES[product as CommoditiesTypes]) {
                     globalThis.log(`资源 ${product} 不存在。`);
                     return;
                 }

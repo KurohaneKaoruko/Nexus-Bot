@@ -1,8 +1,10 @@
 
 import { getStatsMemory } from '@/core/store/accessor';
-import { ROLES } from '@/constant/CreepConstant';
 /**
- * QoS（Quality of Service）档位
+ * QoS（Quality of Service）档位 —— legacy 侧兼容读口 (任务 3.10 收口口径):
+ * Nexus 相位管线的 CPU 治理以 cpuBudget 为尊 (相位带 P0–P3 + 饥饿保护);
+ * 本模块仅供 legacy 模块 (prototype/industry/spawning-mission/external) 的
+ * 降频读数使用, 新代码 MUST NOT 引用 —— 随 legacy 删除逐段摘除。
  * - normal：资源充足，模块按正常频率运行
  * - constrained：资源紧张，建议对昂贵模块降频/限额
  * - emergency：资源告急，只保留关键逻辑，避免 CPU 自激振荡
@@ -155,44 +157,6 @@ export function shouldRun(options: ShouldRunOptions = {}): boolean {
 export const isTickAligned = (mod: number, offset = 0, tick = Game.time) => {
     const normalized = ((offset % mod) + mod) % mod
     return tick % mod === normalized
-}
-
-/**
- * 角色牺牲顺序表（emergency 档冻结顺序）。
- *
- * 按「单 tick 开销 × 暂停可逆性」排出的牺牲顺序：
- * - **正值**：emergency 也要保的角色——战斗/防御（>0 最高保）、
- *   后勤保命链（harvester/carrier/transporter/manager/universal）；
- * - **负值**：CPU 告急时最先牺牲的角色——升级/建造类单 tick 开销最大、
- *   且暂停若干 tick 无不可逆损失（升级类 -10 最先冻结，建造类 -5 次之）；
- * - **0（缺省）**：未登记角色一律不冻结——安全默认，新角色忘了登记也不会在 emergency 消失。
- *
- * 初版仅 `emergency` 档（bucket<2000）生效；`constrained`/`normal` 行为不变，
- * 零感知上线后再按实测调参。
- */
-export const ROLE_CPU_FREEZE_PRIORITY: Record<string, number> = {
-    // —— 最先冻结：升级类 ——
-    [ROLES.upgrader]: -10,
-    [ROLES['up-upgrade']]: -10,
-    [ROLES['aid-upgrade']]: -8,
-    // —— 其次：建造/维修/清理/侦察 ——
-    [ROLES.worker]: -5,
-    'cleaner': -4,
-    [ROLES.scout]: -3,
-    [ROLES['up-repair']]: -2,
-    // —— 保命链：正分，emergency 永不冻结（显式登记以表达牺牲顺序）——
-    [ROLES.harvester]: 10,
-    [ROLES.universal]: 5,
-    [ROLES.carrier]: 1,
-    [ROLES.transporter]: 1,
-    [ROLES.manager]: 1,
-};
-
-/** emergency 档下该角色是否应被冻结（跳过本 tick 执行） */
-export function shouldSkipCreepInEmergency(role?: string): boolean {
-    const qos = getQoS();
-    if (!qos || qos.level !== 'emergency') return false;
-    return (ROLE_CPU_FREEZE_PRIORITY[role || ''] ?? 0) < 0;
 }
 
 export const qos: QoSAPI = {

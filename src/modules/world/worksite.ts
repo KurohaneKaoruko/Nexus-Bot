@@ -179,6 +179,30 @@ export function worksiteFor(
 }
 
 /**
+ * 采集槽位序列: [主驻点 (worksiteFor, 兼容器合一), 其余按 walkableAdjacents 评分序]。
+ * 低容量多只期每只一个槽位 (任务 i ↔ slots[i], 同 upgrade 工位先例);
+ * count=1 时即主驻点, 与单座期完全一致。
+ */
+export function harvestSlotsFor(
+	intel: RoomIntelRecord,
+	room: RoomObservation,
+	source: SourceSummary,
+	count: number,
+): Array<{ x: number; y: number }> {
+	const primary = worksiteFor(intel, room, source);
+	if (!primary || count <= 1) {
+		return primary ? [{ x: primary.x, y: primary.y }] : [];
+	}
+	const slots = [{ x: primary.x, y: primary.y }];
+	for (const candidate of walkableAdjacents(source, room)) {
+		if (slots.length >= count) break;
+		if (candidate.x === primary.x && candidate.y === primary.y) continue;
+		slots.push(candidate);
+	}
+	return slots;
+}
+
+/**
  * 落点重算 (Agent 不可达反馈兜底): 清除缓存, 下次 worksiteFor 重新选址。
  * 返回是否确实清除了缓存。
  */
@@ -201,4 +225,48 @@ export function atWorksite(
 	worksite: WorksiteRecord | undefined,
 ): boolean {
 	return worksite !== undefined && creep.x === worksite.x && creep.y === worksite.y;
+}
+
+/**
+ * 无视野房的工作位 (docs/24 §24.8.1 外矿源工位): 地形经 Room.Terrain 全知,
+ * 源坐标取 Intel; 无结构/工地快照 (无视野), 占用信息缺省——驻点只看地形。
+ * 首见写入 Intel 缓存, 可见后 worksiteFor 的快照校验自然接管。
+ */
+export function worksiteForUnseen(
+	intel: RoomIntelRecord,
+	roomName: string,
+	source: { id: string; x: number; y: number },
+): WorksiteRecord | undefined {
+	const cached = intel.worksites?.[source.id];
+	if (cached) {
+		return cached;
+	}
+	const terrain = new Room.Terrain(roomName);
+	const candidates: Array<{ x: number; y: number; score: number }> = [];
+	for (let dy = -1; dy <= 1; dy += 1) {
+		for (let dx = -1; dx <= 1; dx += 1) {
+			if (dx === 0 && dy === 0) continue;
+			const x = source.x + dx;
+			const y = source.y + dy;
+			if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+			let open = 0;
+			for (let oy = -1; oy <= 1; oy += 1) {
+				for (let ox = -1; ox <= 1; ox += 1) {
+					if (terrain.get(x + ox, y + oy) !== TERRAIN_MASK_WALL) open += 1;
+				}
+			}
+			candidates.push({ x, y, score: (isEdge(x, y) ? -100 : 0) + open * 10 - chebyshev(x, y, 25, 25) });
+		}
+	}
+	candidates.sort((a, b) => b.score - a.score || a.x - b.x || a.y - b.y);
+	const best = candidates[0];
+	if (!best) return undefined;
+	const record: WorksiteRecord = {
+		x: best.x,
+		y: best.y,
+		containerSpot: { x: best.x, y: best.y },
+	};
+	intel.worksites ??= {};
+	intel.worksites[source.id] = record;
+	return record;
 }

@@ -17,7 +17,7 @@ export default class RoomArray<T extends number = number> {
     protected arr: T[]
 
     public constructor(initValue?: T) {
-        this.arr = new Array(50 * 50).fill(initValue || 0)
+        this.arr = Array.from<T>({ length: 50 * 50 }).fill((initValue || 0) as T)
     }
 
     /**

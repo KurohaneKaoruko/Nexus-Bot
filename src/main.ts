@@ -7,37 +7,46 @@ import { Perception } from "@/modules/world";
 import { Defense } from "@/modules/defense";
 import { StrategyCore } from "@/modules/strategy";
 import { Economy } from "@/modules/economy";
+import { RemoteMining } from "@/modules/economy/remote/module";
 import { Cluster } from "@/modules/cluster";
 import { Tasks } from "@/modules/tasks";
 import { Spawning } from "@/modules/spawning";
 import { Agents, Broker } from "@/modules/agents";
+import { MovementStart, MovementEnd } from "@/modules/agents/movementWindow";
 import { Planner } from "@/modules/planner";
-import { RoomFeatures } from "@/modules/agents/prototype/features";
+import { RoomFeatures } from "@/proto/features";
 import { Teams } from "@/modules/teams";
 import { Industry } from "@/modules/industry";
-import { PowerCreeps } from "@/modules/industry/powerCreep";
+import { PowerCreeps } from "@/proto/PowerCreep";
 import { EventBus } from "@/core/event";
-import { Nukes } from "@/modules/teams";
+import { Nukes } from "@/modules/industry";
 import { InterShard } from "@/modules/intershard";
-import { Expansion } from "@/modules/external/expand";
-import { EndPhase } from "@/core/endPhase";
+import { Expansion } from "@/modules/external";
+import { Comms } from "@/modules/comms";
+import { FunnelEnd, InterShardEnd, ClearEnd, StatisticsEnd } from "@/core/endPhase";
+import { EventBusEnd } from "@/core/event";
+import { InvariantWatch } from "@/core/invariantWatch";
 import { Visuals } from "@/modules/visuals";
-import { Pixel } from "@/modules/economy/pixel";
+import { Pixel } from "@/modules/economy";
+import { ActorOwnershipSweep, ActorOwnershipPersist } from "@/runtime/actorOwnershipModule";
 
 const nexus = createNexus(DEFAULT_PROFILE);
 
 nexus.use(
+	MovementStart,
 	Perception,
+	ActorOwnershipSweep,
 	Defense,
 	StrategyCore,
 	Economy,
+	RemoteMining,
 
 	Cluster,
 	Tasks,
 	Spawning,
 	Agents,
-	Broker,
 	Planner,
+	Broker,
 	RoomFeatures,
 	Industry,
 	Teams,
@@ -46,7 +55,15 @@ nexus.use(
 	Nukes,
 	InterShard,
 	Expansion,
-	EndPhase,
+	Comms,
+	EventBusEnd,
+	FunnelEnd,
+	InterShardEnd,
+	ClearEnd,
+	StatisticsEnd,
+	ActorOwnershipPersist,
+	MovementEnd,
+	InvariantWatch,
 	Visuals,
 	Pixel,
 );

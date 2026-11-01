@@ -4,9 +4,10 @@
 import type { TickContext, TickModule } from "@/core";
 
 import { aliveNames } from "@/core/world";
-import { createTaskBoard } from "@/modules/tasks/board";
+import { createTaskBoard, TERMINAL_STATUSES } from "@/modules/tasks/board";
 import { assignBatch, profileOf } from "@/modules/tasks/allocator";
 import { maintainLedger } from "@/modules/economy";
+import { roomModeProfileFor } from "@/modules/strategy";
 
 export const Tasks: TickModule = {
 	name: "task-system",
@@ -18,6 +19,53 @@ export const Tasks: TickModule = {
 			return;
 		}
 		const board = createTaskBoard(ctx.memory.tasks);
+		// 跨 run 残留清理 (实服 4wt 重开路径): 服务器重置清 Game 对象但 Memory
+		// 持久, 旧 run 的任务 (roomName 指向已非我房的房间) 无人生产无人认领,
+		// 永生堆积抬定编。claim 任务例外——roomName 本就是待声称的目标房。
+		// 第二判据: 远程经济任务 (harvest/carry, 目标房 ≠ 挂靠房) 的目标房已无
+		// 视野且挂靠房也非我房时失效——旧世界的远程采集任务 targetId 已死,
+		// 领到的矿工只会站桩到老死 (run#20 实服事故); 视野存活期内不误杀
+		// (scout 点亮→remote-planner 重建同键任务, 断视野窗口由租约回收兜底)。
+		const myRoomNames = new Set(Object.keys(world.rooms));
+		for (const task of Object.values(ctx.memory.tasks)) {
+			if (TERMINAL_STATUSES.has(task.status)) {
+				continue;
+			}
+			const targetRoomName = task.targetPos?.roomName;
+			// 远程族豁免 (跨房任务): 经济件 (harvest/carry) 与点亮件 (scout/reserve)
+			// 的目标房可以不是本方房——挂靠房丢房不连坐 (bugs/cross-room-agent-deadlock
+			// 缺陷一: 豁免漏 scout/reserve, 外房挂靠的侦查/预订任务 t1 即被误杀)。
+			const remoteEconomic =
+				(task.kind === "harvest" ||
+					task.kind === "carry" ||
+					task.kind === "scout" ||
+					task.kind === "reserve") &&
+				targetRoomName !== undefined &&
+				targetRoomName !== task.roomName;
+			// 直挂形态: scout/reserve 锚点即目标外房 (从未属我), room-lost 清扫
+			// 不适用——存活由 lease/deadline 兜底, 不靠挂靠房归属
+			const selfAnchoredRemote =
+				(task.kind === "scout" || task.kind === "reserve") &&
+				targetRoomName !== undefined &&
+				targetRoomName === task.roomName;
+			const targetVisible = targetRoomName !== undefined && Game.rooms[targetRoomName] !== undefined;
+			if (
+				task.kind !== "claim" &&
+				!myRoomNames.has(task.roomName) &&
+				!remoteEconomic &&
+				!selfAnchoredRemote
+			) {
+				board.cancel(task.id, ctx.tick, "room-lost");
+			} else if (remoteEconomic && !targetVisible) {
+				// 挂靠房仍在我手时放过无视野的远程任务: planner 会持续重建同键
+				// 任务, 砍了是清理/planner 的每 tick 自杀循环 (sim 实证 remote
+				// harvest 恒 cancelled, 外矿收入线永远连不起来)。挂靠房也丢了
+				// 才是真残留 (run#20 口径)。
+				if (!myRoomNames.has(task.roomName)) {
+					board.cancel(task.id, ctx.tick, "room-lost");
+				}
+			}
+		}
 		const alive = aliveNames(world);
 		board.reconcile(ctx.tick, { isAlive: (name) => alive.has(name) });
 		// 账本对账: 过期/主体消失的预留清理 (函数契约"reconcile 阶段调用一次", 之前漏接导致预留只增不减)
@@ -33,14 +81,50 @@ export const Tasks: TickModule = {
 			);
 		});
 
-		const profiles = Object.values(world.rooms).flatMap((room) =>
-			room.creeps.filter((creep) => !creep.spawning).map(profileOf),
+		// 分配器候选 (docs/24 §24.5.2): 名册 units 键集 = rooms.creeps ∪ remoteUnits
+		// (全部可见本方单位)。顺序保持 rooms 房序 + remoteUnits 序拼接——分配器
+		// 同分取先遍历者, 改序会平移门读数; 顺序合流留给 remoteUnits 字段退役时
+		const profiles = [
+			...Object.values(world.rooms).flatMap((room) =>
+				room.creeps
+					.filter((creep) => !creep.spawning)
+					.map((creep) => profileOf(creep, ctx.memory.units[creep.name]?.remote)),
+			),
+			// 外矿单位参与分配 (bugs/P1-18 断点④): 可见非己方房的己方爬不进 rooms,
+			// 不并入则远程任务到达者无人续租、本矿空闲件也看不到远程缺口
+			...world.remoteUnits
+				.filter((creep) => !creep.spawning)
+				.map((creep) => profileOf(creep, ctx.memory.units[creep.name]?.remote)),
+		];
+		// 亲和排他分档 (bugs (十三)): 全场任一房启用 courier 投喂经济 (churn 期
+		// 升级体兼差孵化线是承重的) 即关; 全部无 courier 的 main 系才开
+		const affinityExclusive = !Object.values(world.rooms).some((room) =>
+			roomModeProfileFor(ctx, room.roomName).courierEnabled,
+		);
+		// 外矿专职分档 (批次 AD): 全场任一房走 auto 外矿链 (专职 remoteMiner +
+		// hauler 接驳) 即开; 全部 manual 的 main 系关 (harvester 自回运外矿
+		// 是 batch H 环承重设计, 硬排即断其外矿供给)
+		const remoteMinerExclusive = Object.values(world.rooms).some((room) =>
+			roomModeProfileFor(ctx, room.roomName).remoteMining === "auto",
 		);
 		assignBatch({
 			now: ctx.tick,
 			tasks: board.list({ statuses: ["available"] }),
 			profiles,
 			world,
+			affinityExclusive,
+			remoteMinerExclusive,
+			remotePathOf: (task) => {
+				// remote:<kind>:<home>:<target|sourceId> → 源所在外矿房的 colony 记录
+				const parts = task.dedupeKey.split(":");
+				const home = parts[2];
+				const target = task.targetPos?.roomName;
+				if (!home || !target) return undefined;
+				const rec = ctx.memory.remotes?.[home]?.rooms[target];
+				if (!rec) return undefined;
+				const lengths = Object.values(rec.sources).map((s) => s.pathLength);
+				return lengths.length ? Math.min(...lengths) : undefined;
+			},
 			currentTaskOf: (name) => Game.creeps[name]?.memory.taskId,
 			getTask: (id) => board.get(id),
 			claim: (id, name, now, leaseTicks) => {

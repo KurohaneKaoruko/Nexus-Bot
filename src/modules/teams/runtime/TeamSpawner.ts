@@ -1,10 +1,12 @@
 
 import { log } from '@/utils/log';
 
-import { ensureTeamData, getTeamData, getTeamSpawnQueue } from "@/core/store/accessor";
+import { ensureTeamData, getTeamData, getTeamSpawnQueue, getTeamPendingSpawns } from "@/core/store/accessor";
 import { isBoostResCheckEnabled } from "@/config/capabilities";
 import { getTeamConfig } from "@/modules/teams/config/TeamConfig";
+import type { TeamMemberConfig } from "@/modules/teams/config/TeamConfig";
 import { directSpawn } from "@/modules/spawning/spawnDirector";
+import { combatRemoveFlag } from "@/modules/combat";
 
 /** 旗名解析出的孵化参数（各旗型解析器归一后的产出） */
 export type TeamSpawnSpec = {
@@ -12,11 +14,11 @@ export type TeamSpawnSpec = {
     kind: string;
     config: string;
     /** 孵化房；缺省 = 主房暂无视野（是否等待由 keepOnMissingRoom 决定） */
-    spawnRoomName?: string;
+    spawnRoomName?: string | undefined;
     /** 目标房 */
     targetRoom?: string;
     /** 最大派兵次数；undefined = 由 noMaxIsInfinite 决定无 N 时的行为 */
-    maxCount?: number;
+    maxCount?: number | undefined;
     /** 孵化间隔 tick；0 = 无定时，队列空闲即派 */
     interval: number;
     /** 无 N（或 N0）时是否无限派兵（false = 一次性派送后撤旗） */
@@ -31,10 +33,53 @@ export type TeamSpawnSpec = {
     teamCap?: number;
 };
 
+/** TeamData 条目的只读快照形态 (孵化判定只读这几列) */
+type TeamDataSnapshot = {
+    homeRoom?: string;
+    status?: string;
+    time?: number;
+    creeps?: string[];
+    num?: number;
+};
+
+/** 孵化队列条目 (Memory.Nexus.TeamSpawnQueue[roomName]) */
+export type TeamSpawnQueueEntry = {
+    queue: { flagName: string; enqueueTime: number }[];
+    active?: {
+        teamID: string;
+        flagName: string;
+        startTime: number;
+        timedOut?: boolean;
+        timedOutAt?: number;
+        inferredAt?: number;
+    } | undefined;
+    ignoreTeams?: { [teamID: string]: number };
+};
+
+/** 待补孵的单个成员：跨 tick 重试直至成功 */
+export type PendingSpawnMember = {
+    unit: string;
+    memory: CreepMemory;
+    body: BodyPartConstant[];
+};
+
 /** 旗型解析器：旗名 + 旗对象 → 归一孵化参数（TEAM_ 内置解析之外的旗型由表层模块注册） */
 export type SpecProvider = (flagName: string, flag: Flag) => TeamSpawnSpec | undefined;
 
-export default class TeamSpawner {
+/** 把 `[[part, count], ...]` 压缩体展开为逐部件数组（保留声明顺序） */
+export const expandBodyParts = (bodypart: unknown): BodyPartConstant[] => {
+    if (!Array.isArray(bodypart)) return [];
+    const body: BodyPartConstant[] = [];
+    for (const entry of bodypart as [BodyPartConstant, number][]) {
+        if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Number.isFinite(entry[1])) {
+            continue;
+        }
+        for (let i = 0; i < entry[1]; i += 1) body.push(entry[0]);
+    }
+    return body;
+};
+
+const TeamSpawner = {
     /**
      * Team 孵化队列的 Memory Key（按房间分桶）。
      *
@@ -42,33 +87,34 @@ export default class TeamSpawner {
      * 结构示意：\n
      * `Memory.Nexus.TeamSpawnQueue[roomName] = { queue: {flagName, enqueueTime}[], active?: {teamID, flagName, startTime, timedOut?}, ignoreTeams?: { [teamID]: expireTick } }`
      */
-    private static readonly QUEUE_MEMORY_KEY = 'TeamSpawnQueue';
+    QUEUE_MEMORY_KEY: 'TeamSpawnQueue',
+
+    /** 待补孵成员的 Memory Key（teamID → { roomName, members[] }；global 重置后不丢） */
+    PENDING_MEMORY_KEY: 'TeamPendingSpawns',
     /**
      * 写入到孵化旗 flag.memory 的“已入队”标记，用于去重。
      *
      * @remarks
      * 该字段仅用于避免重复入队；真正的队列状态以 Memory.Nexus.TeamSpawnQueue 为准。
      */
-    private static readonly FLAG_QUEUED_MARK = 'teamSpawnQueuedAt';
+    FLAG_QUEUED_MARK: 'teamSpawnQueuedAt',
     /**
      * 房间孵化锁最大持有 tick（超过则自动释放，避免卡死导致队列永久阻塞）。
      * 有 boost 阶段的服（强化+归队耗时不可控）用长时限；无 boost 的服成员纯孵化即齐，短时限。
      */
-    private static get activeTtl(): number {
+    get activeTtl(): number {
         return isBoostResCheckEnabled() ? 8000 : 2000;
-    }
-    /**
-     * 锁超时后短期忽略该 teamID（避免同 tick 反复“推断 active → 超时释放 → 再推断”）。
-     */
-    private static readonly IGNORE_TTL_AFTER_TIMEOUT = 1000;
+    },
+    /** 锁超时后短期忽略该 teamID（避免同 tick 反复“推断 active → 超时释放 → 再推断”）。 */
+    IGNORE_TTL_AFTER_TIMEOUT: 1000,
 
     /** 表层模块注册的旗型解析器（TEAM_ 内置解析之外的旗型由此扩展） */
-    private static specProviders: SpecProvider[] = [];
+    specProviders: [] as SpecProvider[],
 
     /** 注册旗型解析器（每个旗名命中第一个返回非 undefined 的解析器） */
-    public static registerSpecProvider(provider: SpecProvider): void {
+    registerSpecProvider(provider: SpecProvider): void {
         this.specProviders.push(provider);
-    }
+    },
 
     /**
      * 小队孵化入口。
@@ -84,7 +130,10 @@ export default class TeamSpawner {
      * 示例：`TEAM_A28/4_E12N34_N1_T1000`（配置/孵化房间/上限/间隔）。\n
      * 旗名协议（攻击旗）：`ATK[/_孵化房][/_配置][/_N次数][/_T间隔]`，`/` 与 `_` 均可作分隔。
      */
-    static run(): void {
+    run(): void {
+        // 补孵队列每 tick 推进：单 spawn 一 tick 只能下一单，整队成员须跨 tick 补位
+        this.retryPendingSpawns();
+
         // 孵化四人小队
         if (Game.time % 10) return;
         getTeamData();
@@ -112,14 +161,56 @@ export default class TeamSpawner {
         }
 
         this.dispatchQueues(specs);
-    }
+    },
+
+    /**
+     * 跨 tick 补孵：对每支队伍的待孵成员逐 tick 尝试 directSpawn。
+     *
+     * @remarks
+     * - 队列落在 Memory.Nexus.TeamPendingSpawns（global 重置后不丢）。
+     * - 每 tick 每支队伍只尝试孵化 1 名成员，避免同一房间多队竞争同一 spawn。
+     * - directSpawn 返回 OK 时移除该成员；ERR_BUSY 时保留下 tick 重试。
+     * - 队伍已删除（TeamData 不存在）或成员为空时清理条目，避免僵尸条目。
+     */
+    retryPendingSpawns(): void {
+        const pending = getTeamPendingSpawns();
+        for (const teamID of Object.keys(pending)) {
+            const entry = pending[teamID];
+            if (!entry || !getTeamData(teamID) || !entry.members?.length) {
+                delete pending[teamID];
+                continue;
+            }
+
+            const room = entry.roomName ? Game.rooms[entry.roomName] : undefined;
+            if (!room) continue;
+
+            const member = entry.members[0];
+            if (!member) {
+                delete pending[teamID];
+                continue;
+            }
+            const result = directSpawn(room, {
+                mode: "direct",
+                unit: member.unit,
+                memory: member.memory,
+                body: member.body as BodyPartConstant[],
+            });
+
+            if (result === OK) {
+                entry.members.shift();
+                if (entry.members.length === 0) {
+                    delete pending[teamID];
+                }
+            }
+        }
+    },
 
     // ── 旗名解析 ──
 
     /**
      * 解析 `TEAM_配置_孵化房间_N最大孵化数量_T孵化间隔`。
      */
-    private static parseTeamFlag(flagName: string): TeamSpawnSpec | undefined {
+    parseTeamFlag(flagName: string): TeamSpawnSpec | undefined {
         const config = flagName.match(/TEAM_([0-9A-Za-z/]+)/)?.[1];
         const spawnRoomName = flagName.match(/([EW][1-9]+[NS][1-9]+)/)?.[1]?.toUpperCase();
         if (!config || !spawnRoomName) return undefined;
@@ -132,15 +223,15 @@ export default class TeamSpawner {
             ...(nRaw === undefined ? {} : { maxCount: parseInt(nRaw) }),
             interval,
         };
-    }
+    },
 
-    private static handleTeamFlag(flagName: string, flag: Flag): boolean {
+    handleTeamFlag(flagName: string, _flag: Flag): boolean {
         if (!flagName.startsWith('Team-')) return false;
         const teamID = flagName.match(/Team-(\w+)/)?.[1];
         if (!teamID) return true;
-        if (!getTeamData(teamID)) flag.remove();
+        if (!getTeamData(teamID)) combatRemoveFlag(flagName);
         return true;
-    }
+    },
 
     /**
      * 处理孵化指令旗（TEAM_/ATK）。
@@ -153,7 +244,7 @@ export default class TeamSpawner {
      * - 通过房间队列入队，避免同一房间并行下发多支队伍。
      * - 真正的孵化派发（boost 任务 / TeamData / SpawnMission / 计数更新）在队列出队时执行。
      */
-    private static tryEnqueueSpawnFlag(flagName: string, flag: Flag, spec: TeamSpawnSpec): void {
+    tryEnqueueSpawnFlag(flagName: string, flag: Flag, spec: TeamSpawnSpec): void {
         const flagMemory = flag.memory;
 
         if (!this.canSpawnNow(spec, flag, flagMemory)) return;
@@ -185,7 +276,7 @@ export default class TeamSpawner {
 
         this.enqueue(room.name, flagName);
         flagMemory[TeamSpawner.FLAG_QUEUED_MARK] = Game.time;
-    }
+    },
 
     /**
      * 队列派发主逻辑：按房间串行派发一次孵化。
@@ -195,12 +286,12 @@ export default class TeamSpawner {
      * - active 不存在且 queue 非空：取队首重新校验并派发（生成 teamID、下发 boost/spawn、更新计数）。\n
      * - 每房间每次 run 只会派发 1 支队伍，避免并行孵化打爆 lab/任务池。
      */
-    private static dispatchQueues(specs: Map<string, TeamSpawnSpec>): void {
-        const root = getTeamSpawnQueue() as any;
+    dispatchQueues(specs: Map<string, TeamSpawnSpec>): void {
+        const root = getTeamSpawnQueue();
         if (!root) return;
 
         for (const roomName in root) {
-            const entry = root[roomName] || {};
+            const entry: TeamSpawnQueueEntry = root[roomName] || { queue: [] };
             if (!entry.queue) entry.queue = [];
             root[roomName] = entry;
 
@@ -208,6 +299,8 @@ export default class TeamSpawner {
                 const inferredTeamID = this.inferActiveTeamID(roomName, entry.ignoreTeams);
                 if (inferredTeamID) {
                     entry.active = { teamID: inferredTeamID, flagName: '', startTime: getTeamData(inferredTeamID)?.time || Game.time };
+                    // 接管即计宽限起点: 宽限后仍 ready 无 pending → isActiveDone 释放
+                    entry.active.inferredAt = Game.time;
                 }
             }
 
@@ -220,7 +313,6 @@ export default class TeamSpawner {
                     delete entry.active;
                 }
             }
-
             this.cleanupQueue(roomName, entry, specs);
 
             if (entry.active) continue;
@@ -240,7 +332,9 @@ export default class TeamSpawner {
 
             const dispatched = this.dispatchOne(flagName, flag, roomName, spec);
             if (dispatched) {
-                entry.active = { teamID: dispatched.teamID, flagName, startTime: Game.time };
+                // 派单成功即释放节奏锁: 孵化由 TeamPendingSpawns 跨 tick 自理,
+                // active 挂到满员会把后续建队卡 600+t (串行饿死蓝球波次)
+                delete entry.active;
             }
         }
 
@@ -251,7 +345,7 @@ export default class TeamSpawner {
             if (entry.queue && entry.queue.length) continue;
             delete root[roomName];
         }
-    }
+    },
 
     /**
      * 实际派发一条孵化请求（出队执行）。
@@ -259,7 +353,7 @@ export default class TeamSpawner {
      * @remarks
      * 出队时会重新做一次校验（房间归属/配置存在/资源充足/间隔允许），防止等待期间环境变化导致派发错误。
      */
-    private static dispatchOne(flagName: string, flag: Flag, roomName: string, spec: TeamSpawnSpec): { teamID: string } | undefined {
+    dispatchOne(flagName: string, flag: Flag, roomName: string, spec: TeamSpawnSpec): { teamID: string } | undefined {
         const flagMemory = flag.memory;
         if (!this.canSpawnNow(spec, flag, flagMemory)) return;
 
@@ -294,7 +388,7 @@ export default class TeamSpawner {
         this.updateSpawnCounter(flagName, spec, flag, teamID);
 
         return { teamID };
-    }
+    },
 
     /**
      * 将孵化旗入队（按房间分桶）。
@@ -302,44 +396,44 @@ export default class TeamSpawner {
      * @remarks
      * 入队只存 flagName，避免复制配置/颜色等信息；flag 本身是唯一真源。
      */
-    private static enqueue(roomName: string, flagName: string): void {
-        const root = getTeamSpawnQueue() as any;
-        if (!root[roomName]) root[roomName] = { queue: [], active: undefined };
+    enqueue(roomName: string, flagName: string): void {
+        const root = getTeamSpawnQueue();
+        if (!root[roomName]) root[roomName] = { queue: [] };
         if (!root[roomName].queue) root[roomName].queue = [];
         root[roomName].queue.push({ flagName, enqueueTime: Game.time });
-    }
+    },
 
     /**
      * 清理队列中的失效请求（flag 不存在/孵化房不匹配等）。
      */
-    private static cleanupQueue(roomName: string, entry: any, specs: Map<string, TeamSpawnSpec>): void {
+    cleanupQueue(roomName: string, entry: TeamSpawnQueueEntry, specs: Map<string, TeamSpawnSpec>): void {
         if (!entry.queue || !entry.queue.length) return;
-        entry.queue = entry.queue.filter((r: any) => {
+        entry.queue = entry.queue.filter((r) => {
             if (!r || !r.flagName) return false;
             if (!Game.flags[r.flagName]) return false;
             return specs.get(r.flagName)?.spawnRoomName === roomName;
         });
-    }
+    },
 
     /**
      * 判断旗帜是否已在指定房间的队列中。
      */
-    private static isFlagQueued(roomName: string, flagName: string): boolean {
-        const root = getTeamSpawnQueue() as any;
+    isFlagQueued(roomName: string, flagName: string): boolean {
+        const root = getTeamSpawnQueue();
         const entry = root?.[roomName];
         if (!entry?.queue) return false;
-        return entry.queue.some((r: any) => r?.flagName === flagName);
-    }
+        return entry.queue.some((r: { flagName?: string }) => r?.flagName === flagName);
+    },
 
     /**
      * 判断旗帜是否正在作为该房间的 active 孵化请求执行中。
      */
-    private static isFlagActive(roomName: string, flagName: string): boolean {
-        const root = getTeamSpawnQueue() as any;
+    isFlagActive(roomName: string, flagName: string): boolean {
+        const root = getTeamSpawnQueue();
         const entry = root?.[roomName];
         if (!entry?.active) return false;
         return entry.active.flagName === flagName;
-    }
+    },
 
     /**
      * 在队列重启/Memory 丢失 active 时，尝试从现存 TeamData 推断一个 active team。
@@ -348,8 +442,8 @@ export default class TeamSpawner {
      * - 只选择 homeRoom 匹配且 status=ready 的队伍。\n
      * - 选择 time 最新的一支，避免误锁住更早的残留队伍。
      */
-    private static inferActiveTeamID(roomName: string, ignoreTeams?: Record<string, number>): string | undefined {
-        const teams = getTeamData() as any;
+    inferActiveTeamID(roomName: string, ignoreTeams?: Record<string, number>): string | undefined {
+        const teams = getTeamData() as Record<string, TeamDataSnapshot | undefined>;
         if (!teams) return;
         let best: { id: string; time: number } | undefined;
         for (const teamID in teams) {
@@ -361,7 +455,7 @@ export default class TeamSpawner {
             if (!best || (t.time || 0) > best.time) best = { id: teamID, time: t.time || 0 };
         }
         return best?.id;
-    }
+    },
 
     /**
      * 判断 active 是否应当结束（释放房间孵化锁）。
@@ -372,13 +466,23 @@ export default class TeamSpawner {
      * - status 已不为 ready 或成员齐全\n
      * - 超时（ACTIVE_TTL）：强制释放，并记录一次日志
      */
-    private static isActiveDone(active: any): boolean {
-        const teamID: string | undefined = active?.teamID;
-        if (!teamID) return true;
-        const teamData = getTeamData(teamID) as any;
+    isActiveDone(activeArg: TeamSpawnQueueEntry['active']): boolean {
+        const active = activeArg;
+        if (!active?.teamID) return true;
+        const teamID = active.teamID;
+        const teamData = getTeamData(teamID) as TeamDataSnapshot | undefined;
         if (!teamData) return true;
         if (teamData.status && teamData.status !== 'ready') return true;
         if (teamData.creeps && teamData.num && teamData.creeps.length >= teamData.num) return true;
+        // 孵化已交 TeamPendingSpawns 跨 tick 自理: 锁不再等服务出生,
+        // 否则建队到满员期间 (~600t) 后续建队全部排队饿死
+        if (getTeamPendingSpawns()?.[teamID]?.members?.length) return true;
+        // infer 接管的 ready 队: 宽限期后仍未满且无 pending (能量不足等),
+        // 不再无限锁住队列, 释放给下一队 (队本身由 pending/reinforce 继续)
+        const inferredAt = active?.inferredAt;
+        if (typeof inferredAt === 'number' && Game.time - inferredAt > TeamSpawner.INFER_GRACE_TICKS) {
+            return true;
+        }
 
         const startTime = typeof active.startTime === 'number' ? active.startTime : teamData.time;
         if (startTime && Game.time - startTime > TeamSpawner.activeTtl) {
@@ -388,15 +492,21 @@ export default class TeamSpawner {
             return true;
         }
         return false;
-    }
+    },
+
+    /**
+     * inferActive 接管冷却: 接管后短暂宽限 (能量不足重试期), 宽限内锁不被
+     * infer 复活, 宽限期后仍 ready 未满且无 pending → 释放让位给下一队。
+     */
+    INFER_GRACE_TICKS: 30,
 
     /**
      * 超时后短期忽略某个 teamID，避免同 tick 反复推断 active。
      */
-    private static ignoreTeam(entry: any, teamID: string): void {
+    ignoreTeam(entry: TeamSpawnQueueEntry, teamID: string): void {
         if (!entry.ignoreTeams) entry.ignoreTeams = {};
         entry.ignoreTeams[teamID] = Game.time + TeamSpawner.IGNORE_TTL_AFTER_TIMEOUT;
-    }
+    },
 
     /**
      * 判断当前 tick 是否允许执行一次孵化（基于目标房间状态与间隔）。
@@ -407,11 +517,11 @@ export default class TeamSpawner {
      *   （ATK 不做此拦截——要塞目标可能本就无主，插旗即打）。\n
      * - 间隔：TEAM_ 缺省 1000，ATK 缺省 500（解析期已归一进 spec）。
      */
-    private static canSpawnNow(spec: TeamSpawnSpec, flag: Flag, flagMemory: FlagMemory): boolean {
+    canSpawnNow(spec: TeamSpawnSpec, flag: Flag, flagMemory: FlagMemory): boolean {
         // 如果有视野, 检查目标房间（ATK 的目标房可能不是旗所在房）
         const targetRoom = spec.targetRoom ? Game.rooms[spec.targetRoom] : flag.room;
         if (targetRoom) {
-            if (spec.blockUnownedController && targetRoom.controller?.level! < 1) {
+            if (spec.blockUnownedController && (targetRoom.controller?.level ?? 0) < 1) {
                 flagMemory['spawnCount'] = 2e32;
             } else if (targetRoom.controller?.safeMode) {
                 flagMemory['lastTime'] = Game.time + targetRoom.controller.safeMode;
@@ -424,11 +534,11 @@ export default class TeamSpawner {
 
         // 场上队伍上限（spec.teamCap 存在时生效）
         if (spec.teamCap) {
-            const teams = getTeamData() as any;
+            const teams = getTeamData() as Record<string, TeamDataSnapshot | undefined>;
             if (teams && Object.keys(teams).length >= spec.teamCap) return false;
         }
         return true;
-    }
+    },
 
     /**
      * 计算整支小队所需的 boost 资源数量。
@@ -440,21 +550,21 @@ export default class TeamSpawner {
      * 当前规则按 bodypart 数量 * 30 估算化合物消耗。\n
      * `boostmap` 的 key 为 bodypart 常量（如 `ATTACK/HEAL`），value 为对应 boost 资源名（如 `XUH2O`）。
      */
-    private static calcBoostNeeds(Team_Config: any[]): Record<string, number> {
+    calcBoostNeeds(Team_Config: TeamMemberConfig[]): Record<string, number> {
         const RES_MAP: Record<string, number> = {};
         for (const c of Team_Config) {
             if (!c || !c.boostmap) continue;
             for (const part of c.bodypart) {
                 const partType = part[0];
-                const partNum = part[1];
-                const boostType = c.boostmap[partType];
+                const partNum = part[1] ?? 0;
+                const boostType = c.boostmap[String(partType)];
                 if (!boostType) continue;
-                if (RES_MAP[boostType]) RES_MAP[boostType] += partNum * 30;
-                else RES_MAP[boostType] = partNum * 30;
+                if (RES_MAP[boostType]) RES_MAP[boostType] += (partNum as number) * 30;
+                else RES_MAP[boostType] = (partNum as number) * 30;
             }
         }
         return RES_MAP;
-    }
+    },
 
     /**
      * 检查房间内 boost 资源是否满足需求。
@@ -470,11 +580,11 @@ export default class TeamSpawner {
      * 这里沿用原实现的资源读取方式：`room[res]`。\n
      * 如果你后续把资源存储抽象成 `room.storage/terminal` 统计，这里是最适合统一改造的入口。
      */
-    private static ensureBoostResources(room: Room, RES_MAP: Record<string, number>, flagName: string, flag: Flag, keepFlag = false): boolean {
+    ensureBoostResources(room: Room, RES_MAP: Record<string, number>, flagName: string, flag: Flag, keepFlag = false): boolean {
         if (!RES_MAP || Object.keys(RES_MAP).length === 0) return true;
 
-        const ok = Object.keys(RES_MAP).every(res => {
-            if ((room as any) [res] > RES_MAP[res]!) return true;
+        const ok = Object.keys(RES_MAP).every((res: string) => {
+            if (((room as unknown as Record<string, number>)[res] ?? 0) > (RES_MAP[res] ?? Infinity)) return true;
             console.log(`BOOST资源${res}不足.`);
             return false;
         });
@@ -485,7 +595,7 @@ export default class TeamSpawner {
             return false;
         }
         return true;
-    }
+    },
 
     /**
      * 创建队伍数据并在地图上创建 `Team-xxxx` 标记旗。
@@ -499,11 +609,15 @@ export default class TeamSpawner {
      * - 队伍初始状态设为 `ready`，由 TeamController 检测成员齐全后切到 `attack`。\n
      * - `try/catch` 分支用于处理 `createFlag` 失败时的兜底：先在 (0,0) 建旗，再写入 Memory.flags 的 setPosition。
      */
-    private static createTeam(teamID: string, Team_Config: any[], room: Room, flag: Flag, configKey: string): void {
+    createTeam(teamID: string, Team_Config: TeamMemberConfig[], room: Room, flag: Flag, configKey: string): void {
         // 创建小队
         const teamMem = ensureTeamData(teamID);
-        // 配置键推导队形：/5 → cross（八向十字）、/9 → square3（三方阵），其余 line
-        const formation = /\/5$/.test(configKey) ? 'cross' : /\/9$/.test(configKey) ? 'square3' : 'line';
+        // 配置键推导队形：/4 且含 2 个以上治疗成员 → quad（2x2 抗伤阵），/5 → cross（八向十字）、/9 → square3（三方阵），其余 line
+        const healCount = Team_Config.filter((m: TeamMemberConfig) => m?.unit === 'team-heal').length;
+        const formation = configKey.endsWith('/9') ? 'square3'
+            : configKey.endsWith('/5') ? 'cross'
+            : (Team_Config.length === 4 && healCount >= 2) ? 'quad'
+            : 'line';
         Object.assign(teamMem, {
             name: teamID,
             status: 'ready',
@@ -514,36 +628,44 @@ export default class TeamSpawner {
             time: Game.time,
             homeRoom: room.name,
             targetRoom: flag.pos.roomName,
+            configKey,
         });
         try {
-            // pos.createFlag 已重写，理论上无视野房可用
-            const result = flag.pos.createFlag(`Team-${teamID}`, flag.color, flag.secondaryColor) as number;
-            // 建不出就不建——无旗队伍按 targetRoom 推进开打（GatherLine/execMove/chooseTargets 均有无旗锚点）
-        } catch (e) {
+            // pos.createFlag 原型重写 (伪 Room 借原生实现): 无视野目标房也能建指挥旗;
+            // 继承指令旗颜色, 保留 actionMode/targetMode 语义
+            flag.pos.createFlag(`Team-${teamID}`, flag.color, flag.secondaryColor) as number;
+        } catch {
             // 引擎抛异常口径：放弃建旗
         }
-    }
+    },
 
     /**
      * 下发孵化任务：为配置中的每个角色创建 SpawnMission。
      *
      * @param teamID 队伍 ID（写入 creep memory，用于归队）
-     * @param Team_Config 小队配置数组（包含 role/bodypart/boostmap）
+     * @param Team_Config 小队配置数组（包含 unit/bodypart/boostmap）
      * @param room 孵化房间（通过 `room.SpawnMissionAdd` 下发任务）
      *
      * @remarks
-     * `compressBodyConfig` 用于把 `[ [part, count], ... ]` 压缩成孵化系统可识别的格式。\n
+     * 要塞服口径：不一次性循环 directSpawn（单 spawn 一 tick 仅能下一单，其余成员会丢失）。
+     * 改为将全部成员写入待补孵队列，由 retryPendingSpawns() 每 tick 逐名重试直至全部出生。
+     * bodypart 为 `[[part, count], ...]` 压缩格式，须展开为逐部件数组
+     * （`.flat()` 会把计数混进 body 导致 ERR_INVALID_ARGS，见 broker invalid 日志）。
      * 这里保持原调用参数不变，避免影响孵化系统的调度优先级与任务结构。
      */
-    private static spawnTeamCreeps(teamID: string, Team_Config: any[], room: Room): void {
-        // 孵化小队成员 (直接孵化, 绕池)
-        for (const c of Team_Config) {
-            directSpawn(room, c.role, {
-                teamID,
-                ...(isBoostResCheckEnabled() ? { boostmap: { ...c.boostmap } } : {}),
-            }, (c.bodypart as BodyPartConstant[]).flat());
-        }
-    }
+    spawnTeamCreeps(teamID: string, Team_Config: TeamMemberConfig[], room: Room): void {
+        getTeamPendingSpawns()[teamID] = {
+            roomName: room.name,
+            members: Team_Config.map((c) => ({
+                unit: c.unit,
+                memory: {
+                    teamID,
+                    ...(isBoostResCheckEnabled() ? { boostmap: { ...c.boostmap } } : {}),
+                } as CreepMemory,
+                body: expandBodyParts(c.bodypart),
+            })),
+        };
+    },
 
     /**
      * 更新孵化计数与清理指令旗。
@@ -559,7 +681,7 @@ export default class TeamSpawner {
      * - ATK 不带 `N`（或 N0）：无限派兵。\n
      * - 达到上限：移除旗并清理 `Memory.flags[flagName]`。
      */
-    private static updateSpawnCounter(flagName: string, spec: TeamSpawnSpec, flag: Flag, teamID: string): void {
+    updateSpawnCounter(flagName: string, spec: TeamSpawnSpec, flag: Flag, teamID: string): void {
         const flagMemory = flag.memory;
 
         // 孵化计数
@@ -576,11 +698,11 @@ export default class TeamSpawner {
         }
 
         if (flagMemory['spawnCount'] >= maxCount) {
-            flag.remove();
+            combatRemoveFlag(flagName);
             log('TeamModule', flagName, '孵化数量已满');
             delete Memory.flags[flagName];
         }
-    }
+    },
 
     /**
      * 移除旗帜并按需清理对应的 `Memory.flags` 数据。
@@ -589,10 +711,10 @@ export default class TeamSpawner {
      * @param flag 旗帜对象
      * @param withMemory 是否同时清理 `Memory.flags[flagName]`
      */
-    private static removeFlagAndMemory(flagName: string, flag: Flag, withMemory: boolean): void {
-        flag.remove();
+    removeFlagAndMemory(flagName: string, flag: Flag, withMemory: boolean): void {
+        combatRemoveFlag(flagName);
         if (withMemory) delete Memory.flags[flagName];
-    }
+    },
 
     /**
      * 生成不与现存队伍冲突的 4 位队伍 ID（36 进制大写）。
@@ -603,7 +725,7 @@ export default class TeamSpawner {
      * 以 `Game.time` 混合随机数，存在极低概率碰撞；若碰撞则递归重试。\n
      * 这里依赖 `Memory.Nexus.TeamData` 作为“已占用 ID 集合”。
      */
-    private static genTeamID(): string {
+    genTeamID(): string {
         const gen = (): string => {
             const id = (Game.time * 36 * 36 + Math.floor(Math.random() * 36 * 36))
                 .toString(36).slice(-4).toUpperCase();
@@ -611,5 +733,7 @@ export default class TeamSpawner {
             return id;
         };
         return gen();
-    }
-}
+    },
+};
+
+export default TeamSpawner;

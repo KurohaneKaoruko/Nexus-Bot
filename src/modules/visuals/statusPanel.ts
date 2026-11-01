@@ -10,7 +10,7 @@ import { unitCode } from "@/constant/UnitConstant";
 import type { Posture } from "@/core/store/memorySchema";
 import { economyIndicators, type EconomyIndicators } from "@/modules/economy";
 import { strategySnapshot, roomModeFor, type StrategySnapshot } from "@/modules/strategy";
-import { clusterSnapshot, type ClusterSnapshot } from "@/modules/cluster";
+import { clusterSnapshot, squadBenefitSnapshot, type ClusterSnapshot } from "@/modules/cluster";
 import { defenseSnapshot, type DefenseSnapshot } from "@/modules/defense";
 import { HUD_BODY_FONT, HUD_THEME, type HudLine } from "@/modules/visuals/roomVisuals";
 
@@ -18,6 +18,7 @@ import { HUD_BODY_FONT, HUD_THEME, type HudLine } from "@/modules/visuals/roomVi
 let lastEconomy: EconomyIndicators | null = null;
 let lastStrategy: StrategySnapshot | null = null;
 let lastCluster: ClusterSnapshot | null = null;
+let lastSquadBenefit: ReturnType<typeof squadBenefitSnapshot> = [];
 let lastDefense: DefenseSnapshot | null = null;
 let lastModes: Record<string, string> = {};
 
@@ -118,12 +119,12 @@ function worldHudLines(ctx: TickContext, room: Room): HudLine[] {
 	lines.push({ text: `任务  活 ${active} · 待 ${avail}`, color: T.text });
 
 	// 编制: 全名经 UNIT_CODES 折叠为代号 (H/C/U/W...), 未收录回退大写
-	const roles = new Map<string, number>();
+	const units = new Map<string, number>();
 	for (const u of Object.values(ctx.memory.units)) {
 		const code = unitCode(u.unitCode);
-		roles.set(code, (roles.get(code) ?? 0) + 1);
+		units.set(code, (units.get(code) ?? 0) + 1);
 	}
-	const roster = [...roles]
+	const roster = [...units]
 		.sort()
 		.map(([code, n]) => `${code}×${n}`)
 		.join(" ");
@@ -133,7 +134,7 @@ function worldHudLines(ctx: TickContext, room: Room): HudLine[] {
 	const indicators = economyIndicators(ctx);
 	const diagnosis = ctx.memory.economy.diagnosis;
 	const utilization =
-		indicators.haulUtilization >= 0 ? Math.round(indicators.haulUtilization * 100) : 0;
+		indicators.carryUtilization >= 0 ? Math.round(indicators.carryUtilization * 100) : 0;
 	const harvest =
 		indicators.sourceHarvestEfficiency >= 0
 			? Math.round(indicators.sourceHarvestEfficiency * 100)
@@ -160,6 +161,19 @@ function worldHudLines(ctx: TickContext, room: Room): HudLine[] {
 			color: defense.tier === "peace" ? T.dim : T.bad,
 		});
 	}
+
+	// 外矿: 本房殖民地的房级状态一行 (specs/external-mining §24.7;
+	// 本房是母房才显示——外矿房面板无母房上下文, 不重复渲染)
+	const colony = ctx.memory.remotes?.[room.name];
+	if (colony) {
+		const rooms = Object.entries(colony.rooms)
+			.map(([name, r]) => `${name.slice(-3)}:${r.state.slice(0, 3)}`)
+			.join(" ");
+		if (rooms) {
+			const hasActive = Object.values(colony.rooms).some((r) => r.state === "active");
+			lines.push({ text: `外矿  ${rooms}`, color: hasActive ? T.good : T.dim });
+		}
+	}
 	return lines;
 }
 
@@ -170,6 +184,8 @@ function registerQueries(): void {
 	query.strategy = () => lastStrategy;
 	query.defense = () => lastDefense;
 	query.cluster = () => lastCluster;
+	// 编队收益对比 (specs/squad-coordination-metrics): 协同是否值得开启的可取证口径
+	query.squadBenefit = () => lastSquadBenefit;
 	query.modes = () => lastModes;
 	(globalThis as unknown as Record<string, unknown>).Nexus = query;
 }
@@ -182,6 +198,7 @@ export function drawStatusPanel(ctx: TickContext): void {
 	lastStrategy = strategySnapshot(ctx);
 	lastDefense = defenseSnapshot(ctx);
 	lastCluster = clusterSnapshot(ctx);
+	lastSquadBenefit = squadBenefitSnapshot(ctx);
 	const modes: Record<string, string> = {};
 	for (const room of Object.values(Game.rooms)) {
 		if (room.controller?.my) {

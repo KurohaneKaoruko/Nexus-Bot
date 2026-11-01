@@ -37,29 +37,29 @@ export default {
                 let total = amount;
                 const RESOURCE_ABBREVIATIONS = BASE_CONFIG.RESOURCE_ABBREVIATIONS;
                 type = RESOURCE_ABBREVIATIONS[type] || type;
-                for (const room of Object.values(Game.rooms)) {
-                    if (room.name == target) continue;
-                    const terminal = room.terminal;
+                for (const sendRoom of Object.values(Game.rooms)) {
+                    if (sendRoom.name == target) continue;
+                    const terminal = sendRoom.terminal;
                     if (!terminal || terminal.cooldown !== 0) continue;
-                    let amount = Math.min(total, (terminal.store as any) [type] || 0);
-                    if(!amount) continue;
-                    let cost = Game.market.calcTransactionCost(amount, room.name, target);
-                    if(type == RESOURCE_ENERGY && amount + cost > (terminal.store as any) [type]) {
-                        amount = amount - cost;
-                        amount = Math.floor(amount);
+                    let sendAmount = Math.min(total, (terminal.store as any) [type] || 0);
+                    if(!sendAmount) continue;
+                    let cost = Game.market.calcTransactionCost(sendAmount, sendRoom.name, target);
+                    if(type == RESOURCE_ENERGY && sendAmount + cost > (terminal.store as any) [type]) {
+                        sendAmount = sendAmount - cost;
+                        sendAmount = Math.floor(sendAmount);
                     } else if(cost > terminal.store[RESOURCE_ENERGY]) {
-                        amount = amount * (terminal.store[RESOURCE_ENERGY] / cost);
-                        amount = Math.floor(amount);
+                        sendAmount = sendAmount * (terminal.store[RESOURCE_ENERGY] / cost);
+                        sendAmount = Math.floor(sendAmount);
                     }
-                    const result = terminal.send(type, amount, target);
+                    const result = terminal.send(type, sendAmount, target);
                     if(result === OK) {
-                        cost = Game.market.calcTransactionCost(amount, room.name, target);
-                        log('资源发送', `${room.name} -> ${target}, ${amount} ${type}, 传输成本 ${cost}`);
-                        total -= amount;
+                        cost = Game.market.calcTransactionCost(sendAmount, sendRoom.name, target);
+                        log('资源发送', `${sendRoom.name} -> ${target}, ${sendAmount} ${type}, 传输成本 ${cost}`);
+                        total -= sendAmount;
                         if(total <= 0) break;
                     }
                     else {
-                        log('资源发送', `${room.name} 发送资源失败，错误代码：${result}`);
+                        log('资源发送', `${sendRoom.name} 发送资源失败，错误代码：${result}`);
                     }
                 }
                 return OK;

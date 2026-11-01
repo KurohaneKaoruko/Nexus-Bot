@@ -1,6 +1,6 @@
 
 import { parseShardRoomName } from '@/utils/shardRoom';
-import { getKnownShardNames, pushInterShardCommand, readInterShardLocalRoot, readInterShardRemoteRoot } from '@/modules/intershard/interShard';
+import { getKnownShardNames, pushInterShardCommand, readInterShardLocalRoot, readInterShardRemoteRoot } from '@/modules/intershard';
 import { getBotMemory } from '@/core/store/accessor';
 
 /**

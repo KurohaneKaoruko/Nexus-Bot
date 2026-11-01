@@ -30,3 +30,7 @@ export const Visuals: TickModule = {
 		}
 	},
 };
+
+// ── 公共面: 面板/标注 (跨域按需绘制) ──
+export { drawLabInfo, drawSpawnInfo } from "@/modules/visuals/roomVisuals";
+export { HighwayMineVisual } from "@/modules/visuals/highwayMine";

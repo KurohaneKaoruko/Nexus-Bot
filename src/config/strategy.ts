@@ -43,7 +43,7 @@ export interface StrategyConfig {
 	/** 节流期 upgrade/build 既有任务的降权幅度 */
 	suppressPenalty: number;
 	/** survive 姿态暂停新排的非关键岗位 (缺口与替补均停) */
-	surviveSpawnPauseRoles: readonly string[];
+	surviveSpawnPauseUnits: readonly string[];
 }
 
 export const STRATEGY_CONFIG: StrategyConfig = {
@@ -51,9 +51,12 @@ export const STRATEGY_CONFIG: StrategyConfig = {
 	minDwellTicks: 600,
 	transitionLogMax: 10,
 	stockFloors: {
-		criticalFactor: 2,
-		healthyFactor: 5,
-		surplusFactor: 12,
+		/** 涓流期重校准 (race 对照): 无 storage 的低 RCL 期库存天然贴地
+		 *  (孵化即时消费), 瞬时存量当危机信号会 develop/survive 600t 起振,
+		 *  upgrade 被 suppress 5300t (sim 实证 L2 拖到 5907, race 参照 676) */
+		criticalFactor: 8,
+		healthyFactor: 20,
+		surplusFactor: 40,
 	},
 	starvationTrigger: 100,
 	posturePolicy: {
@@ -63,13 +66,15 @@ export const STRATEGY_CONFIG: StrategyConfig = {
 		war: { reserveFloorFactor: 3, riskTolerance: 0.1, targetStockFactor: 3 },
 	},
 	postureBias: {
-		survive: { fill_spawn: 20, harvest: 10, haul: 5, build: -20, upgrade: -25 },
+		/** 等级偏置 (小者优先): survive 提前供能/采集、推后建造/升级 */
+		survive: { fill_spawn: -1, harvest: -1, carry: 0, build: 2, upgrade: 2 },
 		develop: {},
 		expand: {},
-		war: { fill_spawn: 10, defend: 10, repair: 5, build: -20, upgrade: -25 },
+		war: { fill_spawn: -1, defend: -1, repair: 0, build: 2, upgrade: 2 },
 	},
-	suppressPenalty: 40,
-	surviveSpawnPauseRoles: ["upgrader", "worker"],
+	/** 节流期 upgrade/build 既有任务的降级幅度 (等级数, 正数 = 排后) */
+	suppressPenalty: 3,
+	surviveSpawnPauseUnits: ["upgrader", "worker"],
 };
 
 /** 库存阈值绝对值: 系数 × sourceCount × Source 理论产能 */

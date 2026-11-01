@@ -1,10 +1,10 @@
 /**
  * 布局控制台: 设置/构建/可视化/维护房间布局 (主线 planner schema 为唯一真相源)。
  */
-import { compress, compressBatch, decompressBatch } from '@/utils/compress';
-import LayoutVisual from '@/modules/planner/layoutVisual';
-import { LayoutPlanner } from '@/modules/planner/layoutPlanner';
-import { layoutRoot, ensureLayoutRecord } from '@/modules/planner/memory';
+import { compress, decompressBatch } from '@/utils/compress';
+import { LayoutVisual } from '@/modules/planner';
+import { LayoutPlanner } from '@/modules/planner';
+import { layoutRoot, ensureLayoutRecord } from '@/modules/planner';
 import type { LayoutRoomRecord } from '@/core/store/memorySchema';
 import { getRoomData } from '@/core/store/accessor';
 import { resolveRoomName } from '@/console/argUtils';
@@ -39,14 +39,18 @@ function centerFromFlagsOrArgs(roomName: string, x?: number, y?: number): { x: n
 	return { x: cx, y: cy };
 }
 
-/** RoomData 的 layout/center 镜像写入 */
-function mirrorToRoomData(roomName: string, layout: string, center: { x: number; y: number }): void {
+/** RoomData 的 layout/center 镜像写入；无中心布局清除旧 center */
+function mirrorToRoomData(roomName: string, layout: string, center?: { x: number; y: number }): void {
 	const roomData = getRoomData(roomName) as Record<string, unknown> | undefined;
-	if (roomData) {
-		roomData['layout'] = layout;
-		roomData['center'] = { x: center.x, y: center.y };
-	}
+	if (!roomData) return;
+	roomData['layout'] = layout;
+	if (center) roomData['center'] = { x: center.x, y: center.y };
+	else delete roomData['center'];
 }
+
+/** 当前支持的布局：ros 动态默认 / mini 专用 / race 静态模板 */
+const LAYOUT_SET = new Set(['auto', 'mini', 'race']);
+const CENTERLESS_LAYOUT_SET = new Set(['auto', 'mini']);
 
 /** BFS 泛洪: 从起点向四邻扩散, 对每个未访问邻格回调其结构列表 */
 function floodWalk(roomName: string, seeds: Array<[number, number]>, visit: (x: number, y: number, structs: Structure[]) => void): void {
@@ -103,6 +107,15 @@ function applyPick(list: number[], picked: number[], operate: number): number {
 
 function recordDataOf(roomName: string): Record<string, number[]> {
 	return ensureLayoutRecord(roomName).data;
+}
+
+/** 按已保存布局记录渲染；只读，不重算布局 */
+function showRecordLayout(roomName: string, record: LayoutRoomRecord): void {
+	const structMap: Record<string, Array<[number, number]>> = {};
+	for (const s in record.data) {
+		structMap[s] = decompressBatch(record.data[s] ?? []) as Array<[number, number]>;
+	}
+	LayoutVisual.showRoomStructures(roomName, structMap);
 }
 
 /** 单类结构 (rampart/wall) 的旗帜泛洪编辑 */
@@ -194,13 +207,23 @@ export default {
 					record.type = 'auto';
 					delete record.center;
 				}
+				mirrorToRoomData(roomName, 'auto');
 				botLog(`已清除 ${roomName} 的布局设置。`);
+				return OK;
+			}
+			if (!LAYOUT_SET.has(layout)) {
+				return Error(`仅支持 auto、mini、race 三种布局。`);
+			}
+			const record = ensureLayoutRecord(roomName);
+			record.type = layout as LayoutRoomRecord['type'];
+			if (CENTERLESS_LAYOUT_SET.has(layout)) {
+				delete record.center;
+				mirrorToRoomData(roomName, layout);
+				botLog(`已设置 ${roomName} 的布局为 ${layout}（无需布局中心）。`);
 				return OK;
 			}
 			const center = centerFromFlagsOrArgs(roomName, x, y);
 			if (center instanceof Error) return center;
-			const record = ensureLayoutRecord(roomName);
-			record.type = layout as LayoutRoomRecord['type'];
 			record.center = { x: center.x, y: center.y };
 			mirrorToRoomData(roomName, layout, center);
 			botLog(`已设置 ${roomName} 的布局为 ${layout}, 布局中心为 (${center.x},${center.y})`);
@@ -231,7 +254,7 @@ export default {
 			if (err) return err;
 			const record = layoutRoot().rooms[roomName];
 			if (!record || !Object.keys(record.data).length) {
-				console.log(`房间 ${roomName} 的布局不存在，请先执行 layout.build('${roomName}') 或 layout.build('${roomName}', 'auto'|'63auto'|静态布局名)`);
+				console.log(`房间 ${roomName} 的布局不存在，请先执行 layout.build('${roomName}') 或 layout.build('${roomName}', 'auto'|'mini'|'race')`);
 				return Error('布局不存在');
 			}
 			if (structType && (!record.data[structType] || !record.data[structType].length)) {
@@ -260,7 +283,7 @@ export default {
 				return Error(`房间 ${roomName} 未添加到控制列表。`);
 			}
 			const record = layoutRoot().rooms[roomName];
-			if ((!layoutType || layoutType === '') && record && Object.keys(record.data).length) {
+			if ((!layoutType || layoutType === '') && record && LAYOUT_SET.has(record.type) && Object.keys(record.data).length) {
 				if (!opts?.quiet) console.log(`房间 ${roomName} 的布局已存在，未指定布局类型，本次不覆盖。`);
 				return OK;
 			}
@@ -270,12 +293,18 @@ export default {
 				if (setCode !== OK) return setCode;
 			}
 
-			const currentLayout = layoutType ?? record?.type ?? 'auto';
+			let currentLayout = layoutType ?? record?.type ?? 'auto';
+			if (!LAYOUT_SET.has(currentLayout)) {
+				// 旧 Memory 中的 63auto/静态布局已退役，回落到 ros 默认
+				currentLayout = 'auto';
+				if (record) {
+					record.type = 'auto';
+					delete record.center;
+				}
+			}
 			let code: number;
-			if (!currentLayout || currentLayout === 'auto') {
+			if (currentLayout === 'auto') {
 				code = LayoutPlanner.buildDynamic(roomName, opts);
-			} else if (currentLayout === '63auto') {
-				code = LayoutPlanner.buildDynamic63(roomName, opts);
 			} else if (currentLayout === 'mini') {
 				code = LayoutPlanner.buildMini(roomName, opts);
 			} else {
@@ -304,25 +333,27 @@ export default {
 			if (roomName && layout) {
 				if (layout === 'auto') {
 					result = LayoutPlanner.visualDynamic(roomName);
-				} else if (layout === '63auto') {
-					result = LayoutPlanner.visualDynamic63(roomName);
-				} else {
+				} else if (layout === 'mini') {
+					const record = layoutRoot().rooms[roomName];
+					if (!record || Object.keys(record.data ?? {}).length === 0) {
+						result = Error(`房间 ${roomName} 的 mini 布局不存在，请先 layout.build('${roomName}','mini')。`);
+					} else {
+						showRecordLayout(roomName, record);
+						result = OK;
+					}
+				} else if (layout === 'race') {
 					result = LayoutPlanner.visualStatic(roomName, layout);
+				} else {
+					result = Error(`仅支持 auto、mini、race 三种布局。`);
 				}
 			} else if (roomName) {
 				const record = layoutRoot().rooms[roomName];
 				if (!record || Object.keys(record?.data ?? {}).length === 0) {
 					console.log(`房间 ${roomName} 的布局不存在，将根据自动布局可视化...`)
-					const layoutType = (getRoomData()[roomName] as { layout?: string } | undefined)?.layout;
-					if (layoutType === '63auto') result = LayoutPlanner.visualDynamic63(roomName);
-					else result = LayoutPlanner.visualDynamic(roomName);
+					result = LayoutPlanner.visualDynamic(roomName);
 				} else {
 					console.log(`将根据房间${roomName}的布局进行可视化...`)
-					const structMap: Record<string, Array<[number, number]>> = {};
-					for (const s in record.data) {
-						structMap[s] = decompressBatch(record.data[s] ?? []) as Array<[number, number]>;
-					}
-					LayoutVisual.showRoomStructures(roomName, structMap);
+					showRecordLayout(roomName, record);
 					result = OK;
 				}
 			} else {

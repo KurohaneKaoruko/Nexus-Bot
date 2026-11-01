@@ -15,8 +15,19 @@ export type CongestionAction = "none" | "repath" | "release";
 /** 上一 Tick 的位置缓存: creep 名 → 坐标 */
 const lastPositions = new Map<string, { x: number; y: number }>();
 
-/** 登记「本 Tick 该单位有移动意图」(由 Broker 的 move 结果回填) */
-export function noteMoveIntent(ctx: TickContext, creepName: string): void {
+/**
+ * 移动执行率滚动窗口 (任务 5.7 契约锚定):
+ * intent = 有移动意图的单位 tick 数, moved = 其中实际发生位移的;
+ * 执行率 = moved / intent, sim 断言口径「不低于 97% 基线」由 diag.moveRate() 消费。
+ * 进程内存态 (跨 tick 累计), 不落 Memory。
+ */
+const moveRateWindow = { intentTicks: 0, movedTicks: 0 };
+
+/** 移动意图场景分布 (任务 5.1): reason 标签 → 窗口内计数; 驱动诊断归因, 不落 Memory */
+const moveReasonCounts = new Map<string, number>();
+
+/** 登记本 tick 移动意图 (由 Broker 的 move 结果回填; reason = 意图场景标签, 5.1) */
+export function noteMoveIntent(ctx: TickContext, creepName: string, reason?: string): void {
 	const blocked = ctx.memory.traffic.blocked;
 	const record = blocked[creepName];
 	if (record) {
@@ -24,7 +35,25 @@ export function noteMoveIntent(ctx: TickContext, creepName: string): void {
 	} else {
 		blocked[creepName] = { count: 0, lastTick: ctx.tick };
 	}
+	if (reason !== undefined) {
+		moveReasonCounts.set(reason, (moveReasonCounts.get(reason) ?? 0) + 1);
+	}
 }
+
+/** 移动执行率摘要 (任务 5.7): 滚动窗口累计口径, 无样本时 null; reasons = 5.1 场景分布 */
+export const moveExecutionRate = (): {
+	rate: number;
+	intentTicks: number;
+	movedTicks: number;
+	reasons: Record<string, number>;
+} | null => {
+	if (moveRateWindow.intentTicks === 0) return null;
+	return {
+		rate: moveRateWindow.movedTicks / moveRateWindow.intentTicks,
+		...moveRateWindow,
+		reasons: Object.fromEntries(moveReasonCounts),
+	};
+};
 
 /**
  * 每 Tick 位置差分 (commit 段 endTickResolve 之后调用, 此时位置已定):
@@ -35,27 +64,27 @@ export function updateCongestion(ctx: TickContext, world: WorldView): void {
 	const traffic = ctx.memory.traffic;
 	const seen = new Set<string>();
 
-	for (const room of Object.values(world.rooms)) {
-		for (const creep of room.creeps) {
-			seen.add(creep.name);
-			const record = traffic.blocked[creep.name];
-			if (!record) {
-				lastPositions.set(creep.name, { x: creep.x, y: creep.y });
-				continue;
-			}
-			const previous = lastPositions.get(creep.name);
+	for (const creep of Object.values(world.units)) {
+		seen.add(creep.name);
+		const record = traffic.blocked[creep.name];
+		if (!record) {
 			lastPositions.set(creep.name, { x: creep.x, y: creep.y });
-			if (previous && previous.x === creep.x && previous.y === creep.y) {
-				record.count += 1;
-				const key = `${room.roomName}:${creep.x}:${creep.y}`;
-				const hotspot = traffic.hotspots[key] ?? { freq: 0, lastTick: ctx.tick };
-				hotspot.freq += 1;
-				hotspot.lastTick = ctx.tick;
-				traffic.hotspots[key] = hotspot;
-			} else {
-				record.count = 0;
-			}
+			continue;
 		}
+		const previous = lastPositions.get(creep.name);
+		lastPositions.set(creep.name, { x: creep.x, y: creep.y });
+		if (previous && previous.x === creep.x && previous.y === creep.y) {
+			record.count += 1;
+			const key = `${creep.roomName}:${creep.x}:${creep.y}`;
+			const hotspot = traffic.hotspots[key] ?? { freq: 0, lastTick: ctx.tick };
+			hotspot.freq += 1;
+			hotspot.lastTick = ctx.tick;
+			traffic.hotspots[key] = hotspot;
+		} else {
+			record.count = 0;
+			moveRateWindow.movedTicks += 1;
+		}
+		moveRateWindow.intentTicks += 1;
 	}
 
 	// 消失单位的位置缓存与超期意图记录淘汰

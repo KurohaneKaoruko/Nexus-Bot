@@ -5,6 +5,8 @@ import { AUTO_MARKET_CONFIG, AUTO_MARKET_DEFAULT } from "@/constant/ResourceCons
 import { getAutoMarketData } from "@/core/store/accessor";
 import { isRoomTickAligned } from "@/utils/roomPhase";
 import { calcTransactionCostSafe, findMyOrderCached, getAllOrdersCached, getEnergyHistoryAvgPrice, getOrderPrice, hasEnergyReceiverRoomCached, hasEnergySupplierRoomCached, hasMarketOrderApi } from "@/utils/marketUtils";
+import { sharedBrokerForDirectCommands } from "@/modules/agents/actionBroker";
+import { industryChangeOrderPrice, industryCreateOrder, industryExtendOrder } from "@/modules/industry/industryAdapter";
 
 const br = '<br/>';
 const LOG_COLORS = {
@@ -31,7 +33,7 @@ const fmtPct = (ratio: number) => `${ratio >= 0 ? '+' : ''}${(ratio * 100).toFix
 
 const logAuto = (lines: string[]) => log('AutoMarket', lines.join(br));
 
-const getResourceIcon = (resourceType: any) => {
+const getResourceIcon = (resourceType: string) => {
     if (resourceType === 'empty') {
         return `<span style="display:inline-block;width:12px;height:12px;border:1px dashed #555;border-radius:2px;margin-right:2px;vertical-align:middle;"></span>`;
     }
@@ -41,9 +43,9 @@ const getResourceIcon = (resourceType: any) => {
     return `<img src="${iconUrl}" alt="${safeType}" style="height:12px;width:14px;object-fit:contain;vertical-align:middle;margin-right:3px;border-radius:2px;" />`;
 };
 
-const resTag = (resType: any, color: string = LOG_COLORS.text) => `${getResourceIcon(resType)}${mono(String(resType), color)}`;
+const resTag = (resType: string, color: string = LOG_COLORS.text) => `${getResourceIcon(resType)}${mono(String(resType), color)}`;
 
-const normalizeResType = (resType: any) => (BASE_CONFIG.RESOURCE_ABBREVIATIONS[resType] || resType) as ResourceConstant;
+const normalizeResType = (resType: string) => (BASE_CONFIG.RESOURCE_ABBREVIATIONS[resType as keyof typeof BASE_CONFIG.RESOURCE_ABBREVIATIONS] || resType) as ResourceConstant;
 
 let cachedEnergyAvgPriceTick = -1;
 let cachedEnergyAvgPrice: number = AUTO_MARKET_CONFIG.energyAvgPriceFallback;
@@ -123,7 +125,7 @@ export function runAutoMarket(room: Room): void {
 }
 
 
-function AutoBuy(roomName: string, item: any) {
+function AutoBuy(roomName: string, item: AutoMarketTask) {
     const amount = item.amount;   // 资源自动购买上限
     const room = Game.rooms[roomName];
     const RES = BASE_CONFIG.RESOURCE_ABBREVIATIONS;
@@ -135,8 +137,8 @@ function AutoBuy(roomName: string, item: any) {
     const storage = room!.storage!;
     if (!terminal) return;
 
-    const terminalAmount = ((terminal.store as any) [resourceType] || 0);
-    const storageAmount = ((room!.storage?.store! as any) [resourceType]! || 0);
+    const terminalAmount = (terminal.store[resourceType] || 0);
+    const storageAmount = ((room!.storage ?? storage).store[resourceType] || 0);
 
     // 资源存量
     let totalAmount = 0;
@@ -170,7 +172,8 @@ function AutoBuy(roomName: string, item: any) {
         const nextPrice = Math.min(suggested, priceLimit);
         const diff = Math.abs(nextPrice - existingOrder.price);
         if (diff >= Math.max(AUTO_MARKET_CONFIG.priceAdjustMinAbs, existingOrder.price * AUTO_MARKET_CONFIG.priceAdjustMinRatio)) {
-            const rc = Game.market.changeOrderPrice(existingOrder.id, nextPrice);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryChangeOrderPrice(existingOrder.id, nextPrice);
             if (rc === OK) {
                 const pct = existingOrder.price ? (nextPrice / existingOrder.price - 1) : 0;
                 logAuto([
@@ -179,21 +182,6 @@ function AutoBuy(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))} | ${kv('建议价', fmtPrice(suggested))} | ${kv('限价', priceLimit === Infinity ? 'INFINITY' : fmtPrice(priceLimit))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_OWNER:
-                        ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                        break;
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('BUY', LOG_COLORS.good, true)} ${c('调价失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('目标价', fmtPrice(nextPrice))} | ${kv('当前价', fmtPrice(existingOrder.price))}`,
@@ -204,7 +192,8 @@ function AutoBuy(roomName: string, item: any) {
 
         const needExtend = Math.max(0, orderAmount - existingOrder.remainingAmount);
         if (needExtend >= minOrderAmount) {
-            const rc = Game.market.extendOrder(existingOrder.id, needExtend);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryExtendOrder(existingOrder.id, needExtend);
             if (rc === OK) {
                 logAuto([
                     `${c('BUY', LOG_COLORS.good, true)} ${c('扩单', LOG_COLORS.theme, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
@@ -212,18 +201,6 @@ function AutoBuy(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('BUY', LOG_COLORS.good, true)} ${c('扩单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('扩单量', String(needExtend))} | ${kv('最小扩单', String(minOrderAmount))}`,
@@ -234,16 +211,15 @@ function AutoBuy(roomName: string, item: any) {
         return OK;
     }
 
-    // 创建订单
+    // 创建订单 (经命令边界同步执行 market 管线: 原生调用权收编进 broker)
     const suggested = getOrderPrice(resourceType, ORDER_BUY);
     if (suggested === null) return;
     const price = Math.min(suggested, priceLimit);
-    const result = Game.market.createOrder({
-        type: ORDER_BUY,
+    const result = industryCreateOrder(room!.name!, {
+        type: 'buy',
         resourceType,
         price,
         totalAmount: orderAmount,
-        roomName: room!.name!
     });
     if (result === OK) {
         logAuto([
@@ -252,24 +228,6 @@ function AutoBuy(roomName: string, item: any) {
             `${kv('限价', priceLimit === Infinity ? 'INFINITY' : fmtPrice(priceLimit))} | ${kv('阈值', `${totalAmount}/${amount} (${orderAmount}>=${minOrderAmount})`)}`,
         ]);
     } else {
-        let ErrorDescription: string;
-        switch (result) {
-            case ERR_NOT_OWNER:
-                ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                break;
-            case ERR_NOT_ENOUGH_RESOURCES:
-                ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                break;
-            case ERR_FULL:
-                ErrorDescription = '您不能创建超过 300 个订单';
-                break;
-            case ERR_INVALID_ARGS:
-                ErrorDescription = '提供了无效的参数';
-                break;
-            default:
-                ErrorDescription = '未知错误';
-                break;
-        }
         logAuto([
             `${c('BUY', LOG_COLORS.good, true)} ${c('创建订单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
             `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(result))} | ${kv('数量', String(orderAmount))} | ${kv('价格', fmtPrice(price))}`,
@@ -280,7 +238,7 @@ function AutoBuy(roomName: string, item: any) {
     return result;
 }
 
-function AutoSell(roomName: string, item: any) {
+function AutoSell(roomName: string, item: AutoMarketTask) {
     const amount = item.amount;
     const room = Game.rooms[roomName];
     const RES = BASE_CONFIG.RESOURCE_ABBREVIATIONS;
@@ -292,8 +250,8 @@ function AutoSell(roomName: string, item: any) {
     const storage = room!.storage!;
     if (!terminal) return;
 
-    const terminalAmount = ((terminal.store as any) [resourceType] || 0);
-    const storageAmount = ((storage?.store as any) [resourceType] || 0);
+    const terminalAmount = (terminal.store[resourceType] || 0);
+    const storageAmount = (storage.store[resourceType] || 0);
     const totalAmount = (!storage || !terminal.pos.inRangeTo(storage, 2)) ? terminalAmount : (terminalAmount + storageAmount);
     
     if (totalAmount < amount) return;
@@ -340,7 +298,8 @@ function AutoSell(roomName: string, item: any) {
         const nextPrice = Math.max(suggested, priceLimit);
         const diff = Math.abs(nextPrice - existingOrder.price);
         if (diff >= Math.max(AUTO_MARKET_CONFIG.priceAdjustMinAbs, existingOrder.price * AUTO_MARKET_CONFIG.priceAdjustMinRatio)) {
-            const rc = Game.market.changeOrderPrice(existingOrder.id, nextPrice);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryChangeOrderPrice(existingOrder.id, nextPrice);
             if (rc === OK) {
                 const pct = existingOrder.price ? (nextPrice / existingOrder.price - 1) : 0;
                 logAuto([
@@ -349,21 +308,6 @@ function AutoSell(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))} | ${kv('建议价', fmtPrice(suggested))} | ${kv('限价', fmtPrice(priceLimit))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_OWNER:
-                        ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                        break;
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('SELL', LOG_COLORS.warning, true)} ${c('调价失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('目标价', fmtPrice(nextPrice))} | ${kv('当前价', fmtPrice(existingOrder.price))}`,
@@ -374,7 +318,8 @@ function AutoSell(roomName: string, item: any) {
 
         const needExtend = Math.max(0, orderAmount - existingOrder.remainingAmount);
         if (needExtend >= minOrderAmount) {
-            const rc = Game.market.extendOrder(existingOrder.id, needExtend);
+            // 经命令边界同步执行 (market 管线): 原生调用权收编进 broker
+            const rc = industryExtendOrder(existingOrder.id, needExtend);
             if (rc === OK) {
                 logAuto([
                     `${c('SELL', LOG_COLORS.warning, true)} ${c('扩单', LOG_COLORS.theme, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
@@ -382,18 +327,6 @@ function AutoSell(roomName: string, item: any) {
                     `${kv('订单', mono(existingOrder.id, LOG_COLORS.neutral))}`,
                 ]);
             } else {
-                let ErrorDescription: string;
-                switch (rc) {
-                    case ERR_NOT_ENOUGH_RESOURCES:
-                        ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                        break;
-                    case ERR_INVALID_ARGS:
-                        ErrorDescription = '提供了无效的参数';
-                        break;
-                    default:
-                        ErrorDescription = '未知错误';
-                        break;
-                }
                 logAuto([
                     `${c('SELL', LOG_COLORS.warning, true)} ${c('扩单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
                     `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(rc))} | ${kv('扩单量', String(needExtend))} | ${kv('最小扩单', String(minOrderAmount))}`,
@@ -404,16 +337,15 @@ function AutoSell(roomName: string, item: any) {
         return OK;
     }
 
-    // 创建订单
+    // 创建订单 (经命令边界同步执行 market 管线: 原生调用权收编进 broker)
     const suggested = suggestedSellPrice;
     if (suggested === null) return;
     const price = Math.max(suggested, priceLimit);
-    const result = Game.market.createOrder({
-        type: ORDER_SELL,
+    const result = industryCreateOrder(room!.name!, {
+        type: 'sell',
         resourceType,
         price,
         totalAmount: orderAmount,
-        roomName: room!.name!
     });
     if (result === OK) {
         logAuto([
@@ -422,24 +354,6 @@ function AutoSell(roomName: string, item: any) {
             `${kv('限价', fmtPrice(priceLimit))} | ${kv('阈值', `${totalAmount}/${amount} (${orderAmount}>=${minOrderAmount})`)}`,
         ]);
     } else {
-        let ErrorDescription: string;
-        switch (result) {
-            case ERR_NOT_OWNER:
-                ErrorDescription = '您不是该房间终端的所有者或者该房间没有终端';
-                break;
-            case ERR_NOT_ENOUGH_RESOURCES:
-                ErrorDescription = '您没有足够的 credit 来缴纳费用';
-                break;
-            case ERR_FULL:
-                ErrorDescription = '您不能创建超过 300 个订单';
-                break;
-            case ERR_INVALID_ARGS:
-                ErrorDescription = '提供了无效的参数';
-                break;
-            default:
-                ErrorDescription = '未知错误';
-                break;
-        }
         logAuto([
             `${c('SELL', LOG_COLORS.warning, true)} ${c('创建订单失败', LOG_COLORS.danger, true)} ${c(room!.name!, LOG_COLORS.theme, true)}`,
             `${kv('资源', resTag(resourceType))} | ${kv('错误码', String(result))} | ${kv('数量', String(orderAmount))} | ${kv('价格', fmtPrice(price))}`,
@@ -450,7 +364,7 @@ function AutoSell(roomName: string, item: any) {
     return result;
 }
 
-function AutoDealBuy(roomName: string, item: any) {
+function AutoDealBuy(roomName: string, item: AutoMarketTask) {
     const amount = item.amount; // 资源数量, 自动出售阈值
     const price = item.price;   // 限制价格
     const room = Game.rooms[roomName];
@@ -462,8 +376,8 @@ function AutoDealBuy(roomName: string, item: any) {
     const terminal = room!.terminal!;
     if (!terminal || terminal.cooldown > 0) return;
 
-    const terminalAmount = (terminal.store as any) [resourceType] || 0;
-    const storageAmount = room!.storage! ? ((room!.storage.store! as any) [resourceType]! || 0) : 0;
+    const terminalAmount = terminal.store[resourceType] || 0;
+    const storageAmount = room!.storage! ? (room!.storage.store[resourceType] || 0) : 0;
     const totalAmount = terminalAmount + storageAmount;
     
     if (totalAmount >= amount) return;
@@ -477,7 +391,7 @@ function AutoDealBuy(roomName: string, item: any) {
 
 }
 
-function AutoDealSell(roomName: string, item: any) {
+function AutoDealSell(roomName: string, item: AutoMarketTask) {
     const amount = item.amount; // 资源数量, 自动出售阈值
     const price = item.price;   // 限制价格
     const room = Game.rooms[roomName];
@@ -488,8 +402,8 @@ function AutoDealSell(roomName: string, item: any) {
     // 检查房间资源储备
     const terminal = room!.terminal!;
     if (!terminal || terminal.cooldown > 0) return;
-    const terminalAmount = (terminal.store as any) [resourceType] || 0;
-    const storageAmount = (room!.storage?.store! as any) [resourceType]! || 0;
+    const terminalAmount = terminal.store[resourceType] || 0;
+    const storageAmount = room!.storage!.store[resourceType] || 0;
     const totalAmount = terminalAmount + storageAmount;
     
     if (totalAmount <= amount) return;
@@ -510,7 +424,7 @@ function AutoDeal(
     amount: number,
     orderType: ORDER_BUY | ORDER_SELL,
     length: number,
-    price: number,
+    price: number | undefined,
     minEffectiveUnitPrice?: number
 ) {
     const room = Game.rooms[roomName];
@@ -634,7 +548,20 @@ function AutoDeal(
         return;
     }
 
-    const result = Game.market.deal(bestOrder.id, TotalDealAmount, roomName);
+    // 经命令边界同步执行 (api/17 market 管线): 原生调用权收编进 broker
+    const dealResult = sharedBrokerForDirectCommands().executeNow({
+        id: `market-deal:${roomName}:${Game.time}:${bestOrder.id}`,
+        tick: Game.time,
+        actorName: roomName!,
+        kind: "marketDeal",
+        pipeline: "market",
+        priority: 50,
+		resourceType: res,
+        amount: TotalDealAmount,
+        payload: { orderId: bestOrder.id },
+        dedupeKey: `market-deal:${roomName}:${Game.time}:${bestOrder.id}`,
+    });
+    const result = dealResult.accepted ? OK : (dealResult.nativeReturnCode ?? ERR_INVALID_ARGS);
 
     const action = orderType === ORDER_SELL ? '购买' : '出售';
     const direction = orderType === ORDER_SELL ? '从' : '向';
@@ -642,15 +569,15 @@ function AutoDeal(
     const r2 = bestOrder.roomName;
 
     if (result === OK) {
-        const amount = TotalDealAmount;
-        const price = TotalPrice.toFixed(3);
+        const dealAmount = TotalDealAmount;
+        const totalPrice = TotalPrice.toFixed(3);
         const energyCost = TransferEnergyCost.toFixed(3);
         const unitPrice = bestCost.toFixed(3);
         const linearDistance = Game.map.getRoomLinearDistance(r1!, r2!);
         logAuto([
             `${c('DEAL', LOG_COLORS.theme, true)} ${c('成功', LOG_COLORS.good, true)} ${c(r1, LOG_COLORS.theme, true)} ${c(direction, LOG_COLORS.neutral)} ${c(r2!, LOG_COLORS.theme, true)} ${c(action, orderType === ORDER_SELL ? LOG_COLORS.good : LOG_COLORS.warning, true)}`,
-            `${kv('资源', resTag(res))} | ${kv('数量', String(amount))} | ${kv('订单', mono(bestOrder.id, LOG_COLORS.neutral))}`,
-            `${kv('挂单价', fmtPrice(bestOrder.price))} | ${kv('总金额', price)} | ${kv('能量成本', energyCost)}`,
+            `${kv('资源', resTag(res))} | ${kv('数量', String(dealAmount))} | ${kv('订单', mono(bestOrder.id, LOG_COLORS.neutral))}`,
+            `${kv('挂单价', fmtPrice(bestOrder.price))} | ${kv('总金额', totalPrice)} | ${kv('能量成本', energyCost)}`,
             `${kv('综合单价', unitPrice)} | ${kv('距离', String(linearDistance))} | ${kv('credits', Game.market.credits.toFixed(0))}`,
         ]);
     } else {

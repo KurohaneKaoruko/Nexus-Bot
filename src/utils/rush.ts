@@ -1,5 +1,6 @@
-import { ROLES } from '@/constant/CreepConstant';
+import { UNITS } from '@/constant/CreepConstant';
 import { THRESHOLDS } from '@/constant/Thresholds';
+import { buildRushUpgraderBody as buildUpgraderBodyFlat } from '@/utils/rushBodies';
 
 /**
  * rush 体型生成器：按能量预算现算体型，替代固定分级表。
@@ -52,8 +53,9 @@ const maxHarvestWork = (): number => {
     return Math.max(1, Math.floor(perTick / 2));
 };
 
-/** harvester 最低孵化预算：[W1,M1] = 150 */
-export const RUSH_HARVESTER_MIN_BUDGET = 150;
+/** harvester 最低孵化预算: [W2,M1] = 250——双 WORK 起步, 单源收入 4/t
+ *  (W1 起步把双源房经济锁死 2/t, sprint sim 实锤; 与 rushBodies 主线口径一致) */
+export const RUSH_HARVESTER_MIN_BUDGET = 250;
 
 /**
  * harvester 体型：
@@ -129,9 +131,9 @@ export const RUSH_CARRIER_MIN_BUDGET = CARRIER_GROUP_COST;
 const CARRIER_MAX_GROUPS = 12;
 
 /**
- * @deprecated 已被 `GetRoleBodys` 的搬运动态体型特例取代（接力期 `maxCarry 4` 小体型快周转、
+ * @deprecated 已被 `GetUnitBodys` 的搬运动态体型特例取代（接力期 `maxCarry 4` 小体型快周转、
  * lv7+ 直运放开 32、`forRoad` 按路网覆盖率）——rush 孵化落点与搬运编制公式均已收口到那条口径
- * （见 `spawnMission.buildRushSpawnBody` / `roomWorkforce.getRushCarrierCarryParts`）。
+ * （见 bodyFactory/rushBodies 生成器）。
  * 本函数与 `buildRushBody` 的 carrier 分支仅作历史保留，待收官批次（B6）核对无消费者后删除。
  */
 export const buildRushCarrierBody = (budget: number): RushBody | null => {
@@ -141,14 +143,9 @@ export const buildRushCarrierBody = (budget: number): RushBody | null => {
 };
 
 /**
- * upgrader 体型：
- * 1W1C1M（200）起步 →
- * CARRY 增长门为**容量比** `(CARRY_CAPACITY×carry)/work < carryRatio`
- * （carryRatio 默认 1：升级期基本维持 1 个 CARRY 缓冲）→
- * MOVE 增长门 `work/move ≥ 4`（最多 4 WORK 拖 1 MOVE）→
- * 其余预算全部转 WORK → WORK 达 maxWork（升级缺口）即停。
- *
- * 排布：WORK 组在前、收尾 1 个 WORK。
+ * upgrader 体型：转发到 `rushBodies` 的平铺生成器（WORK 密度优先），
+ * 再按「WORK 组在前、收尾 1 个 WORK」折叠成分组体，保持本文件的 RushBody 契约。
+ * 口径唯一来源为 rushBodies.buildRushUpgraderBody。
  */
 export const RUSH_UPGRADER_MIN_BUDGET = partCost('work') + partCost('carry') + partCost('move');
 
@@ -156,43 +153,16 @@ export const buildRushUpgraderBody = (
     budget: number,
     options: { maxWork?: number; carryRatio?: number } = {},
 ): RushBody | null => {
-    const { maxWork, carryRatio = 1 } = options;
-    if (budget < RUSH_UPGRADER_MIN_BUDGET) return null;
-
-    const maxParts = MAX_CREEP_SIZE_V();
-    let cost = partCost('work') + partCost('carry') + partCost('move');
-    let work = 1;
-    let move = 1;
-    let carry = 1;
-
-    while (budget > cost) {
-        if ((CARRY_CAPACITY_V() * carry) / work < carryRatio && budget >= cost + partCost('carry')) {
-            if (work + move + carry + 1 > maxParts) break;
-            carry += 1;
-            cost += partCost('carry');
-            continue;
-        }
-
-        if ((move === 0 || work / move >= 4) && budget >= cost + partCost('move')) {
-            if (work + move + carry + 1 > maxParts) break;
-            move += 1;
-            cost += partCost('move');
-            continue;
-        }
-
-        if (maxWork && work >= maxWork) break;
-
-        if (budget >= cost + partCost('work')) {
-            if (work + move + carry + 1 > maxParts) break;
-            work += 1;
-            cost += partCost('work');
-            continue;
-        }
-
-        break;
-    }
-
-    return assembleRushBody([WORK, work - 1], [CARRY, carry], [MOVE, move], [WORK, 1]);
+    const flat = buildUpgraderBodyFlat(budget, options);
+    if (!flat) return null;
+    const countOf = (part: BodyPartConstant): number => flat.filter((p) => p === part).length;
+    const work = countOf(WORK);
+    return assembleRushBody(
+        [WORK, work - 1],
+        [CARRY, countOf(CARRY)],
+        [MOVE, countOf(MOVE)],
+        [WORK, 1],
+    );
 };
 
 /** worker（建造/维修兼升级）最低孵化预算：[W1,C1,M1] = 200 */
@@ -265,21 +235,21 @@ export type RushBodyOptions = {
 };
 
 /** rush 各经济角色的容量现算体型统一入口（不在册角色返回 null 走原路径） */
-export const buildRushBody = (role: string, budget: number, options: RushBodyOptions = {}): RushBody | null => {
-    switch (role) {
-        case ROLES.harvester:
+export const buildRushBody = (unit: string, budget: number, options: RushBodyOptions = {}): RushBody | null => {
+    switch (unit) {
+        case UNITS.harvester:
             return buildRushHarvesterBody(budget, {
                 ...(options.maxWork !== undefined && { maxWork: options.maxWork }),
                 ...(options.needCarry !== undefined && { needCarry: options.needCarry }),
                 ...(options.speed !== undefined && { speed: options.speed }),
             });
-        case ROLES.carrier: return buildRushCarrierBody(budget);
-        case ROLES.upgrader:
+        case UNITS.carrier: return buildRushCarrierBody(budget);
+        case UNITS.upgrader:
             return buildRushUpgraderBody(budget, {
                 ...(options.maxWork !== undefined && { maxWork: options.maxWork }),
                 ...(options.carryRatio !== undefined && { carryRatio: options.carryRatio }),
             });
-        case ROLES.worker:
+        case UNITS.worker:
             return buildRushWorkerBody(budget, {
                 ...(options.maxWork !== undefined && { maxWork: options.maxWork }),
             });
@@ -402,14 +372,14 @@ export const buildFailSnapshot = (room: Room, segment: SegmentStatus): Record<st
     let upgradeWork = 0;
     for (const creep of Object.values(Game.creeps)) {
         if (creep.room.name !== room.name) continue;
-        const role = (creep.memory as any)?.role || '?';
-        census[role] = (census[role] || 0) + 1;
-        if (role === ROLES.upgrader) upgradeWork += creep.getActiveBodyparts(WORK);
+        const unit = (creep.memory as any)?.unit || '?';
+        census[unit] = (census[unit] || 0) + 1;
+        if (unit === UNITS.upgrader) upgradeWork += creep.getActiveBodyparts(WORK);
     }
     const spawnPool: Record<string, number> = {};
     for (const task of ((room as any).getAllMissionFromPool?.('spawn') ?? []) as any[]) {
-        const role = task?.data?.memory?.role || '?';
-        spawnPool[role] = (spawnPool[role] || 0) + 1;
+        const unit = task?.data?.memory?.unit || '?';
+        spawnPool[unit] = (spawnPool[unit] || 0) + 1;
     }
     const controller = room.controller;
     const cc = ((room as any).container || []).find((c: Structure) =>

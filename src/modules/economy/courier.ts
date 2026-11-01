@@ -13,6 +13,7 @@ import { roomModeProfileFor } from "@/modules/strategy";
 import { maxThreatScore, threatTierOf } from "@/modules/defense";
 import { UNIT_CODES } from "@/constant/UnitConstant";
 import { requestCourier } from "@/core/store/runtime";
+import { createLedger } from "@/modules/economy/ledger";
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
@@ -93,13 +94,23 @@ export function planCourierRequests(ctx: TickContext): void {
 			continue;
 		}
 		// 闸门⑤: 总能量运作线——抽完后基础孵化存量仍有保障
+		// Available 口径 (specs/resource-ledger): 已发出的 fill_spawn 在途承诺
+		// 是孵化线的既定供给, 不得被快递预算重复花销
+		const ledger = createLedger(ctx);
+		let committedToSpawns = 0;
+		for (const structure of room.energyStructures) {
+			committedToSpawns += ledger.committedTo(room.roomName, structure.id);
+		}
 		const capacity = room.energyStructures.reduce((sum, s) => sum + s.energyCapacity, 0);
 		const energy = room.energyStructures.reduce((sum, s) => sum + s.energy, 0);
 		const opFloor = capacity * COURIER_CONFIG.opFloorRatio;
-		if (energy <= opFloor) {
+		if (energy <= opFloor + committedToSpawns) {
 			continue;
 		}
-		const budget = Math.min(spawn.energy - COURIER_CONFIG.reserveFloor, energy - opFloor);
+		const budget = Math.min(
+			spawn.energy - COURIER_CONFIG.reserveFloor,
+			energy - opFloor - committedToSpawns,
+		);
 		if (budget < BODYPART_COST[CARRY]) {
 			continue;
 		}

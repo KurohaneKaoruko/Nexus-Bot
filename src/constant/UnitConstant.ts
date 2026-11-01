@@ -1,103 +1,104 @@
 /**
- * 角色代号表: 全量角色代号 (跨分支共用族除外), 按需增删。
- * 名称格式 `中文体名 CODE-HEX`, 如 采集体 H-3F2A。
+ * 类型代号表与中文体名表 (UnitData 的派生视图)。
+ * 代号/体名均从 `UnitData` 单源派生, 新增类型无需在本表登记。
+ * 名称格式 `中文体名 代号-HEX`, 如 采集体 H-3F2A。
  */
-export const UNIT_CODES = {
-	/* 基本房间运营 */
-	harvester: "H",
-	carrier: "C",
-	transporter: "T",
-	manager: "M",
-	upgrader: "U",
-	worker: "W",
-	miner: "MR",
-	universal: "UNIV",
-	"rush-courier": "RC",
+import { UnitData, type UnitId } from "@/constant/CreepConstant";
 
-	/* 特殊用途 */
-	scout: "S",
-	logistic: "L",
-	cleaner: "CLE",
-	dismantle: "DIS",
-	"up-upgrade": "UUP",
-	"up-repair": "URE",
+export type { UnitId };
 
-	/* 占领房间 */
-	claimer: "CL",
-	"attack-claimer": "ACL",
+/**
+ * 类型代号 (`UnitData[].code`, 缺省回退类型名大写)。
+ * 派生而非手抄: 两表并存时新增类型必漏, 回退形态会污染 creep 名与感知侧解析。
+ */
+export const UNIT_CODES: Readonly<Record<UnitId, string>> = Object.freeze(
+	Object.fromEntries(
+		Object.entries(UnitData).map(([id, def]) => [id, def.code ?? id.toUpperCase()]),
+	) as Record<UnitId, string>,
+);
 
-	/* 援建 */
-	"aid-build": "AIDB",
-	"aid-carry": "AIDC",
-	"aid-upgrade": "AIDU",
-
-	/* 战斗 */
-	"one-ranged": "1R",
-	aio: "AIO",
-	saio: "SAIO",
-	"double-attack": "2A",
-	"double-dismantle": "2D",
-	"double-heal": "2H",
-	"team-attack": "xA",
-	"team-dismantle": "xD",
-	"team-heal": "xH",
-	"team-ranged": "xR",
-	"defend-attack": "DFA",
-	"defend-ranged": "DFR",
-	"defend-2attack": "D2A",
-	"defend-2heal": "D2H",
-
-	/* 外矿 */
-	reserver: "RSV",
-	"out-build": "OB",
-	"out-defend": "OD",
-	"out-2attack": "O2A",
-	"out-2heal": "O2H",
-	"out-invader": "OI",
-	"out-attack": "OA",
-	"out-ranged": "OR",
-	"out-mineral": "OMR",
-
-	/* 沉积物 */
-	"deposit-harvest": "DH",
-	"deposit-transfer": "DT",
-	"deposit-attack": "DPA",
-	"deposit-heal": "DPH",
-	"deposit-ranged": "DPR",
-
-	/* Power */
-	"power-attack": "PA",
-	"power-heal": "PH",
-	"pc-heal": "PCH",
-	"power-carry": "PC",
-	"power-ranged": "PR",
-
-	/* 主线在用 (原跨分支族, 主线防御消费) */
-	defender: "DF",
-} as const;
-
-export type UnitId = keyof typeof UNIT_CODES;
-
-/** 取角色代号; 未收录的角色回退为自身大写 */
-export function unitCode(role: string): string {
-	return (UNIT_CODES as Record<string, string>)[role] ?? role.toUpperCase();
+/** 取类型代号 */
+export function unitCode(unit: string): string {
+	return UNIT_CODES[unit as UnitId] ?? unit.toUpperCase();
 }
 
-/** 已确立的中文体名; 其余展示回退为角色代号 */
-export const UNIT_BODY_NAMES: Partial<Record<UnitId, string>> = {
+/**
+ * 中文体名表 (展示前缀)。
+ * 声明为全量 Record 而非 Partial: 漏登记即编译失败, 杜绝 creep 名回退成裸代号。
+ */
+export const UNIT_BODY_NAMES: Record<UnitId, string> = {
+	/* 基本房间运营 */
 	harvester: "采集体",
 	carrier: "搬运体",
 	transporter: "建筑搬运体",
 	manager: "中央搬运体",
-	miner: "元素矿工",
 	upgrader: "升级体",
 	worker: "工作体",
+	miner: "元素矿工",
 	universal: "全能体",
-	defender: "防御体",
 	"rush-courier": "快递体",
+
+	/* 特殊用途 */
+	scout: "侦察体",
+	logistic: "长途运输体",
+	cleaner: "清理体",
+	dismantle: "拆除体",
+
+	/* 冲级专属 (race speedrun 直通模块) */
+	hauler: "冲级搬运体",
+	tug: "拖拽体",
+	paver: "铺路体",
+	spawnFiller: "孵化补给体",
+	hubFiller: "枢纽补给体",
+
+	/* 占领房间 */
+	claimer: "占领体",
+	"attack-claimer": "强攻占领体",
+
+	/* 一体机 */
+	aio: "进攻一体体",
+
+	/* 二人队 */
+
+	/* 连结队 */
+	"team-attack": "连结突击体",
+	"team-dismantle": "连结拆除体",
+	"team-heal": "连结治疗体",
+	"team-ranged": "连结远程体",
+
+	/* 主动防御 */
+	defender: "防御体",
+	"defend-2heal": "防御双人治疗体",
+
+	/* 外矿 */
+	reserver: "预定体",
+	remoteMiner: "外矿矿工",
+	"out-build": "外矿建造体",
+	"out-defend": "外矿防御体",
+	"out-2attack": "外矿双人突击体",
+	"out-2heal": "外矿双人治疗体",
+	"out-invader": "外矿入侵体",
+	"out-attack": "外矿突击体",
+	"out-ranged": "外矿远程体",
+	"out-mineral": "外矿矿工",
+	"out-repair": "外矿维修体",
+
+	/* 沉积物 */
+	"deposit-harvest": "沉积物采集体",
+	"deposit-transfer": "沉积物转运体",
+	"deposit-attack": "沉积物突击体",
+	"deposit-heal": "沉积物治疗体",
+	"deposit-ranged": "沉积物远程体",
+
+	/* Power */
+	"power-attack": "智械突击体",
+	"power-heal": "智械治疗体",
+	"pc-heal": "智械护工",
+	"power-carry": "智械搬运体",
+	"power-ranged": "智械远程体",
 };
 
-/** 取角色中文体名; 未收录角色回退为角色代号 */
-export function unitBodyName(role: string): string {
-	return UNIT_BODY_NAMES[role as UnitId] ?? unitCode(role);
+/** 取类型中文体名; 未收录类型回退为类型代号 */
+export function unitBodyName(unit: string): string {
+	return UNIT_BODY_NAMES[unit as UnitId] ?? unitCode(unit);
 }

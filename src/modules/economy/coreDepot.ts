@@ -76,8 +76,8 @@ export function getCoreDepotTarget(room: Room, kind: CoreDepotKind): AnyStoreStr
 /**
  * 该核心库种类的真建筑在当前 RCL 已可建但尚未建成。
  *
- * 此时占位 container 处于「排空换位」阶段：存入侧停止投料（见
- * haulFunction 的 canAutoStore / findBestStoreTarget），存量交给
+ * 此时占位 container 处于「排空换位」阶段：存入侧停止投料（搬运目标
+ * 判定不再选中占位），存量交给
  * spawn/塔填充等自然取用耗尽，随后 planner 拆除占位、落真建筑工地——
  * 避免整箱能量砸在地上腐烂，也避免「先拆后建」期间的枢纽缓冲断档。
  */

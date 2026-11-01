@@ -1,214 +1,49 @@
 /**
- * SpawnDirector (docs/nexus-design/07 / api/07 §7.5):
- * 从「无法分配的任务」聚合能力缺口 → 生产请求 → BodyFactory 出身体 → 排程提交。
- * 无状态: 每 Tick 由存活/在途/任务重新计算缺口;
- * 替补窗口实装 (§7.5): lead = 生产时间 + 实测路程 P95 + 余量, 关键岗位允许短暂重叠;
- * Creep 死亡后回收 UnitRecord, 租约由任务对账释放。
+ * SpawnDirector (docs/nexus-design/07 / api/07 §7.5) — 编排层 (任务 6.1 拆分后):
+ * 死亡回收 → DemandSources (定编/缺口聚合) → SpawnArbiter (每 spawn 裁决) →
+ * SpawnCommand (broker spawn 管线提交)。职责分布:
+ * - demandSources.ts: 存活/在途计数、四路需求源 (standing/task/replacement/courier/bootstrap)
+ * - spawnArbiter.ts: 闸门链 (secured→让位→自举→urgent→攒能等待) 与体型定档
+ * - bodyFactory.ts: 纯函数体型生成 (不读 Game)
+ * - broker spawn 管线: 命令执行与结果回调 (预约核销/簿记)
+ * 无状态: 每 Tick 由存活/在途/任务重新计算缺口; 替补窗口实装 (§7.5)。
  */
 import type { TickContext } from "@/core";
 import { directiveFor } from "@/modules/strategy";
 import { downgradeEmergency } from "@/core/world";
 import { STRATEGY_CONFIG } from "@/config/strategy";
-import { STAFFING_CONFIG } from "@/config/defense";
-import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
-import { RoleData } from "@/constant/CreepConstant";
 import { generateCreepName } from "@/utils/naming";
-import { createTaskBoard } from "@/modules/tasks";
-import { activeRemoteHarvestCount, activeScoutCount } from "@/modules/economy/remoteMining";
 import {
 	bodyCost,
 	buildBody,
 	isSpawnUnit,
-	typicalSpawnTime,
 	type SpawnUnit,
 } from "@/modules/spawning/bodyFactory";
-import { travelP95, commitReservation, releaseReservation, reserve } from "@/modules/economy";
+import { commitReservation, createLedger, releaseReservation, reserve } from "@/modules/economy";
+import { workPerUpgraderBody } from "@/modules/economy/workforce";
+import { UNIT_CODES } from "@/constant/UnitConstant";
 import { takeCourierRequests } from "@/core/store/runtime";
-import { maxThreatScore, threatTierOf } from "@/modules/defense";
-import {
-	CARRY_STAFFING_CONFIG,
-	CONTROLLER_BUFFER_CONFIG,
-	PRODUCTION_GATE_CONFIG,
-	REPLACEMENT_CONFIG,
-	RELAY_CONFIG,
-	SPAWN_CONFIG,
-} from "@/config/economy";
-import {
-	carrierCountTargetOf,
-	upgraderCountTargetOf,
-	isProductionSecured,
-} from "@/modules/economy";
+import { SPAWN_CONFIG } from "@/config/economy";
+import { REPLACEMENT_CONFIG } from "@/config/economy";
+import { CONTROLLER_BUFFER_CONFIG } from "@/config/economy";
 import { rushBodyWork } from "@/utils/rushBodies";
-import { isSlowTerrain, terrainProfileFor } from "@/modules/spawning/terrainProfile";
+import { unitFromCode, workerBuildCriticalOf } from "@/modules/spawning/demandSources";
 import type { TaskBoard } from "@/modules/tasks";
+import {
+	anyRoomRush,
+	effectiveTarget,
+	replacementLead,
+	staffingCount,
+	unitForTaskKind,
+	unitTargets,
+	type SpawnRequest,
+} from "@/modules/spawning/demandSources";
+import { arbitrateForSpawn } from "@/modules/spawning/spawnArbiter";
+import { raceRemoteDeficitOf, raceRemoteRequests } from "@/modules/spawning/raceRemote";
 
-/** 代号 → 角色名 (名称解析出的 unitCode 是代号, 需还原为角色名) */
-function roleFromCode(code: string): SpawnUnit | undefined {
-	const entry = Object.entries(UNIT_CODES).find(([, candidate]) => candidate === code);
-	if (!entry) {
-		return undefined;
-	}
-	const roleName = entry[0];
-	return isSpawnUnit(roleName) ? roleName : undefined;
-}
-
-/** 任务类型 → 生产角色 */
-function unitForTaskKind(kind: string): SpawnUnit | undefined {
-	switch (kind) {
-		case "harvest":
-			return "harvester";
-		case "upgrade":
-			return "upgrader";
-		case "build":
-		case "repair":
-			return "worker";
-		case "claim":
-			return "universal"; // 全能体带 CLAIM 部件执行占领
-		case "fill_spawn":
-		case "haul":
-			return "carrier";
-		case "defend":
-			return "defender";
-		default:
-			return undefined;
-	}
-}
-
-interface SpawnRequest {
-	role: SpawnUnit;
-	priority: number;
-	purpose: string;
-	/** 快递等按请求给定预算编译的角色 (缺省走容量/存量定档) */
-	budget?: number;
-}
-
-/**
- * 各角色的目标编制基线 (specs/workforce-staffing 吞吐定编):
- * - upgrader: WORK 口径目标 (采集收入×档位倍率, 水位收缩/盈余/pile 取 max, 受饥饿
- *   负反馈与人口硬上限钳制) 按当前孵化体型折只——取代固定只数/produced EMA 口径;
- * - carrier: 运力下界 Σ(2×实测路程×速率)×冗余÷单件运力 (实测缺失回退每源 1 只);
- * - harvester/worker 等维持 count 基线 (采集饱和由攒能升体型承接, 建造定编留步 3 后评估)。
- * defender 编制 = 威胁分级映射, 和平为 0 不养常备军。
- */
-function unitTargets(ctx: TickContext): Record<SpawnUnit, number> {
-	const world = ctx.world.current;
-	const rooms = world ? Object.values(world.rooms) : [];
-	const sources = rooms.reduce((sum, room) => sum + room.sources.length, 0);
-	const sites = rooms.reduce((sum, room) => sum + room.sites.length, 0);
-	// 外矿同名-role 定编: 远程 harvest 任务每源 +1 harvester; scout 按活跃侦查任务
-	const board = createTaskBoard(ctx.memory.tasks);
-	const remoteHarvest = activeRemoteHarvestCount(ctx, board);
-	const scoutNeed = activeScoutCount(ctx, board);
-	let upgraderNeed = 0;
-	let carrierNeed = 0;
-	for (const room of rooms) {
-		upgraderNeed += upgraderCountTargetOf(ctx, room);
-		// 路程未实测 (开局) 回退每源 1 只保守基线, 不按猜测路程编队
-		carrierNeed += carrierCountTargetOf(ctx, room) ?? room.sources.length;
-	}
-	return {
-		harvester: Math.max(1, sources + remoteHarvest),
-		scout: scoutNeed,
-		universal: 1,
-		upgrader: Math.max(1, upgraderNeed),
-		worker: Math.max(
-			1,
-			Math.min(
-				SPAWN_CONFIG.workers.max,
-				1 + Math.floor(sites / SPAWN_CONFIG.workers.sitesPerWorker),
-			),
-		),
-		carrier: Math.max(1, carrierNeed),
-		"rush-courier": 0,
-		// 特化单位: 结构到位才激活 (RCL 门控短路, 避免低 RCL 每帧遍历)
-		manager: rooms.some((r) => r.rcl >= 4 && r.stores.some((s) => s.structureType === "storage")) ? 1 : 0,
-		transporter: rooms.some((r) => r.rcl >= 3 && r.sites.length > 0) ? 1 : 0,
-		miner: rooms.some((r) => r.rcl >= 6 && r.stores.some((s) => s.structureType === "container")) ? 1 : 0,
-		defender: STAFFING_CONFIG.tierDefenders[threatTierOf(maxThreatScore(ctx.memory))],
-		// 扩张占领件: 活跃 claim 任务时 1 只 (任务消失编制即收)
-		claimer: board.list({ kinds: ["claim"] }).some((t) => t.status !== "completed") ? 1 : 0,
-	};
-}
-
-/** 诊断调整后的有效编制: carrier 乘运力乘数 (吞吐目标已由 workforce 现算, 不再有第二公式) */
-function effectiveTarget(ctx: TickContext, role: SpawnUnit): number {
-	const base = unitTargets(ctx)[role];
-	const diagnosis = ctx.memory.economy.diagnosis;
-	if (role === "carrier") {
-		const multiplierTarget = Math.round(base * diagnosis.carrierMultiplier);
-		const rclCap = Math.min(
-			CARRY_STAFFING_CONFIG.maxCarriers,
-			CARRY_STAFFING_CONFIG.carriersPerRcl * Math.max(1, topRcl(ctx)),
-		);
-		return Math.max(CARRY_STAFFING_CONFIG.minCarriers, Math.min(rclCap, multiplierTarget));
-	}
-	if (role === "upgrader") {
-		return base + diagnosis.upgraderBonus;
-	}
-	return base;
-}
-
-/** 己方房最高 RCL */
-function topRcl(ctx: TickContext): number {
-	let rcl = 0;
-	for (const room of Object.values(ctx.world.current?.rooms ?? {})) {
-		rcl = Math.max(rcl, room.rcl);
-	}
-	return rcl;
-}
-
-/**
- * cc 水位门: 存量 < 在座升级 WORK×2×缓冲 tick 时为 true。
- * 多房语义: 任一有 cc 的房低于水位即暂停升级体孵化 (保守口径, 修复旧实现
- * 首个有 cc 房即 return 的单房短路)。
- */
-function ccBelowSpawnGate(ctx: TickContext): boolean {
-	const world = ctx.world.current;
-	if (!world) {
-		return false;
-	}
-	const capacity = Math.max(300, ...Object.values(Game.spawns).map(
-		(spawn) => spawn.room.energyCapacityAvailable,
-	));
-	const upgradeWork = rushBodyWork(buildBody("upgrader", capacity) ?? []);
-	let anyBelow = false;
-	for (const room of Object.values(world.rooms)) {
-		const buffer = room.controllerBuffer;
-		if (!buffer) {
-			continue;
-		}
-		const store = room.stores.find((s) => s.id === buffer.id);
-		if (store && store.energy < upgradeWork * 2 * CONTROLLER_BUFFER_CONFIG.spawnGateBufferTicks) {
-			anyBelow = true;
-		}
-	}
-	return anyBelow;
-}
-
-/**
- * 替补提前量 (docs/nexus-design/07 §7.5): 生产时间 + 实测路程 P95 + 安全余量, 按单位名确定性抖动 ±jitterRatio
- * (bugs/P2-8: 同龄单位同拍进入替补窗口会成对孵化, 抖动使其错峰)。
- */
-function replacementLead(
-	ctx: TickContext,
-	role: SpawnUnit,
-	roomName: string,
-	creepName: string,
-): number {
-	const base =
-		typicalSpawnTime(role) + travelP95(ctx, role, roomName) + REPLACEMENT_CONFIG.setupMargin;
-	return Math.round(base * (1 + nameJitter(creepName)));
-}
-
-/** 名称哈希 → [-jitterRatio, +jitterRatio] 的确定性偏移 (同名恒定, 不引入随机源) */
-function nameJitter(creepName: string): number {
-	let hash = 0;
-	for (let i = 0; i < creepName.length; i += 1) {
-		hash = (hash * 31 + creepName.charCodeAt(i)) | 0;
-	}
-	const unit = (Math.abs(hash) % 1000) / 1000; // 0..1
-	return (unit * 2 - 1) * REPLACEMENT_CONFIG.jitterRatio;
-}
+export { directSpawn } from "@/modules/spawning/directSpawn";
+export type { DirectSpawnRequest } from "@/modules/spawning/directSpawn";
+export { raceRemoteDeficitOf } from "@/modules/spawning/raceRemote";
 
 export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	const world = ctx.world.current;
@@ -227,63 +62,110 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 			delete engineCreeps.creeps[dead];
 		}
 	}
+	// 重置对账 (实服 4wt 重开路径, sim 无法暴露): dead 名单由「上 tick 存在→本 tick
+	// 消失」推导, 但服务器重置清空 Game.creeps 而 Memory 保留——上 tick 视图已空,
+	// 陈旧 units 记录永不入 dead。逐 tick 快照对账兜底: 记录不在 Game.creeps 即清。
+	// 注意孵化中的单位在 Game.creeps 可见 (spawning 状态), 不会被误清。
+	for (const name of Object.keys(ctx.memory.units)) {
+		if (!(name in Game.creeps)) {
+			delete ctx.memory.units[name];
+			const engineCreeps = (typeof Memory !== "undefined" ? Memory : undefined) as
+				| { creeps?: Record<string, unknown> }
+				| undefined;
+			if (engineCreeps?.creeps) {
+				delete engineCreeps.creeps[name];
+			}
+		}
+	}
 
 	const spawns = Object.values(Game.spawns);
 	if (spawns.length === 0) {
 		return;
 	}
 	/** spawn 空闲起算 tick (攒能等待超时兜底): 跨 Tick 持久化, 修复每 Tick 重建
-	 *  使 capacityWaitTicks 超时永不触发的死代码 (specs/workforce-staffing 顺手修) */
+	 *  使 capacityWaitTicks 超时永不触发的死代码 (specs/workforce-staffing 顺手修)。
+	 *  陈旧键清理改按存活 spawn id 集合比对——idleSince 的键是 hex id, 而
+	 *  Game.spawns 的键是 spawn 名, 拿 id 去 in Game.spawns 恒 miss → 每 tick
+	 *  全量误删, 超时降档窗口永远归零 (sim 实证 idle 恒 0, carrier 500 成本
+	 *  单位缺编 6000t 不降档, 让位期攒能死锁) */
 	const spawnIdleSince = ctx.memory.spawn.idleSince ?? {};
+	const liveSpawnIds = new Set(spawns.map((spawn) => String(spawn.id)));
 	for (const id of Object.keys(spawnIdleSince)) {
-		if (!(id in Game.spawns)) {
+		if (!liveSpawnIds.has(id)) {
 			delete spawnIdleSince[id];
 		}
 	}
 	ctx.memory.spawn.idleSince = spawnIdleSince;
 
-	// 存活/在途角色计数
-	const aliveRoles = new Map<string, number>();
-	let aliveTotal = 0;
-	for (const room of Object.values(world.rooms)) {
-		for (const creep of room.creeps) {
-			aliveRoles.set(creep.unitCode, (aliveRoles.get(creep.unitCode) ?? 0) + 1);
-			aliveTotal += 1;
-		}
-	}
-	const inflightRoles = new Map<string, number>();
-	for (const spawn of spawns) {
-		const name = spawn.spawning?.name;
-		const role = name ? ctx.memory.units[name]?.unitCode : undefined;
-		if (role) {
-			inflightRoles.set(role, (inflightRoles.get(role) ?? 0) + 1);
-		}
-	}
-	const staffed = (role: string): number =>
-		(aliveRoles.get(unitCode(role)) ?? 0) + (inflightRoles.get(role) ?? 0);
+	const count = staffingCount(ctx, spawns);
+	const { staffed } = count;
 
 	// 战略指令 (设计 D5): survive 姿态暂停非关键岗位的新排 (缺口与替补均停),
 	// carrier/harvester 与从零起步的 bootstrap 不受影响; 不做身体缩水 (避免与替补窗口耦合);
-	// 降级紧急时 upgrader 豁免暂停名单 (bugs/P1-10: 保升级岗位不断供, 宁可挤占也要保级)
+	// 降级紧急时 upgrader 豁免暂停名单 (bugs/P1-10: 保升级岗位不断供, 宁可挤占也要保级);
+	// 涓流期 (全场无 storage) upgrader 同豁免 (E18): 低 RCL 库存天然贴地, 瞬时
+	// 存量击穿临界线是常态——开局 survive 窗口把 upgrader/worker 全停会让升级链
+	// 与基建停摆数千 tick (sim 实证 t0-5300 控制器进度 0, upgrade 任务 available
+	// 4600t 无人认领, race 参照 L2@676)。
 	const downgradeActive = Object.values(world.rooms).some((room) =>
 		downgradeEmergency(room.controller),
 	);
-	const pauseRoles =
+	const trickleEconomy = !Object.values(world.rooms).some((room) =>
+		room.stores.some((store) => store.structureType === "storage"),
+	);
+	const pauseUnits =
 		directiveFor(ctx).posture === "survive"
-			? STRATEGY_CONFIG.surviveSpawnPauseRoles.filter(
-					(role) => role !== "upgrader" || !downgradeActive,
+			? STRATEGY_CONFIG.surviveSpawnPauseUnits.filter(
+					// upgrader 仅在【非涓流且非降级紧急】时才随 survive 暂停:
+					// 涓流期 (无 storage) 豁免见上; 降级紧急豁免 (bugs/P1-10)。
+					(unit) =>
+						unit !== "upgrader" || (!downgradeActive && !trickleEconomy),
 				)
 			: [];
 
-	// 缺口聚合: 未分配任务 → 角色请求
-	const requests = new Map<SpawnUnit, SpawnRequest>();
-	const addRequest = (role: SpawnUnit, priority: number, purpose: string): void => {
-		if (pauseRoles.includes(role)) {
+	// ── Demand Sources (demandSources.ts): 四路需求聚合 ──────────────────
+	// 单需求源异常不阻断孵化线 (任务 6.4): 每源独立 try/catch, 失败记遥测继续
+	const requests = new Map<string, SpawnRequest>();
+	let targetsProbe: number | string = "?";
+	// 批次 AD: 外矿多源并发请求需多键并存 (单 unit 键会让 N 源竞争 1 请求位);
+	// 批次 AD 复合键仅用于 raceRemote 段 (rkey 参数), 常规段维持 unit 单键。
+	const addRequest = (
+		unit: SpawnRequest["unit"],
+		priority: number,
+		purpose: string,
+		taskId?: string,
+		rkey?: string,
+		budget?: number,
+		remote?: string,
+	): void => {
+		if (pauseUnits.includes(unit)) {
 			return;
 		}
-		const existing = requests.get(role);
-		if (!existing || priority > existing.priority) {
-			requests.set(role, { role, priority, purpose });
+		const key = rkey ?? (remote !== undefined ? `${unit}:${remote}` : unit);
+		const existing = requests.get(key);
+		if (!existing || priority < existing.priority) {
+			requests.set(key, {
+				unit,
+				priority,
+				purpose,
+				taskId,
+				...(budget !== undefined ? { budget } : {}),
+				...(remote !== undefined ? { remote } : {}),
+			});
+		}
+	};
+	/** 需求源隔离执行器: 抛错只告警, 孵化线不瘫 (6.4) */
+	const safeSource = (source: string, produce: () => void): void => {
+		try {
+			produce();
+		} catch (err) {
+			ctx.errors.report({
+				module: "spawn-demand",
+				tick: ctx.tick,
+				code: "UNEXPECTED",
+				message: `需求源 ${source} 异常, 本 tick 跳过: ${String(err)}`,
+			});
+			ctx.logger.warn(`spawn-demand.${source}`, `需求源 ${source} 异常, 本 tick 跳过: ${String(err)}`);
 		}
 	};
 
@@ -297,7 +179,7 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		spawnState.lastBootstrapTick = 0;
 	}
 
-	if (aliveTotal === 0) {
+	if (count.aliveTotal === 0) {
 		// 从零起步: 先造万能单位跑通闭环;
 		// 失明态连续空转超限后降频告警 (bugs/P1-10: 防 universal churn 耗尽能量)
 		const throttled =
@@ -317,150 +199,339 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 	} else {
 		// 常驻编制缺口 (bugs/P1-5): harvester/upgrader/carrier 的岗位与任务 available 状态解耦——
 		// 任务被租住或处于失败冷却期时缺口仍可见, 否则岗位长期空转;
-		// carrier 可按角色覆盖优先级 (物流骨干不被任务驱动请求永久压队)
-		for (const roleName of SPAWN_CONFIG.standingRoles) {
-			if (!isSpawnUnit(roleName)) {
-				continue;
-			}
-			// 水位门: cc 存量低于升级抽水缓冲时暂停升级体孵化, 孵化槽让位物流
-			if (roleName === "upgrader" && !downgradeActive && ccBelowSpawnGate(ctx)) {
-				continue;
-			}
-			if (staffed(roleName) < effectiveTarget(ctx, roleName)) {
-				const priority =
-					SPAWN_CONFIG.standingPriorityByRole[roleName] ?? SPAWN_CONFIG.standingPriority;
-				addRequest(roleName, priority, `staffing:${roleName}`);
-			}
+		// carrier 可按类型覆盖优先级 (物流骨干不被任务驱动请求永久压队)
+		const anyRush = anyRoomRush(ctx);
+		const spawnRoomCreeps = Object.values(world.rooms)[0]?.creeps ?? [];
+		const spawnRoomObs = Object.values(world.rooms)[0];
+		let targets: Record<SpawnUnit, number> | undefined;
+		safeSource("unit-targets", () => {
+			targets = unitTargets(ctx, board);
+		});
+		if (ctx.tick < 6000 && ctx.tick % 100 === 0) {
+			targetsProbe = targets?.upgrader ?? "?";
 		}
-		for (const task of board.list({ statuses: ["available"] })) {
-			const role = unitForTaskKind(task.kind);
-			if (role && staffed(role) < effectiveTarget(ctx, role)) {
-				addRequest(role, task.priority, role);
+		// 批次 AD (上游 minUp/fed 门的本矿映射): 本矿采集/搬运满编而远程源
+		// 仍有空缺时, 升级编制让位外矿链 (地板 1 语义)——上游 want[] 里升级体
+		// 只有 minUp=1 地板与 fed/盈余门放行的加编, 外矿 work 恒在其后; 本矿
+		// 升级定编 (收入折算) 在外矿未铺满期全额挂账会让 rush 提级替补 (2)
+		// 恒压外矿请求, 16k 实证 remoteMiner 全场 0 只。外矿补齐即恢复。
+		const remoteDeficit =
+			anyRush &&
+			staffed("harvester") >= Math.max(1, targets?.harvester ?? 0) &&
+			staffed("carrier") >= Math.max(1, targets?.carrier ?? 0) &&
+			raceRemoteDeficitOf(ctx, board);
+		safeSource("standing", () => {
+			if (!targets) {
+				return;
 			}
-		}
+			for (const unitName of SPAWN_CONFIG.standingUnits) {
+				// 水位门: cc 存量低于升级抽水缓冲时暂停升级体孵化, 孵化槽让位物流。
+				// rush 档豁免 (冲级火力是主要目的): 涓流期 cc 频繁低于门槛会反复停孵
+				// 升级体, 升级链人力不足 → cc 更空 → 死循环 (sim 实锤 upgrade 6 任务
+				// 仅 3 只在岗, control 掉 25%)。
+				if (
+					unitName === "upgrader" &&
+					!downgradeActive &&
+					!anyRush &&
+					ccBelowSpawnGate(ctx)
+				) {
+					continue;
+				}
+				if (
+					unitName === "upgrader" &&
+					remoteDeficit &&
+					staffed("upgrader") >= 1
+				) {
+					continue; // 外矿空缺期升级编制地板 1 (上游 minUp)
+				}
+				if (staffed(unitName) < effectiveTarget(ctx, unitName as never, targets)) {
+				// 半缺口不孵闸 (race-speedrun 任务4.3, race bot manageUpgrade L133 口径):
+				// 升级体缺口 WORK 不足半只新体 (2×缺口WORK < 单体WORK) 时放弃孵化——
+				// 为凑 1-2 WORK 的尾差孵小体是 churn (短寿命小体反复换代),
+				// 宁可让在编体多跑一拍; 保级窗口豁免 (downgradeActive 恒保底)。
+				if (unitName === "upgrader" && !downgradeActive) {
+					const spawnRoom = Object.values(world.rooms)[0];
+					if (spawnRoom) {
+						const perBody = workPerUpgraderBody(ctx, spawnRoom.roomName);
+						const staffedWork = spawnRoom.creeps
+							.filter((c) => c.unitCode === UNIT_CODES.upgrader && !c.spawning)
+							.reduce((sum, c) => sum + c.bodyWork, 0);
+						const targetWork = effectiveTarget(ctx, "upgrader" as never, targets) * perBody;
+						if (2 * (targetWork - staffedWork) < perBody) {
+							continue;
+						}
+					}
+				}
+				const basePriority =
+					SPAWN_CONFIG.standingPriorityByUnit[unitName] ?? SPAWN_CONFIG.standingPriority;
+				// 冲级档孵化提级传导 (bugs/P1-19): rush 期 upgradeBias 在任务层提前,
+				// 孵化层 upgrader 请求若恒 6 会被 fill_spawn 1 恒压队。
+				// 分档 (race-speedrun 6.1 第六轮 A/B):
+				// - RCL1: 首只即提级——RCL2 只需 200 进度, 升级体早 ~400t 上岗;
+				// - RCL2: 不提级 (建立期越位让升级体吸干孵化能量, 40k L3 实测 -3k);
+				// - RCL3 起在册 ≥1 后提级: 第三只起 staffing 请求恒输 carrier churn
+				//   (L3), 末段定编只到位 2 只, 每代空窗 (40k 实证 t39362-39902)。
+				// worker 缺位建造提级 (race 换班制语义): 工地存在而 worker 全灭时
+				// 提到 L2——cc/ext 不成则升级体长腿/容量锁死, 建造是唯一出口。
+				let priority = basePriority;
+				if (
+					unitName === "upgrader" &&
+					anyRush &&
+					((spawnRoomObs?.rcl ?? 99) <= 1 ||
+						((spawnRoomObs?.rcl ?? 0) >= 3 &&
+							spawnRoomCreeps.some((c) => c.unitCode === UNIT_CODES.upgrader)))
+				) {
+					priority = Math.min(priority, SPAWN_CONFIG.rushUpgradeSpawnPriority);
+				} else if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
+					priority = Math.min(priority, 2);
+				}
+				// purpose 带 remote: 前缀 → 采集让位闸放行 (reserver 是外矿链路
+				// 前置件, 与 remote:harvest 替补同待遇; 家内采集面未满时被 yield
+				// 恒拒 = 外矿源容量翻倍永远开不了)
+				addRequest(unitName as never, priority, unitName === "reserver" ? `remote:staffing:${unitName}` : `staffing:${unitName}`);
+				}
+			}
+		});
+		safeSource("task-driven", () => {
+			if (!targets) {
+				return;
+			}
+			const rushMode = anyRoomRush(ctx);
+			// 过道矿任务豁免 (specs/mission-pool-retirement mine 行): 带 resourceType
+			// 的 harvest 是元素矿/沉积矿合约 (economy/mineralWork 定编 directSpawn
+			// 桥接自孵 power-*/deposit-* 战斗件), 不归 harvester 定编——资源判据
+			// 与能量采集任务 (无 resourceType 字段) 严格二分。
+			const isMineralTask = (task: { resourceType?: ResourceConstant }) =>
+				task.resourceType !== undefined;
+			// 外矿孵化 (批次 AD, 上游 nextSpawn 外矿段整体口径):
+			// ① manual 档维持批次 H 定向替补环 (原语义);
+			// ② rush 档走上游分支序闸——本矿编制未满 → 外矿请求不进池 (与上游
+			//    spawnIt 只取 want[0]、want = 本矿 work 前置/remotes 垫底等价);
+			//    在编判定按源 TTL 无缝换班 (alive = TTL > 3×body + walk×pace)。
+			if (rushMode) {
+				raceRemoteRequests(ctx, board, staffed, targets, addRequest);
+			} else {
+			const remoteRoomsOnDuty = new Set(
+				board
+					.list({ kinds: ["harvest"], statuses: ["leased", "in_progress"] })
+					.filter(
+						(t) =>
+							t.targetPos?.roomName !== undefined &&
+							t.targetPos.roomName !== t.roomName &&
+							!isMineralTask(t),
+					)
+					.map((t) => t.targetPos?.roomName),
+			);
+			for (const task of board.list({ kinds: ["harvest"], statuses: ["available"] })) {
+				if (isMineralTask(task)) continue;
+				const remoteRoom = task.targetPos?.roomName;
+				if (!remoteRoom || remoteRoom === task.roomName) continue;
+				if (remoteRoomsOnDuty.has(remoteRoom)) continue;
+				// 定向替补优先级严格压过普通任务驱动请求 (批次 K: 同级先到
+				// 先占坑, 普通请求把 remote 挤出池——矿工死后 30k 无替补)。
+				// 编制闸分轨 (§24.8.4, phase4 5.8): tagged 单位不抵家内编制后,
+				// 本段若无限发请求会恒占孵化槽把家内 harvester 挤出池 → 家内
+				// 采集面铺不满 → production gate 恒拒 (sim 实证 deny gate 43k,
+				// 人口死亡螺旋 236 孵 232 死)。按房抵扣: 该房 tagged harvester
+				// ≥ 活跃 remote:harvest 任务数即不发
+				if (task.dedupeKey.startsWith("remote:")) {
+					const activeRemoteHarvest = board
+						.list({ kinds: ["harvest"] })
+						.filter(
+							(t) =>
+								(t.dedupeKey ?? "").startsWith("remote:") &&
+								t.targetPos?.roomName === remoteRoom &&
+								t.status !== "completed" &&
+								t.status !== "cancelled",
+						).length;
+					const taggedHere = Object.values(ctx.memory.units).filter(
+						(u) => u.remote === remoteRoom && u.unitCode === "harvester",
+					).length;
+					if (taggedHere >= activeRemoteHarvest) continue;
+				}
+				// remote: 前缀任务带驻地标记 (phase4 5.7): 新体 UnitRecord.remote,
+				// 分配器按 §24.8.3 隔离
+				const remoteTag = task.dedupeKey.startsWith("remote:") ? remoteRoom : undefined;
+				addRequest("harvester", task.priority - 1, `remote:harvest:${task.id}`, task.id, undefined, undefined, remoteTag);
+			}
+			}
+			for (const task of board.list({ statuses: ["available"] })) {
+				if (task.kind === "harvest" && isMineralTask(task)) continue;
+				// reserver 孵化走 standing 编制 (docs/24 §24.8.2, AgentSystem
+				// reserve 分支驱动): 任务驱动段重复发请求会双轨同孵
+				const unit = unitForTaskKind(task.kind);
+				if (!unit || unit === "reserver") continue;
+				const targetRoom = task.targetPos?.roomName;
+				const isRemoteTask =
+					task.dedupeKey.startsWith("remote:") && targetRoom !== undefined && targetRoom !== task.roomName;
+				if (isRemoteTask) {
+					// 外矿任务编制闸分轨 (§24.8.4): 按 staffedRemote 对活跃
+					// 任务数——家内满编不得压住外矿缺口 (hauler 恒缺即回退到
+					// staffed 闸 → 无人接单, sim 实证 remote:haul available 30000t)
+					const remoteTarget = board
+						.list({ kinds: [task.kind] })
+						.filter(
+							(t) =>
+								(t.dedupeKey ?? "").startsWith("remote:") &&
+								t.targetPos?.roomName === targetRoom &&
+								t.status !== "completed" &&
+								t.status !== "cancelled",
+						).length;
+					const taggedHere = Object.values(ctx.memory.units).filter(
+						(u) => u.remote === targetRoom && u.unitCode === unit,
+					).length;
+					if (taggedHere >= remoteTarget) continue;
+					addRequest(unit, task.priority, unit, undefined, undefined, undefined, targetRoom);
+				} else if (staffed(unit) < effectiveTarget(ctx, unit, targets)) {
+					addRequest(unit, task.priority, unit);
+				}
+			}
+		});
 		// 替补窗口 (docs/nexus-design/07 §7.5): TTL 低于 lead = 生产 + 实测路程 P95 + 余量 时提前补位;
-		// 关键岗位允许短暂在编重叠 (staffed ≤ target), 廉价岗位严格不超编 (staffed < target)
-		for (const room of Object.values(world.rooms)) {
-			for (const creep of room.creeps) {
-				const role = roleFromCode(creep.unitCode);
-				if (!role) {
+		// 关键岗位允许短暂在编重叠 (staffed ≤ target), 廉价岗位严格不超编 (staffed < target)。
+		// staffed 已在 staffingCount 内剔除将死体 (race-speedrun 任务2.2)——替补天然
+		// 允许与将死体重叠, 死亡潮窗口内提前发出替补请求。
+		safeSource("replacement", () => {
+			if (!targets) {
+				return;
+			}
+			// 名册口径 (docs/24 §24.5.2): 替补窗口在旧 rooms 房序遍历上并入外房
+			// remoteUnits (尾序)——外矿/侦查件常驻外房, 视野口径漏检使外死件
+			// 永不触发替补。请求顺序影响孵化槽排队序, 保持旧序不漂移门读数;
+			// 归房按 homeRoom (孵化簿记的母房), lead 计算不随驻地漂移
+			const homeOf = (name: string): string | undefined =>
+				ctx.memory.units[name]?.homeRoom ?? Game.creeps[name]?.memory.homeRoom;
+			const candidates = [
+				...Object.values(world.rooms).flatMap((room) => room.creeps),
+				...world.remoteUnits,
+			];
+			for (const creep of candidates) {
+				const unit = unitFromCodeOf(creep.unitCode);
+				if (!unit) {
 					continue;
 				}
-				if (creep.ticksToLive >= replacementLead(ctx, role, room.roomName, creep.name)) {
+				const homeRoomName = homeOf(creep.name) ?? creep.roomName;
+				const target = effectiveTarget(ctx, unit, targets);
+				// 错峰窗口按批规模放大 (race-speedrun 6.1): 窗口 = 定编 × 生产
+				// 周期, 替补触发点错峰 ≥ 整代替补的孵化时长, 消灭「整代到期 →
+				// 孵化槽排队 → 在岗阶梯下滑」潮 (40k 实证 t28.5-29.9k 全代重孵)
+				if (
+					creep.ticksToLive >=
+					replacementLead(ctx, unit, homeRoomName, creep.name, target)
+				) {
 					continue;
 				}
-				const target = effectiveTarget(ctx, role);
-				const overlapping = REPLACEMENT_CONFIG.keyRoles.includes(role)
-					? staffed(role) <= target
-					: staffed(role) < target;
+				const overlapping = REPLACEMENT_KEY_UNITS.includes(unit)
+					? staffed(unit) <= target
+					: staffed(unit) < target;
 				if (overlapping) {
-					addRequest(role, 60, `replacement:${role}`);
+					// 替补等级跟随被替类型常驻档: 换代是编制维持的一部分,
+					// 恒殿后 L11 会被涓流期孵化槽饿死——同龄批次集中到期时
+					// 死亡速率 > 孵化速率, 人口崩塌 (sim t12k 22→7 实锤)
+					const unitLevel =
+						SPAWN_CONFIG.standingPriorityByUnit[unit] ?? SPAWN_CONFIG.standingPriority;
+					// 冲级档升级替补越位 (race-speedrun 6.1 第四轮): rushUpgradeSpawnPriority
+					// 只作用于替补请求——缺编建立期维持 standing 序 (carrier 先于 upgrader,
+					// 能量通道先建, boot 绿门不漂移); 换代期升级体抢在 carrier churn 前
+					// 上槽, 消灭「单只死→补 1500t」空窗 (40k 实证 +8.9% / L4 提前 4925t)
+					addRequest(
+						unit,
+						anyRush && unit === "upgrader"
+							? Math.min(unitLevel, SPAWN_CONFIG.rushUpgradeSpawnPriority)
+							: unitLevel,
+						`replacement:${unit}`,
+					);
 				}
 			}
-		}
+		});
 	}
 
 	// 拉能快递 (specs/rush-courier): 消费 planning 阶段过五闸门的需求,
 	// 优先级最低 (40) —— 任何基础编制/任务/替补请求都排在前面
-	for (const courier of takeCourierRequests()) {
-		if (courier.roomName in world.rooms) {
-			requests.set("rush-courier", {
-				role: "rush-courier",
-				priority: courier.priority,
-				purpose: courier.reason,
-				budget: courier.budget,
-			});
+	safeSource("courier", () => {
+		for (const courier of takeCourierRequests()) {
+			if (courier.roomName in world.rooms) {
+				requests.set("rush-courier", {
+					unit: "rush-courier",
+					priority: courier.priority,
+					purpose: courier.reason,
+					budget: courier.budget,
+				});
+			}
+		}
+	});
+
+	// 孵化链路遥测 (任务 6.4): 队列深度峰值 + 拒绝计数 + 等待时长 EMA, 按窗口节流落盘。
+	// pendingSince 记类型请求首次入池 tick, 被孵化或出池时结算 EMA 并清账——键集有界。
+	const telemetry = (spawnState.telemetry ??= {
+		tick: 0,
+		queueDepthPeak: 0,
+		waitEma: {},
+		denyReasons: {},
+		pendingSince: {},
+	});
+	const pendingSince = (telemetry.pendingSince ??= {});
+	// 键口径: 按 request.unit 记账。requests 的 map 键含 raceRemote 复合键
+	// (rm:{taskId}), 若照抄会把一次性任务 ID 写进持久层且清账路径永远匹配不上
+	// (bugs/room-observation-growth-audit 实锤 80k 时 2809 键 56KB 无界增长)。
+	const unitsInPool = new Set<string>();
+	for (const request of requests.values()) {
+		unitsInPool.add(request.unit);
+		if (pendingSince[request.unit] === undefined) {
+			pendingSince[request.unit] = ctx.tick;
 		}
 	}
+	// 出池清账: 本 Tick 不在池的词表键结算 EMA 后摘键 (与孵化成交路径同口径);
+	// 非词表键 (历史泄漏的复合键) 不结算直接摘除。
+	for (const unit of Object.keys(pendingSince)) {
+		if (unitsInPool.has(unit)) continue;
+		const since = pendingSince[unit];
+		if (since !== undefined && isSpawnUnit(unit)) {
+			const alpha = 1 - 2 ** (-1 / SPAWN_CONFIG.spawnTelemetry.waitEmaTicks);
+			telemetry.waitEma[unit] =
+				(telemetry.waitEma[unit] ?? 0) * (1 - alpha) + (ctx.tick - since) * alpha;
+		}
+		delete pendingSince[unit];
+	}
+	const windowElapsed = ctx.tick - telemetry.tick >= SPAWN_CONFIG.spawnTelemetry.aggregateTicks;
+	if (windowElapsed) {
+		telemetry.tick = ctx.tick;
+	}
+	telemetry.queueDepthPeak = Math.max(telemetry.queueDepthPeak, requests.size);
 
 	if (requests.size === 0) {
+		spawnState.telemetry = telemetry;
 		return;
 	}
 
-	const ordered = [...requests.values()].sort((a, b) => b.priority - a.priority);
+	const ordered = [...requests.values()].sort((a, b) => a.priority - b.priority);
+	if (ctx.tick < 6000 && ctx.tick % 100 === 0) {
+		ctx.logger?.warn?.(
+			"probe-pool",
+			`t${ctx.tick} pause=[${pauseUnits.join(",")}] upgraderTarget=${targetsProbe} pool=[${ordered.map((r) => `${r.unit}:${r.priority}:${r.purpose.slice(0, 12)}`).join(",")}] avail=${Object.values(Game.spawns)[0]?.room.energyAvailable}`,
+		);
+	}
 	for (const spawn of spawns) {
 		if (spawn.spawning) {
 			continue;
 		}
-		// 产出就绪闸 (specs/production-readiness-gate): 本房采集面未铺满时,
-		// ① 起步序列闸——只受理采集面/生存角色; ② 搬运开局闸——在岗搬运体
-		// 不得超过采集面规模 (防「3 搬运 : 1 矿工」倒挂吃光孵化槽)
-		const spawnRoom = world.rooms[spawn.room.name];
-		const secured = spawnRoom ? isProductionSecured(ctx, spawnRoom) : true;
-		const gateAllows = (role: SpawnUnit): boolean => {
-			if (secured) {
-				return true;
-			}
-			if (role === "carrier") {
-				return staffed("carrier") < Math.max(1, staffed("harvester"));
-			}
-			return PRODUCTION_GATE_CONFIG.unsecuredAllowedRoles.includes(role);
-		};
-		const gated = ordered.filter((r) => gateAllows(r.role));
-		// 体型按容量定档 (energyCapacityAvailable), 攒能等待: 涓流经济下按瞬时存量定档
-		// 会永远困在最小体型 (sim 实证: 5 万 tick 仍 3 部件);
-		// 高优先请求 (bootstrap/应急) 例外——按现有能量立即生产, 保开局速度;
-		// 等待超时兜底: 存量长期攒不满期望体型时退回按存量降档, 防编制空转。
-		// 地形档 (specs/adaptive-body-factory): 本房沼泽密度高且路网未达标 → move 配比上调。
-		// 注: 冲级窗口不强制 harvester 带 CARRY——sim 实证 RCL2 档 (550 容量) 强制 carry
-		// 会 -1 WORK 且把源能量导向 ext/spawn 而非 cc 升级链, 升级总量 17658→4614 恶化;
-		// 直供泵的 carry 前提由生成器的 1-CARRY 下限自然满足 (预算 ≥650 即 RCL3 起)
-		const hints = {
-			slowTerrain: isSlowTerrain(terrainProfileFor(spawn.room.name, ctx.tick)),
-			// 接力期档 (specs/relay-hauling): RCL < 等级门用微型接力件, 达门大件直运
-			relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl,
-			directCarrier: (spawn.room.controller?.level ?? 0) >= RELAY_CONFIG.maxRcl,
-		};
-		const capacity = spawn.room.energyCapacityAvailable;
-		const available = spawn.room.energyAvailable;
-		const idleSince = spawnIdleSince[spawn.id] ?? ctx.tick;
-		const urgent = gated.find(
-			(r) =>
-				r.priority >= SPAWN_CONFIG.immediatePriority &&
-				(!SPAWN_CONFIG.capacityWaitRoles.includes(r.role) ||
-					// 采集面归零时立即小体复产 (自举通道): 攒能等待的前提是有收入,
-					// 矿工全灭后等待只会让能量归零死锁 (50k 普查: 0 harvester 存活实锤)
-					(r.role === "harvester" && staffed("harvester") === 0)) &&
-				buildBody(r.role, r.budget ?? available, hints) !== null,
-		);
-		let body: BodyPartConstant[] | null = null;
-		let request: SpawnRequest | undefined;
-		if (urgent) {
-			request = urgent;
-			body = buildBody(urgent.role, urgent.budget ?? available, hints);
-		} else {
-			request = gated.find((r) => buildBody(r.role, r.budget ?? capacity, hints) !== null);
-			if (request) {
-				const desired = buildBody(request.role, request.budget ?? capacity, hints);
-				if (desired && bodyCost(desired) > available) {
-					// 期望体型未攒够: 等待 (超时后退回按存量降档); 攒能角色用短窗——
-					// replacement 提前量 (~200t) 撑不住长等待, 换代断采是净损失 (50k 实测)
-					const waitLimit = SPAWN_CONFIG.capacityWaitRoles.includes(request.role)
-						? Math.min(SPAWN_CONFIG.capacityWaitTicks, SPAWN_CONFIG.capacityWaitTicksShort)
-						: SPAWN_CONFIG.capacityWaitTicks;
-					if (ctx.tick - idleSince < waitLimit) {
-						spawnIdleSince[spawn.id] = idleSince;
-						ctx.cpu.recordSkip("spawn-director", "budget");
-						continue;
-					}
-					body = buildBody(request.role, request.budget ?? available, hints);
-				} else {
-					body = desired;
-				}
-			}
-		}
-		if (!request || !body) {
-			// 能量不足以生产任何请求: 等待积累, 计入跳过指标
-			spawnIdleSince[spawn.id] = idleSince;
-			ctx.cpu.recordSkip("spawn-director", "budget");
+		const result = arbitrateForSpawn(ctx, spawn, world.rooms[spawn.room.name], ordered, board, {
+			staffed,
+			idleSince: spawnIdleSince,
+			downgradeActive,
+			onDeny: (reason) => {
+				telemetry.denyReasons[reason] = (telemetry.denyReasons[reason] ?? 0) + 1;
+			},
+		});
+		if (!result) {
 			continue;
 		}
-		delete spawnIdleSince[spawn.id];
+		const { request, body } = result;
 		// defender 生产能源经共享账本预留 (specs/combat-spawning): 失败等待, 不与搬运承诺重复花销
 		let reservationId: string | null = null;
-		if (request.role === "defender") {
+		if (request.unit === "defender") {
 			reservationId = reserve(ctx, {
-				owner: `spawn-request:${request.role}:${ctx.tick}`,
+				owner: `spawn-request:${request.unit}:${ctx.tick}`,
 				roomName: spawn.room.name,
 				amount: bodyCost(body),
 			});
@@ -469,58 +540,98 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				continue;
 			}
 		}
-		const name = generateCreepName(request.role, {
+		const name = generateCreepName(request.unit, {
 			random: Math.random,
 			exists: (candidate) => candidate in Game.creeps,
 		});
+		// 主孵化链保持原生同步直调 (HEAD 形态): 孵化时机在 agents 阶段即时生效,
+		// 经 intent 管线会推迟到 commit 阶段造成整链时序漂移 (6.1 拆分实证 L3 +1261t)。
+		// 原生调用权收编进 broker 属 6.2 范围, 与 directSpawn 一并迁移。
 		const code = spawn.spawnCreep(body, name, {
-			memory: { role: request.role, homeRoom: spawn.room.name },
+			memory: {
+				unit: request.unit,
+				homeRoom: spawn.room.name,
+				// 定向任务绑定 (外矿替补): 出生即指向目标任务, 分配器沿既有
+				// 租约路径接管 (claim 要求 available, 抢先占位防本地槽虹吸)
+				...(request.taskId ? { taskId: request.taskId } : {}),
+			},
 		});
 		if (code === OK) {
 			ctx.memory.units[name] = {
 				name,
-				unitCode: request.role,
+				unitCode: request.unit,
 				homeRoom: spawn.room.name,
 				bornAt: ctx.tick,
 				lastTaskChange: ctx.tick,
+				// 外矿驻地标记 (docs/24 §24.8.3): 分配器隔离口径
+				...(request.remote ? { remote: request.remote } : {}),
+				// 出生体型成本 (docs/24 §24.10): 外矿实测净收益摊销输入
+				...(request.remote ? { costEnergy: bodyCost(body) } : {}),
 			};
+			// worker 出生史累计标记 (workerBuildCriticalOf 豁免口径, 死亡不清)。
+			// request.unit 是类型名 (SpawnUnit), 与 UNIT_CODES 代号 ("W") 比较
+			// 恒 false 会导致标记永不落盘 (c16 实锤 economy.workerEverBorn 缺失)
+			if (request.unit === "worker") {
+				ctx.memory.economy.workerEverBorn = true;
+			}
+			// 等待时长 EMA 结算 (6.4): 入池→孵化成交的等待时长
+			const since = pendingSince[request.unit];
+			if (since !== undefined) {
+				const alpha = 1 - 2 ** (-1 / SPAWN_CONFIG.spawnTelemetry.waitEmaTicks);
+				telemetry.waitEma[request.unit] =
+					(telemetry.waitEma[request.unit] ?? 0) * (1 - alpha) + (ctx.tick - since) * alpha;
+				delete pendingSince[request.unit];
+			}
 			if (reservationId) {
 				commitReservation(ctx, reservationId, bodyCost(body));
 			}
-			ctx.logger.info(`生产 ${name} (${request.purpose}, ${body.length} 部件)`);
 		} else {
 			if (reservationId) {
 				releaseReservation(ctx, reservationId, "spawn-failed");
 			}
-			ctx.logger.warn(`spawn.${code}`, `生产 ${request.role} 失败: ${code}`);
+			ctx.logger.warn(`spawn.${code}`, `生产 ${request.unit} 失败: ${code}`);
 		}
 	}
 }
 
-// ==================== 直接孵化 (编队/扩张/援助/控制台) ====================
+/** 代号 → 类型名 (demandSources 单源再导出, 替补窗口扫描用) */
+function unitFromCodeOf(code: string) {
+	return unitFromCode(code);
+}
 
 /**
- * 直接孵化接口: 绕过任务板/池, 按角色默认体型或显式体型立即下蛋。
- * 用于编队 (TeamSpawner)/扩张 (ExpandController)/pc 陪护/控制台——
- * 一次性/指令式孵化语义, 不参与定编与预算竞争。
- * @returns spawnCreep 返回码 (OK=0 为成功)
+ * cc 水位门: 存量 < 在座升级 WORK×2×缓冲 tick 时为 true。
+ * 多房语义: 任一有 cc 的房低于水位即暂停升级体孵化 (保守口径, 修复旧实现
+ * 首个有 cc 房即 return 的单房短路)。
+ * Available 口径 (specs/resource-ledger): cc 在途承诺 (committedTo) 计入存量——
+ * 补货任务已发出时水位即将回升, 不暂停孵化。
  */
-export function directSpawn(
-	room: Room,
-	role: string,
-	memory: Record<string, unknown>,
-	body?: BodyPartConstant[],
-	namePrefix?: string,
-): number {
-	const spawns = room.find(FIND_MY_SPAWNS);
-	const spawn = spawns.find((s) => !s.spawning);
-	if (!spawn) return ERR_BUSY;
-	const config = (RoleData as unknown as Record<string, { level: number; code?: string }>)[role];
-	if (!config) {
-		return ERR_INVALID_ARGS;
+function ccBelowSpawnGate(ctx: TickContext): boolean {
+	const world = ctx.world.current;
+	if (!world) {
+		return false;
 	}
-	const bodyFinal = body ?? (room as any).GenerateBodys?.((room as any).GetRoleBodys?.(role, undefined, undefined), role);
-	if (!bodyFinal?.length) return ERR_NOT_ENOUGH_RESOURCES;
-	const mem = { ...memory, role, cache: {} } as CreepMemory;
-	return spawn.spawnCreep(bodyFinal, generateCreepName(String(namePrefix ?? config.code ?? role), { random: Math.random, exists: (n) => n in Game.creeps }), { memory: mem });
+	const capacity = Math.max(300, ...Object.values(Game.spawns).map(
+		(spawn) => spawn.room.energyCapacityAvailable,
+	));
+	const upgradeWork = rushBodyWork(buildBody("upgrader", capacity) ?? []);
+	const ledger = createLedger(ctx);
+	let anyBelow = false;
+	for (const room of Object.values(world.rooms)) {
+		const buffer = room.controllerBuffer;
+		if (!buffer) {
+			continue;
+		}
+		const store = room.stores.find((s) => s.id === buffer.id);
+		if (
+			store &&
+			store.energy + ledger.committedTo(room.roomName, store.id) <
+				upgradeWork * 2 * CONTROLLER_BUFFER_CONFIG.spawnGateBufferTicks
+		) {
+			anyBelow = true;
+		}
+	}
+	return anyBelow;
 }
+
+const REPLACEMENT_KEY_UNITS = REPLACEMENT_CONFIG.keyUnits;

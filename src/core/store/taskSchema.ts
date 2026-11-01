@@ -6,7 +6,7 @@
 
 export const TASK_KINDS = [
 	"harvest",
-	"haul",
+	"carry",
 	"fill_spawn",
 	"upgrade",
 	"build",
@@ -52,6 +52,7 @@ export interface NexusTask {
 	destPos?: SerializedPosition;
 	resourceType?: ResourceConstant;
 	amount?: number;
+	/** 排队等级 (Rosmarin race 同源: 小者优先, 档距 1; taskLevels.LEVELS 定义档位) */
 	priority: number;
 	createdAt: number;
 	updatedAt: number;
@@ -76,6 +77,7 @@ export interface NewTaskInput {
 	destPos?: SerializedPosition;
 	resourceType?: ResourceConstant;
 	amount?: number;
+	/** 排队等级 (小者优先, 见 NexusTask.priority) */
 	priority: number;
 	deadline?: number;
 	requiredCapabilities: string[];
@@ -89,16 +91,20 @@ export const LEASE_POLICY = {
 		harvest: 100,
 		upgrade: 100,
 		build: 80,
-		haul: 40,
+		carry: 40,
 		fill_spawn: 40,
 		defend: 40,
 		retreat: 20,
 		repair: 80,
+		// 预订件跨房驻场: 到位后持续续订控制器, 短租约会反复踢掉重招
+		reserve: 500,
 	} as Partial<Record<TaskKind, number>>,
 	heartbeatGraceTicks: 20,
+	/** 跨房驻场租约 (外矿 harvest/carry): 覆盖单程路程 + 驻场周期 */
+	remoteStationTicks: 800,
 	maxAttemptsByKind: {
 		harvest: 5,
-		haul: 6,
+		carry: 6,
 		fill_spawn: 8,
 		upgrade: 5,
 		build: 5,
@@ -110,6 +116,8 @@ export const LEASE_POLICY = {
 	defaultTicks: number;
 	heartbeatGraceTicks: number;
 	byKind: Partial<Record<TaskKind, number>>;
+	/** 跨房驻场租约 (外矿 harvest/carry) */
+	remoteStationTicks: number;
 	maxAttemptsByKind: Partial<Record<TaskKind, number>>;
 };
 
@@ -117,34 +125,46 @@ export function leaseTicksFor(kind: TaskKind): number {
 	return LEASE_POLICY.byKind[kind] ?? LEASE_POLICY.defaultTicks;
 }
 
+/** 跨房任务的驻场租约 (外矿 harvest/carry: 单程路程 > 普通租约, 见 LEASE_POLICY 注) */
+export function remoteLeaseTicksFor(kind: TaskKind): number {
+	return kind === "harvest" || kind === "carry" ? LEASE_POLICY.remoteStationTicks : leaseTicksFor(kind);
+}
+
 export function maxAttemptsFor(kind: TaskKind): number {
 	return LEASE_POLICY.maxAttemptsByKind[kind] ?? 5;
 }
 
 /**
- * 任务优先级政策 (docs/nexus-design/06 §6.2 能源序 + docs/nexus-design/09 §9.3 防御序):
- * 供能 > 防御 (defend 92 / retreat 90 达抢占线, 撤退优先于经济滞回) > 采集 > 搬运 > 建造/维修 > 升级。
+ * 任务等级政策 (RosmarinBot race 等级表同源, 2026-10-18 race 复盘全面移植):
+ * 小者优先, 档距 1, 语义分层见 taskLevels.ts 文件头。
+ * 收入链严格前置 (采集 > 搬运 > 升级 > 建造), 建造殿后 (race L8 语义)。
+ * 数值只表达档位序, 不承载幅度语义——旧 0-100 跑步机数值体系废弃。
  */
 export const TASK_PRIORITY = {
-	fill_spawn: 95,
-	defend: 92,
-	retreat: 90,
-	harvest: 70,
-	haul: 60,
-	scout: 55,
-	build: 50,
-	repair: 45,
-	upgrade: 30,
+	fill_spawn: 1,
+	defend: 2,
+	retreat: 2,
+	harvest: 5,
+	carry: 4,
+	reserve: 5,
+	upgrade: 4,
+	claim: 10,
+	build: 8,
+	repair: 8,
+	scout: 9,
 } as const satisfies Partial<Record<TaskKind, number>>;
 
+/** 任务种类的默认等级 (小者优先); 未知种类落替补档 */
 export function priorityFor(kind: TaskKind): number {
-	return (TASK_PRIORITY as Record<string, number | undefined>)[kind] ?? 50;
+	return (TASK_PRIORITY as Record<string, number | undefined>)[kind] ?? 11;
 }
 
 export interface TaskQuery {
 	roomName?: string;
 	kinds?: TaskKind[];
 	statuses?: TaskStatus[];
+	/** 按执行者回查 (任务 5.3: TaskIndex assignee 维度) */
+	assignedTo?: string;
 	minPriority?: number;
 	unassignedOnly?: boolean;
 }
