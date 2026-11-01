@@ -218,18 +218,16 @@ export const SPAWN_CONFIG = {
 	 *  reserver 不入列 (批次 AD 四轮): standing 按任务数定编 = 每房 1 只,
 	 *  绕过 raceRemote 的上游 claims=2 全局上限, 双轨并发孵 5 只挤占 RM
 	 *  攒能窗口 (24k 实证 reserver 5 / RM 0); 孵化全归 spawnDirector raceRemote 段 */
-	standingUnits: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout"] as readonly string[],
+	standingUnits: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout", "reserver"] as readonly string[],
 	/** 常驻编制缺口的请求排队等级 (race L9; 低于任务驱动, 只兜底) */
 	standingPriority: 9,
 	/** 按类型的常驻排队等级覆盖 (小者优先, race 语义 + 本矿供能约束):
 	 *  carrier L3 / harvester L4——本矿矿工 drop 采矿, 搬运是 spawn 的唯一
 	 *  能量入口, 必须先于采集补员 (旧体系 carrier 88 > harvester 55 的同语义);
 	 *  两者由采集让位闸 + carrier 上限闸实现 H/C 交替起步; upgrader L6 常态
-	 *  升级档 (main 档无 rush 提级时靠此兜底)。
-	 *  scout L7 (phase4 3.1): 外矿链路第一环, L11 垫底档在发展期恒被
-	 *  carrier/harvester 常驻缺口压住, remote 目标永不被点亮 (0.2 取证
-	 *  scout 全程零孵化的 main 档复现); 1 MOVE 50 能量一次性小件, 提到
-	 *  build(8) 之下、worker(6) 之上——侦查视野先于建造消费。 */
+	 *  升级档 (main 档无 rush 提级时靠此兜底), scout L7 外矿链路第一环。
+	 *  reserver L12 (phase4 5.8): 外矿预订件, 收入翻倍前置但 1300 能量大件,
+	 *  垫底档防挤占采集/搬运常驻缺口。 */
 	standingPriorityByUnit: { carrier: 3, upgrader: 4, worker: 6, scout: 7, harvester: 9, remoteMiner: 12, reserver: 12 } as Readonly<Record<string, number>>,
 	/** 冲级档缺编 upgrader 的孵化等级下限 (bugs/P1-19): rush 期缺编 upgrader
 	 *  与搬运同进 urgent 段, 攒能与立即通道交错建立火力。

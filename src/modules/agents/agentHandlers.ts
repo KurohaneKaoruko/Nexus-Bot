@@ -404,7 +404,7 @@ export function runForeignTask(
 ): void {
 	switch (task.kind) {
 		case "scout": {
-			// 侦查: 到达目标房即获视野 (下 tick planRemoteHarvest 产出采集任务接替);
+			// 侦查: 到达目标房即获视野 (Intel 写入后 remote-planner 接管推进);
 			// 到达即 complete 终结任务——此前只删指针不终结, 任务靠 lease 过期回
 			// available 又被认领, 且规划器每拍 upsert 续命成永生任务 (实服 4wt
 			// 重开残留 6 条 scout 任务 + 视野口径漏计 → 无限补孵 20 只, bugs/实服)

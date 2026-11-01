@@ -46,10 +46,11 @@ function runRoomFeatures(room: Room): void {
 	// 全场 179 只中 139 只无日志孵化, 让位期仍孵 upgrader/worker 把攒能窗口抽干)。
 	room.updateEnergyState?.(false)
 
-	// 外矿双体系勘误 (2026-10-15, C 波已收口 2026-10-29): 外矿由任务板系
-	// planRemoteHarvest 独家驱动 (economy/remoteMining, scout→远程采集任务)。
+	// 外矿链路 (phase4): 外矿由 remote-planner (economy/remote) 独家驱动——
+	// Intel 选点 → scout 侦察 → 评估准入 → active 任务面 (采集/搬运/预定)。
 	// 原型系外矿采集链 (mine/* + outMine/externalMine/externalScheduler) 已随
-	// legacy-consolidation-b C 波退役删除; 人操簿记面存续 (console mine.ts +
+	// legacy-consolidation-b C 波退役删除; 旧任务板链 (economy/remoteMining)
+	// 已随 phase4 5.9 删除; 人操簿记面存续 (console mine.ts +
 	// Memory.OutMineData, mineralWork 消费)。
 
 	if (tier !== 'normal') return

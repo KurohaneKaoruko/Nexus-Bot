@@ -136,6 +136,12 @@ export function recordActionRates(ctx: TickContext, results: readonly ActionResu
 			recordProduction(ctx, creep.roomName, creep.bodyWork * 2);
 		} else if (result.movedEnergy && result.movedEnergy > 0) {
 			recordDelivery(ctx, creep.roomName, result.movedEnergy);
+			// 外矿搬运交付归集 (docs/24 §24.8.5): 目的地在母房, 但收入归属
+			// 外矿房——按 remote:<home>:<room> 键另记, 供 §24.10 收益反馈。
+			// 归属键经 intentReason 携带 (ActionResult 不回传 taskId)
+			if (result.intentReason?.startsWith("remote-haul:")) {
+				recordDelivery(ctx, result.intentReason.slice("remote-haul:".length), result.movedEnergy);
+			}
 		}
 	}
 }
@@ -168,6 +174,14 @@ export function diagnose(ctx: TickContext, world: WorldView): void {
 		delivery += rates?.delivered.ema ?? 0;
 		sourceCount += room.sources.length;
 		foldRates(ctx, room.roomName);
+	}
+	// 外矿归属键 (remote:<home>:<room>, docs/24 §24.8.5) 的窗口折叠:
+	// 键不在 world.rooms 房序内, 不并循环会 accumulated 无界增长且 EMA 恒 0
+	// (收益反馈 §24.10 读 EMA, 恒 0 = 反馈失效)
+	for (const key of Object.keys(ctx.memory.ledger.rates)) {
+		if (key.startsWith("remote:")) {
+			foldRates(ctx, key);
+		}
 	}
 
 	const starved = accumulators.starvationTicks;

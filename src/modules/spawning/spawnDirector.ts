@@ -136,14 +136,22 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 		taskId?: string,
 		rkey?: string,
 		budget?: number,
+		remote?: string,
 	): void => {
 		if (pauseUnits.includes(unit)) {
 			return;
 		}
-		const key = rkey ?? unit;
+		const key = rkey ?? (remote !== undefined ? `${unit}:${remote}` : unit);
 		const existing = requests.get(key);
 		if (!existing || priority < existing.priority) {
-			requests.set(key, { unit, priority, purpose, taskId, ...(budget !== undefined ? { budget } : {}) });
+			requests.set(key, {
+				unit,
+				priority,
+				purpose,
+				taskId,
+				...(budget !== undefined ? { budget } : {}),
+				...(remote !== undefined ? { remote } : {}),
+			});
 		}
 	};
 	/** 需求源隔离执行器: 抛错只告警, 孵化线不瘫 (6.4) */
@@ -277,7 +285,10 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				} else if (unitName === "worker" && workerBuildCriticalOf(ctx, board)) {
 					priority = Math.min(priority, 2);
 				}
-				addRequest(unitName as never, priority, `staffing:${unitName}`);
+				// purpose 带 remote: 前缀 → 采集让位闸放行 (reserver 是外矿链路
+				// 前置件, 与 remote:harvest 替补同待遇; 家内采集面未满时被 yield
+				// 恒拒 = 外矿源容量翻倍永远开不了)
+				addRequest(unitName as never, priority, unitName === "reserver" ? `remote:staffing:${unitName}` : `staffing:${unitName}`);
 				}
 			}
 		});
@@ -317,14 +328,61 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				if (!remoteRoom || remoteRoom === task.roomName) continue;
 				if (remoteRoomsOnDuty.has(remoteRoom)) continue;
 				// 定向替补优先级严格压过普通任务驱动请求 (批次 K: 同级先到
-				// 先占坑, 普通请求把 remote 挤出池——矿工死后 30k 无替补)
-				addRequest("harvester", task.priority - 1, `remote:harvest:${task.id}`, task.id);
+				// 先占坑, 普通请求把 remote 挤出池——矿工死后 30k 无替补)。
+				// 编制闸分轨 (§24.8.4, phase4 5.8): tagged 单位不抵家内编制后,
+				// 本段若无限发请求会恒占孵化槽把家内 harvester 挤出池 → 家内
+				// 采集面铺不满 → production gate 恒拒 (sim 实证 deny gate 43k,
+				// 人口死亡螺旋 236 孵 232 死)。按房抵扣: 该房 tagged harvester
+				// ≥ 活跃 remote:harvest 任务数即不发
+				if (task.dedupeKey.startsWith("remote:")) {
+					const activeRemoteHarvest = board
+						.list({ kinds: ["harvest"] })
+						.filter(
+							(t) =>
+								(t.dedupeKey ?? "").startsWith("remote:") &&
+								t.targetPos?.roomName === remoteRoom &&
+								t.status !== "completed" &&
+								t.status !== "cancelled",
+						).length;
+					const taggedHere = Object.values(ctx.memory.units).filter(
+						(u) => u.remote === remoteRoom && u.unitCode === "harvester",
+					).length;
+					if (taggedHere >= activeRemoteHarvest) continue;
+				}
+				// remote: 前缀任务带驻地标记 (phase4 5.7): 新体 UnitRecord.remote,
+				// 分配器按 §24.8.3 隔离
+				const remoteTag = task.dedupeKey.startsWith("remote:") ? remoteRoom : undefined;
+				addRequest("harvester", task.priority - 1, `remote:harvest:${task.id}`, task.id, undefined, undefined, remoteTag);
 			}
 			}
 			for (const task of board.list({ statuses: ["available"] })) {
 				if (task.kind === "harvest" && isMineralTask(task)) continue;
+				// reserver 孵化走 standing 编制 (docs/24 §24.8.2, AgentSystem
+				// reserve 分支驱动): 任务驱动段重复发请求会双轨同孵
 				const unit = unitForTaskKind(task.kind);
-				if (unit && staffed(unit) < effectiveTarget(ctx, unit, targets)) {
+				if (!unit || unit === "reserver") continue;
+				const targetRoom = task.targetPos?.roomName;
+				const isRemoteTask =
+					task.dedupeKey.startsWith("remote:") && targetRoom !== undefined && targetRoom !== task.roomName;
+				if (isRemoteTask) {
+					// 外矿任务编制闸分轨 (§24.8.4): 按 staffedRemote 对活跃
+					// 任务数——家内满编不得压住外矿缺口 (hauler 恒缺即回退到
+					// staffed 闸 → 无人接单, sim 实证 remote:haul available 30000t)
+					const remoteTarget = board
+						.list({ kinds: [task.kind] })
+						.filter(
+							(t) =>
+								(t.dedupeKey ?? "").startsWith("remote:") &&
+								t.targetPos?.roomName === targetRoom &&
+								t.status !== "completed" &&
+								t.status !== "cancelled",
+						).length;
+					const taggedHere = Object.values(ctx.memory.units).filter(
+						(u) => u.remote === targetRoom && u.unitCode === unit,
+					).length;
+					if (taggedHere >= remoteTarget) continue;
+					addRequest(unit, task.priority, unit, undefined, undefined, undefined, targetRoom);
+				} else if (staffed(unit) < effectiveTarget(ctx, unit, targets)) {
 					addRequest(unit, task.priority, unit);
 				}
 			}
@@ -505,6 +563,8 @@ export function runSpawnDirector(ctx: TickContext, board: TaskBoard): void {
 				homeRoom: spawn.room.name,
 				bornAt: ctx.tick,
 				lastTaskChange: ctx.tick,
+				// 外矿驻地标记 (docs/24 §24.8.3): 分配器隔离口径
+				...(request.remote ? { remote: request.remote } : {}),
 			};
 			// worker 出生史累计标记 (workerBuildCriticalOf 豁免口径, 死亡不清)。
 			// request.unit 是类型名 (SpawnUnit), 与 UNIT_CODES 代号 ("W") 比较

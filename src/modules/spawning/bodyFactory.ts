@@ -205,8 +205,9 @@ export function buildBody(
 		case "defender":
 			return buildSegmented(ROAD_SEGMENTS.defender, budget);
 		case "reserver":
-			// 外矿预订件 (对齐 Rosmarin race): [CLAIM,MOVE]×n, 预订功率随预算放大
-			return buildSegmented({ segment: ["claim", "move"], min: 1, max: 3 }, budget);
+			// 外矿预订件 (对齐 Rosmarin race): [CLAIM,MOVE]×n, 预订功率随预算放大;
+			// min 2 = 预定净增长下限 (1 CLAIM 续不上 300t 掉 1 的衰减)
+			return buildSegmented({ segment: ["claim", "move"], min: 2, max: 3 }, budget);
 		case "remoteMiner":
 			// 外矿驻点矿工 (批次 AD, 上游 remoteMiner 逐位): W 拉满 + M=ceil(W/2)
 			// (沼泽房 ceil(W/3) 由 slowTerrain hint 切档) + 收尾 1 CARRY

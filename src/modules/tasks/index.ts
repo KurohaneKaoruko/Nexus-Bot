@@ -25,7 +25,7 @@ export const Tasks: TickModule = {
 		// 第二判据: 远程经济任务 (harvest/carry, 目标房 ≠ 挂靠房) 的目标房已无
 		// 视野且挂靠房也非我房时失效——旧世界的远程采集任务 targetId 已死,
 		// 领到的矿工只会站桩到老死 (run#20 实服事故); 视野存活期内不误杀
-		// (scout 点亮→planRemoteHarvest 重建同键任务, 断视野窗口由租约回收兜底)。
+		// (scout 点亮→remote-planner 重建同键任务, 断视野窗口由租约回收兜底)。
 		const myRoomNames = new Set(Object.keys(world.rooms));
 		for (const task of Object.values(ctx.memory.tasks)) {
 			if (TERMINAL_STATUSES.has(task.status)) {
@@ -86,11 +86,15 @@ export const Tasks: TickModule = {
 		// 同分取先遍历者, 改序会平移门读数; 顺序合流留给 remoteUnits 字段退役时
 		const profiles = [
 			...Object.values(world.rooms).flatMap((room) =>
-				room.creeps.filter((creep) => !creep.spawning).map(profileOf),
+				room.creeps
+					.filter((creep) => !creep.spawning)
+					.map((creep) => profileOf(creep, ctx.memory.units[creep.name]?.remote)),
 			),
 			// 外矿单位参与分配 (bugs/P1-18 断点④): 可见非己方房的己方爬不进 rooms,
 			// 不并入则远程任务到达者无人续租、本矿空闲件也看不到远程缺口
-			...world.remoteUnits.filter((creep) => !creep.spawning).map(profileOf),
+			...world.remoteUnits
+				.filter((creep) => !creep.spawning)
+				.map((creep) => profileOf(creep, ctx.memory.units[creep.name]?.remote)),
 		];
 		// 亲和排他分档 (bugs (十三)): 全场任一房启用 courier 投喂经济 (churn 期
 		// 升级体兼差孵化线是承重的) 即关; 全部无 courier 的 main 系才开
@@ -110,6 +114,17 @@ export const Tasks: TickModule = {
 			world,
 			affinityExclusive,
 			remoteMinerExclusive,
+			remotePathOf: (task) => {
+				// remote:<kind>:<home>:<target|sourceId> → 源所在外矿房的 colony 记录
+				const parts = task.dedupeKey.split(":");
+				const home = parts[2];
+				const target = task.targetPos?.roomName;
+				if (!home || !target) return undefined;
+				const rec = ctx.memory.remotes?.[home]?.rooms[target];
+				if (!rec) return undefined;
+				const lengths = Object.values(rec.sources).map((s) => s.pathLength);
+				return lengths.length ? Math.min(...lengths) : undefined;
+			},
 			currentTaskOf: (name) => Game.creeps[name]?.memory.taskId,
 			getTask: (id) => board.get(id),
 			claim: (id, name, now, leaseTicks) => {

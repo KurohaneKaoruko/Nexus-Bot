@@ -6,7 +6,6 @@ import type { TickContext, TickModule } from "@/core";
 
 import { createTaskBoard } from "@/modules/tasks";
 import { runEconomyPlanners } from "@/modules/economy/planners";
-import { planRemoteHarvest } from "@/modules/economy/remoteMining";
 import { planMineralWork } from "@/modules/economy/mineralWork";
 import { runEconomyModel } from "@/modules/economy/model";
 import { planCourierRequests } from "@/modules/economy/courier";
@@ -18,13 +17,6 @@ export const Economy: TickModule = {
 	run(ctx: TickContext): void {
 		const board = createTaskBoard(ctx.memory.tasks);
 		runEconomyPlanners(ctx, board);
-		// 外矿同名-unit 采集任务 (邻房可见 source)
-		const w = ctx.world.current;
-		if (w) {
-			for (const room of Object.values(w.rooms)) {
-				planRemoteHarvest(ctx, room, board);
-			}
-		}
 		// 过道矿定编 (specs/mission-pool-retirement mine 行): 人操链语义,
 		// 需要原型扩展面 (directSpawn/observeRoom/AssignBoostTask) → 遍历 Game.rooms
 		for (const room of Object.values(Game.rooms)) {
@@ -84,6 +76,6 @@ export {
 	isRoomRemoteUnlocked,
 } from "@/modules/economy/productionGateAccess";
 export { destinationQuotas } from "@/modules/economy/quota";
-export { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeRemoteCarryCount, activeScoutCount } from "@/modules/economy/remoteMining";
+export { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeRemoteCarryCount, activeScoutCount } from "@/modules/economy/remote/counts";
 export { getCoreDepotContainer, isCoreDepotContainer, isCoreDepotContainerDraining } from "@/modules/economy/coreDepot";
 export { FunnelModule } from "@/modules/economy/FunnelModule";

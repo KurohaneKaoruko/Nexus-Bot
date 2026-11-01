@@ -27,6 +27,8 @@ export interface CapabilityProfile {
 	freeCapacity: number;
 	ttlRemaining: number;
 	spawning: boolean;
+	/** 外派驻地房 (UnitRecord.remote, docs/24 §24.8.3): 外矿/家内单位隔离口径 */
+	remoteTag?: string;
 }
 
 export interface AllocationCandidate {
@@ -80,7 +82,7 @@ export const SWITCH_EXEMPT_KINDS: ReadonlySet<string> = new Set([
 /** 最低剩余寿命: 低于此值不接新任务 */
 const MIN_TTL = 150;
 
-export function profileOf(summary: CreepSummary): CapabilityProfile {
+export function profileOf(summary: CreepSummary, remoteTag?: string): CapabilityProfile {
 	return {
 		creepName: summary.name,
 		unitCode: summary.unitCode,
@@ -98,6 +100,7 @@ export function profileOf(summary: CreepSummary): CapabilityProfile {
 		freeCapacity: summary.freeCapacity,
 		ttlRemaining: summary.ticksToLive,
 		spawning: summary.spawning,
+		...(remoteTag !== undefined ? { remoteTag } : {}),
 	};
 }
 
@@ -189,6 +192,30 @@ export function canExecute(
 		profile.attack + profile.ranged + profile.heal === 0
 	) {
 		return false;
+	}
+	// 外矿/家内单位隔离 (docs/24 §24.8.3): remote: 任务只给同母房且带 remote
+	// 标记的单位; 家内任务只给无标记单位——两编制互不抢任务, 家内定编与
+	// P1-14 校准口径不受外矿影响。
+	// 例外 (spec 原文「scout 与 reserver 只接 remote: 任务」——任务域限制,
+	// 非驻地匹配): scout 单 MOVE 一次性件不占编制, 按 kind 豁免标记要求;
+	// reserver 任务域恒 remote:, 但孵化走 standing 编制 (L12 档), 同样豁免
+	// ——否则无标记孵出的 reserver 接不了任务, standing 编制无限重发
+	const isRemoteTask = task.dedupeKey.startsWith("remote:");
+	const scoutOrReserver = task.kind === "scout" || task.kind === "reserve";
+	if (isRemoteTask && !scoutOrReserver) {
+		if (profile.remoteTag === undefined) return false;
+		const targetRoom = task.targetPos?.roomName;
+		if (targetRoom !== undefined && profile.remoteTag !== targetRoom) {
+			// 母房锚点的例外: 目标即母房本身 (haul 交付腿) 不限驻地房
+			if (task.kind !== "carry" || targetRoom !== task.roomName) return false;
+		}
+	} else if (!isRemoteTask && profile.remoteTag !== undefined) {
+		// 外矿单位不接家内任务 (含旧链 harvest:/carry: 跨房形态——其目标房
+		// 是外矿房, 按 remoteTag 匹配放行)
+		const targetRoom = task.targetPos?.roomName;
+		if (targetRoom === undefined || targetRoom === profile.remoteTag) {
+			return false;
+		}
 	}
 	for (const capability of task.requiredCapabilities) {
 		if (capability === "work" && profile.work === 0) {
@@ -293,7 +320,27 @@ export function scoreCandidate(
 	);
 }
 
-function travelCostOf(profile: CapabilityProfile, task: NexusTask, world: WorldViewLike): number {
+function travelCostOf(
+	profile: CapabilityProfile,
+	task: NexusTask,
+	world: WorldViewLike,
+	remotePathOf?: (task: NexusTask) => number | undefined,
+): number {
+	// 外矿任务 (remote: 前缀) 的实测路程 (docs/24 §24.8.3): 单位在母房时读
+	// RemoteSourceRecord.pathLength (PathFinder 首评缓存), 同房切比雪夫兜底
+	const isRemoteTask = task.dedupeKey.startsWith("remote:");
+	if (isRemoteTask && remotePathOf) {
+		const pathLength = remotePathOf(task);
+		if (pathLength !== undefined) {
+			const targetRoom = task.targetPos?.roomName;
+			if (targetRoom !== undefined && profile.roomName === targetRoom) {
+				// 单位已在目标房: 同房切比雪夫
+				return Math.max(Math.abs(profile.x - (task.targetPos?.x ?? profile.x)),
+					Math.abs(profile.y - (task.targetPos?.y ?? profile.y)));
+			}
+			return pathLength;
+		}
+	}
 	// 目标在异房 (外矿 harvest 的 targetPos 指向邻房源): 距离按房名坐标差折算,
 	// 不能拿异房坐标当同房切比雪夫算——那会把 25 格惩罚错加到本矿爬头上
 	const targetRoom = task.targetPos?.roomName;
@@ -385,6 +432,8 @@ export interface AssignInput {
 	 * 全程 1 只); manual 关——本矿 harvester 自回运外矿是 batch H 环承重设计。
 	 */
 	remoteMinerExclusive?: boolean;
+	/** 外矿任务实测路程 (remote: 前缀): dedupeKey → pathLength, 缺省回退房名折算 */
+	remotePathOf?: (task: NexusTask) => number | undefined;
 }
 
 /**
@@ -430,7 +479,7 @@ export function assignBatch(input: AssignInput): readonly Assignment[] {
 			) {
 				continue;
 			}
-			const travel = travelCostOf(profile, task, input.world);
+			const travel = travelCostOf(profile, task, input.world, input.remotePathOf);
 			if (!Number.isFinite(travel)) {
 				continue;
 			}

@@ -43,11 +43,15 @@ export function raceRemoteDeficitOf(ctx: TickContext, board: TaskBoard): boolean
 	return false;
 }
 
-/** 换班提前量: 路程未实测回退线性房距估算 (上游 dist 未实测时同款退化) */
+/** 换班提前量: 路程读新链 pathLength (remotes 子树, PathFinder 实测格数),
+ *  未评估房回退线性房距估算 (上游 dist 未实测时同款退化) */
 function remoteWalkLeadOf(ctx: TickContext, homeRoomName: string, targetRoomName: string, pace: number): number {
-	const cached = ctx.memory.economy.remoteSourcesByHome?.[homeRoomName];
-	const hit = cached?.find((e) => e.room === targetRoomName);
-	if (hit) return hit.dist * pace;
+	const lengths = Object.values(ctx.memory.remotes?.[homeRoomName]?.rooms[targetRoomName]?.sources ?? {}).map(
+		(s) => s.pathLength,
+	);
+	if (lengths.length > 0) {
+		return Math.min(...lengths) * pace;
+	}
 	const home = roomWorldCoord(homeRoomName);
 	const target = roomWorldCoord(targetRoomName);
 	const linear = home && target ? Math.max(Math.abs(home.x - target.x), Math.abs(home.y - target.y)) : 1;
@@ -70,7 +74,7 @@ export function raceRemoteRequests(
 	board: TaskBoard,
 	staffed: (unit: string) => number,
 	targets: Record<SpawnUnit, number>,
-	addRequest: (unit: SpawnUnit, priority: number, purpose: string, taskId?: string, rkey?: string, budget?: number) => void,
+	addRequest: (unit: SpawnUnit, priority: number, purpose: string, taskId?: string, rkey?: string, budget?: number, remote?: string) => void,
 ): void {
 	// 分支序闸 ①: 本矿采集面未满编 → 外矿整段让位 (上游 want[0] 恒本矿)。
 	// 定编口径: effectiveTarget 的 dying 剔除口径与 staffed 对齐 (存活+在途),
@@ -130,7 +134,7 @@ export function raceRemoteRequests(
 		}
 	}
 
-	// 远程任务面: budget 裁剪在 planRemoteHarvest 已做 (容量驱动),
+	// 远程任务面: budget 裁剪在 remote-planner 已做 (spawnShareCap 口径),
 	// 此处逐任务产出 miner/hauler/reserver 请求 (上游 work(s) 顺序: miner → hauler → reserver)
 	const remoteTasks = board
 		.list({ kinds: ["harvest"], statuses: ["available", "leased", "in_progress"] })
@@ -163,6 +167,7 @@ export function raceRemoteRequests(
 				task.id,
 				`rm:${task.id}`,
 				incomeUp ? undefined : avail,
+				targetRoom,
 			);
 		}
 		// ② hauler (上游 needCarry 公式): dug = min(10, 2×ΣW)
@@ -176,7 +181,7 @@ export function raceRemoteRequests(
 			const carryTask = board
 				.list({ kinds: ["carry"], statuses: ["available"] })
 				.find((t) => t.targetPos?.roomName === targetRoom);
-			addRequest("carrier", REMOTE_CARRY_CONFIG.carryPriority, `remote:carry:${carryTask?.id ?? task.id}`, carryTask?.id, `rc:${task.id}`);
+			addRequest("carrier", REMOTE_CARRY_CONFIG.carryPriority, `remote:carry:${carryTask?.id ?? task.id}`, carryTask?.id, `rc:${task.id}`, undefined, targetRoom);
 		}
 	}
 	// ③ reserver (上游 resLead 口径): 每房一单, TTL > 300 + 3×body + walk
@@ -209,7 +214,7 @@ export function raceRemoteRequests(
 			return creep && !creep.spawning && (creep.ticksToLive ?? 0) > 300 + creep.body.length * 3 + walk;
 		});
 		if (!aliveHolder && aliveReservers < 2 && hasRemoteSpawnBudget(ctx, homeRoomName, 4)) {
-			addRequest("reserver", task.priority + 1, `remote:reserve:${targetRoom}`, task.id, `rr:${targetRoom}`);
+			addRequest("reserver", task.priority + 1, `remote:reserve:${targetRoom}`, task.id, `rr:${targetRoom}`, undefined, targetRoom);
 		}
 	}
 }

@@ -10,7 +10,7 @@ import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import type { TaskBoard } from "@/modules/tasks";
 import { createTaskBoard } from "@/modules/tasks";
-import { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeScoutCount } from "@/modules/economy";
+import { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeScoutCount } from "@/modules/economy/remote/counts";
 import {
 	isSpawnUnit,
 	typicalSpawnTime,
@@ -79,6 +79,8 @@ export interface SpawnRequest {
 	/** 定向任务绑定 (外矿替补): 孵化成功即写入新体 memory.taskId,
 	 * 分配器沿既有租约路径接管, 不依赖「本地槽满后的盈余溢出」 */
 	taskId?: string | undefined;
+	/** 外派驻地房 (docs/24 §24.8.3): 外矿单位隔离标记, 孵化时写 UnitRecord.remote */
+	remote?: string | undefined;
 }
 
 /** 存活/在途类型计数 (staffed 的分母来源) */
@@ -87,6 +89,8 @@ export interface StaffingCount {
 	aliveTotal: number;
 	inflightUnits: Map<string, number>;
 	staffed: (unit: string) => number;
+	/** 外矿标记单位在岗数 (docs/24 §24.8.3 外矿编制抵扣口径) */
+	staffedRemote: (unit: string) => number;
 }
 
 export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): StaffingCount {
@@ -106,10 +110,18 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 	// 出视野的远程件拿不到 Game.creeps 条目, 保持计入 (保守口径)。
 	const excludeDying = anyRoomRush(ctx);
 	const aliveUnits = new Map<string, number>();
+	// 外矿标记单位计数 (docs/24 §24.8.3): 家内/外矿编制分开抵扣, unit 级
+	// aliveUnits 排除带 remote 标记者——外矿编制由 remoteTargets 段给出
+	const aliveRemoteUnits = new Map<string, number>();
 	let aliveTotal = 0;
 	for (const record of Object.values(ctx.memory.units)) {
 		const code = unitCode(record.unitCode);
 		if (excludeDying && dyingCreep(record.name)) {
+			continue;
+		}
+		if (record.remote !== undefined) {
+			aliveRemoteUnits.set(code, (aliveRemoteUnits.get(code) ?? 0) + 1);
+			aliveTotal += 1;
 			continue;
 		}
 		aliveUnits.set(code, (aliveUnits.get(code) ?? 0) + 1);
@@ -130,6 +142,8 @@ export function staffingCount(ctx: TickContext, spawns: StructureSpawn[]): Staff
 		inflightUnits,
 		staffed: (unit: string): number =>
 			(aliveUnits.get(unitCode(unit)) ?? 0) + (inflightUnits.get(unit) ?? 0),
+		/** 外矿标记单位在岗数 (外矿编制抵扣口径) */
+		staffedRemote: (unit: string): number => aliveRemoteUnits.get(unitCode(unit)) ?? 0,
 	};
 }
 
@@ -185,6 +199,19 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 	// 分配器把本矿孵化体虹吸给远程任务, 本矿采集面塌方 (L4 37,798 实证)。
 	const rushMode = rooms.some((r) => roomModeProfileFor(ctx, r.roomName).remoteMining === "auto");
 	const localRemoteHarvest = rushMode ? 0 : remoteHarvest;
+	// 外矿编制 (docs/24 §24.8.4): 每 active 外矿房采集体=源数 (remoteMiner
+	// 一源一只驻点), 预定体每房 0/1 (E≥1300 由 estimate 有效判定折算);
+	// 搬运走任务驱动 (raceRemote/remote:haul), 不入常驻环。无 active 外矿时
+	// 全为 0, 家内定编与变更前完全相同
+	let remoteMinerNeed = 0;
+	let reserverNeed = 0;
+	for (const colony of Object.values(ctx.memory.remotes ?? {})) {
+		for (const rec of Object.values(colony.rooms)) {
+			if (rec.state !== "active") continue;
+			remoteMinerNeed += Object.keys(rec.sources).length || 1;
+			reserverNeed += rec.estimate?.net !== undefined && rec.estimate.net > 0 ? 1 : 0;
+		}
+	}
 	return {
 		harvester: Math.max(1, harvestStaffing + localRemoteHarvest),
 		// 外矿驻点矿工 (批次 AD): 不进 standing 常驻环 (standing prio 12 垫底
@@ -192,6 +219,7 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 		// 而 raceRemote 请求被闸拦 → 全场 0 只)——孵化全归 spawnDirector
 		// raceRemoteRequests 分支序段。
 		remoteMiner: 0,
+		reserver: reserverNeed,
 		scout: scoutNeed,
 		// universal: 常驻 1 只兜底 (bootstrap 通道另有硬保障)
 		universal: 1,
@@ -230,10 +258,6 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 		],
 		// 扩张占领件: 活跃 claim 任务时 1 只 (任务消失编制即收)
 		claimer: board.list({ kinds: ["claim"] }).some((t) => t.status !== "completed") ? 1 : 0,
-	// 外矿预订件定编已归零 (批次 AD 四轮): 孵化全走 spawnDirector raceRemote
-	// 段的上游 claims=2 全局上限; standing 按任务数定编会每房 1 只绕过上限,
-	// 双轨并发挤占 RM 孵化窗口 (24k 实证 reserver 5 / RM 0)
-	reserver: 0,
 	};
 }
 

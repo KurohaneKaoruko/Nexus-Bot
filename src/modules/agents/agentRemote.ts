@@ -297,7 +297,7 @@ function runStationaryRemoteMiner(
 ): void {
 	const liveRoom = Game.rooms[targetRoom];
 	// 占位任务 (无 targetId): 到房获视野后自认空闲源 (无 creep 贴身的),
-	// 注册表/任务由 ensureRemoteSourceIntel + 有视野分支下拍修正
+	// 正式任务由 remote-planner 有视野后按 Intel 源拍点修正
 	const source = liveRoom
 		? ((Game.getObjectById(task.targetId ?? "") as Source | null) ??
 			liveRoom
@@ -401,10 +401,6 @@ function room_energyStructures_findSpawn(ctx: TickContext) {
 	return undefined;
 }
 
-/**
- * 远程采集件在本矿的卸货地: 优先 cc (升级线是外矿冲级收入的最终去处,
- * 直灌孵化线会把 cc 抽干——bugs (十二) 实证 control −82%), spawn/ext 次之。
- */
 /** 远程容器选址: 源旁一格非墙空地 (无结构/工地), 确定性序 (dx/dy 升序) */
 function pickRemoteContainerSpot(
 	room: Room,
@@ -458,6 +454,12 @@ export function runRemoteCarry(
 					resourceType: "energy",
 					priority: task.priority,
 					pipeline: "carry",
+					// remote:haul 交付标记 (docs/24 §24.8.5): intentReason 携带
+					// 归属键 remote:<home>:<room> (ActionResult 不回传 taskId),
+					// 记账侧按此归集 ledger.rates, 供收益反馈
+					// 归属键 remote:<home>:<room> (docs/24 §24.8.5) 经 intentReason 携带,
+					// 记账侧剥 remote-haul: 前缀后即得完整键 (ActionResult 不回传 taskId)
+					reason: `remote-haul:remote:${task.roomName}:${task.targetPos?.roomName ?? ""}`,
 					dedupeKey: `${creep.name}:carry:${task.id}`,
 				});
 			} else {
@@ -524,7 +526,9 @@ export function runRemoteCarry(
 
 function remoteDropoffFor(ctx: TickContext, roomName: string): { id: string } | undefined {
 	const room = ctx.world.current?.rooms[roomName];
-	if (!room) return room_energyStructures_findSpawn(ctx);
+	if (!room) return undefined;
+	// 外矿交付主干 (docs/24 §24.8.5): storage 兜底——外矿能量不因 spawn/ext
+	// 全满而原地持能; cc 缓冲与供能结构仍是顺路优选
 	const buffer = room.controllerBuffer;
 	const bufferStore = buffer
 		? room.stores.find(
@@ -533,7 +537,11 @@ function remoteDropoffFor(ctx: TickContext, roomName: string): { id: string } | 
 		: undefined;
 	if (bufferStore) return bufferStore;
 	const spawnish = room.energyStructures.find((s) => s.energy < s.energyCapacity);
-	return spawnish ?? room_energyStructures_findSpawn(ctx);
+	if (spawnish) return spawnish;
+	const storage = room.stores.find(
+		(s) => s.structureType === STRUCTURE_STORAGE && s.energy < s.energyCapacity,
+	);
+	return storage;
 }
 
 /**

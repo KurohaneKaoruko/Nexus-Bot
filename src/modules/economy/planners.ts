@@ -435,11 +435,16 @@ export function planEconomyRoom(ctx: TickContext, board: TaskBoard, room: RoomOb
 	upsertTerminalTransferTasks(ctx, board, room, priorityFor("carry") + bias("carry"));
 
 	// 消失的主体 → 取消其任务 (工地建成/移除、满仓、堆叠消失); 节流期保持存活者除外。
-	// 远程任务 (目标房 ≠ 本矿, planRemoteHarvest 产出) 不在本 planner 的 expected 口径内,
-	// 一律不扫——否则每 tick 误杀刚建好的外矿任务 (bugs/P1-18 断点⑤: claim→cancel 振荡)
+	// remote: 前缀任务 (remote-planner 产出, docs/24 §24.8.1) 与跨房任务 (目标
+	// 房 ≠ 本矿) 都不在本 planner 的 expected 口径内, 一律不扫——取消权只归
+	// remote-planner; 否则每 tick 误杀刚建好的外矿任务 (bugs/P1-18 断点⑤:
+	// claim→cancel 振荡)
 	// carry 例外: dedupeKey 含目的地, 目的地轮换产生的同货源异键在途任务不是
 	// 死任务——货源键在途即保留 (取消风暴修复, 见 inflightCarrySourceKeys 注释)。
 	for (const task of board.list({ roomName: room.roomName, kinds: PLANNED_KINDS })) {
+		if (task.dedupeKey.startsWith("remote:")) {
+			continue;
+		}
 		if (task.targetPos?.roomName !== undefined && task.targetPos.roomName !== task.roomName) {
 			continue;
 		}

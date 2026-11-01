@@ -15,9 +15,16 @@ import { priorityFor } from "@/core/store/taskSchema";
 import { REMOTE_CONFIG } from "@/config/remote";
 import { roomKind } from "@/utils/roomName";
 import { intelStale } from "@/modules/world/intelState";
+import { worksiteForUnseen } from "@/modules/world/worksite";
+import { submitIntent } from "@/runtime/intentQueue";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { estimateRemoteNet } from "@/modules/economy/remote/estimate";
 import { remoteTransitionOf } from "@/modules/economy/remote/stateMachine";
+
+/** 容器工地重试间隔 (对齐 WORKSITE_CONFIG.siteRetryInterval 语义) */
+const SITE_RETRY = 50;
+/** haul 起运量: 容器存量 ≥ 单程满载才值得跨房跑一趟 */
+const REMOTE_HAUL_MIN = 100;
 
 /** 母房记录初始化 (懒建): 殖民地子树 v17 起在 schema */
 function colonyOf(ctx: TickContext, homeName: string) {
@@ -214,10 +221,122 @@ export function planRemoteColony(
 			}
 		}
 		if (rec.state === "active") {
-			// 预定任务一期暂缓: 旧链 (planRemoteHarvest reserve: 前缀) 仍在产
-			// 预定任务, 双键并行会孵两只 reserver; 第 5 节闭环切换时统一接管
-			// (remote:reserve: 键已在任务形态表 §24.8.1 定义, 届时启用)
-			continue;
+			emitActiveColonyTasks(ctx, board, room, name, rec, intel);
+		}
+	}
+}
+
+/** active 态任务生成 (§24.8.1 任务形态表): 每源采集/工地/容器任务 + 预定 */
+function emitActiveColonyTasks(
+	ctx: TickContext,
+	board: TaskBoard,
+	room: RoomObservation,
+	roomName: string,
+	rec: RemoteRoomRecord,
+	intel: RoomIntelRecord | undefined,
+): void {
+	if (!intel?.sources) return;
+	const live = Game.rooms[roomName];
+
+	for (const src of intel.sources) {
+		// 采集任务: 驻点矿工 (remoteHarvester hint 由孵化侧定体型)
+		board.upsert({
+			dedupeKey: `remote:harvest:${room.roomName}:${src.id}`,
+			kind: "harvest",
+			roomName: room.roomName,
+			targetId: src.id,
+			targetPos: { x: src.x, y: src.y, roomName },
+			priority: priorityFor("harvest"),
+			requiredCapabilities: ["work", "move"],
+		}, ctx.tick);
+
+		// 容器: 工位=驻点同格 (bugs/P0-3); 无成品容器/工地时放工地
+		// (sitePending/siteRetryAt 防重, 沿用 planner 开局容器写法)
+		const worksite = worksiteForUnseen(intel, roomName, src);
+		const spot = worksite?.containerSpot ?? worksite;
+		const hasContainer = Boolean(
+			live?.find(FIND_STRUCTURES, {
+				filter: (s) =>
+					s.structureType === STRUCTURE_CONTAINER &&
+					s.pos.x === spot?.x &&
+					s.pos.y === spot?.y,
+			}).length,
+		);
+		const hasSite = Boolean(
+			live?.find(FIND_CONSTRUCTION_SITES, {
+				filter: (s) => s.structureType === STRUCTURE_CONTAINER && s.pos.x === spot?.x && s.pos.y === spot?.y,
+			}).length,
+		);
+		if (live && spot && !hasContainer && !hasSite) {
+			if (
+				(worksite?.siteRetryAt ?? 0) <= ctx.tick &&
+				(worksite?.sitePending ?? 0) <= ctx.tick - SITE_RETRY
+			) {
+				submitIntent(ctx.tick, {
+					actorName: room.roomName,
+					kind: "createSite",
+					pipeline: "construction",
+					priority: 40,
+					targetPos: { x: spot.x, y: spot.y, roomName },
+					payload: { structureType: STRUCTURE_CONTAINER },
+					dedupeKey: `remote-container:${room.roomName}:${src.id}`,
+				});
+				if (worksite) {
+					worksite.sitePending = ctx.tick;
+				}
+			}
+		}
+
+		// 搬运任务: 容器存量 ≥ 单只运量时发 haul (取货=容器, dest 由 quota 主干)
+		const container = live
+			?.find(FIND_STRUCTURES, {
+				filter: (s): s is StructureContainer =>
+					s.structureType === STRUCTURE_CONTAINER &&
+					s.pos.inRangeTo(src.x, src.y, 2),
+			})
+			.find((c) => c.store.getUsedCapacity(RESOURCE_ENERGY) >= REMOTE_HAUL_MIN);
+		if (container) {
+			board.upsert({
+				dedupeKey: `remote:haul:${room.roomName}:${container.id}`,
+				kind: "carry",
+				roomName: room.roomName,
+				targetId: container.id,
+				targetPos: { x: container.pos.x, y: container.pos.y, roomName },
+				amount: container.store.getUsedCapacity(RESOURCE_ENERGY),
+				priority: priorityFor("carry"),
+				requiredCapabilities: ["carry", "move"],
+			}, ctx.tick);
+		}
+	}
+
+	// 预定任务 (docs/24 §24.8.1): 无主控制器的 active 外矿房。容量门 1300 =
+	// 2×[CLAIM,MOVE] 造价 (§24.8.2 预定净增长需 2 CLAIM): 低于此容量装不下
+	// 预定体, 缩水体 1 CLAIM 预定不净增长, 纯耗 spawn 槽 (任务书 5.6 口径);
+	// 容量降档时取消存量任务 (升级丢房/迁移场景)
+	const controller = live?.controller;
+	const reserveAffordable = room.energyCapacity >= 2 * (600 + 50);
+	const reserveKey = `remote:reserve:${room.roomName}:${roomName}`;
+	if (controller && !controller.owner && reserveAffordable) {
+		const reservation = controller.reservation;
+		const me = myUsername();
+		if (!reservation || (reservation.username === me && reservation.ticksToEnd < REMOTE_CONFIG.reserveRefreshBelow)) {
+			board.upsert({
+				dedupeKey: reserveKey,
+				kind: "reserve",
+				roomName: room.roomName,
+				targetId: controller.id,
+				targetPos: { x: controller.pos.x, y: controller.pos.y, roomName },
+				priority: priorityFor("reserve"),
+				requiredCapabilities: ["claim", "move"],
+			}, ctx.tick);
+		}
+	} else {
+		// 容量不足/控制器有主: 终结存量预定任务 (upsert 不再续命)
+		const stale = board
+			.list({ kinds: ["reserve"], roomName: room.roomName })
+			.find((t) => t.dedupeKey === reserveKey);
+		if (stale && stale.status !== "completed" && stale.status !== "cancelled") {
+			board.cancel(stale.id, ctx.tick, "reserve-unaffordable");
 		}
 	}
 }
