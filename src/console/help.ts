@@ -198,8 +198,14 @@ const helpTexts: Record<string, string> = {
     ].join(br),
 
     helpMine: [
-        title('⛏️', '外矿指令列表'),
+        title('⛏️', '外矿指令列表 (本组由 Nexus.remote.* 取代, 收尾期将移除)'),
         line(),
+        `${cmd('Nexus.remote.pin(targetRoom, homeRoom?)')}：钉选外矿房（跳过净收益门槛，安全规则仍生效）`,
+        `${cmd('Nexus.remote.ban(targetRoom, homeRoom?)')}：封禁外矿房（永不准入）`,
+        `${cmd('Nexus.remote.clear(targetRoom, homeRoom?)')}：清除手动标记（回到自动评估）`,
+        `${cmd('Nexus.remote.list(homeRoom?)')}：查看殖民地全部外矿房状态`,
+        `${cmd('Nexus.remotes()')}：殖民地概览查询（HUD 同源数据）`,
+        `以下旧指令仅维护存量数据，新外矿请使用 Nexus.remote.*：`,
         `${cmd('mine.add(sourceRoom, ...targetRoom)')}：添加外矿房间（支持一次多个目标）`,
         `- 普通房间：添加到 energy 列表`,
         `- 过道房间：添加到 highway 监控列表`,

@@ -161,6 +161,19 @@ function worldHudLines(ctx: TickContext, room: Room): HudLine[] {
 			color: defense.tier === "peace" ? T.dim : T.bad,
 		});
 	}
+
+	// 外矿: 本房殖民地的房级状态一行 (specs/external-mining §24.7;
+	// 本房是母房才显示——外矿房面板无母房上下文, 不重复渲染)
+	const colony = ctx.memory.remotes?.[room.name];
+	if (colony) {
+		const rooms = Object.entries(colony.rooms)
+			.map(([name, r]) => `${name.slice(-3)}:${r.state.slice(0, 3)}`)
+			.join(" ");
+		if (rooms) {
+			const hasActive = Object.values(colony.rooms).some((r) => r.state === "active");
+			lines.push({ text: `外矿  ${rooms}`, color: hasActive ? T.good : T.dim });
+		}
+	}
 	return lines;
 }
 

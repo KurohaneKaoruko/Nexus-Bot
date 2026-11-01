@@ -9,7 +9,13 @@
 import type { TickContext, TickModule } from "@/core";
 import { createTaskBoard } from "@/modules/tasks";
 import { planRemoteColony } from "@/modules/economy/remote/planner";
+import { remoteConsole } from "@/modules/economy/remote/console";
 import { REMOTE_CONFIG } from "@/config/remote";
+
+/** 控制台命令组挂载 (Nexus.remote.* / Nexus.remotes): 领域查询与内核入口合于同一对象 */
+const query = (globalThis as unknown as { Nexus?: Record<string, unknown> }).Nexus ?? {};
+Object.assign(query, remoteConsole);
+(globalThis as unknown as Record<string, unknown>).Nexus = query;
 
 export const RemoteMining: TickModule = {
 	name: "remote-planner",
