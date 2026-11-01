@@ -56,43 +56,43 @@
 ## 5. A 波收口：Memory v13 稳定与豁免对账
 
 - [x] 5.1 `rooms[].energyState` 处置：按 0.3 扫描结论二选一（保留为 RoomFeatures 基础状态 / 随域清理并入 v13 迁移），处置结论落台账；验证：全场景门绿 + run-residue 绿（裁定：**保留**——活消费方在 statistics HUD/rush/external-mine 休眠链，台账已登记；门验证随 5.2 总对账一并跑）
-- [ ] 5.2 A 波总对账：豁免清单 ≤60 条且每条有接管计划或永久豁免登记、checkpoint 推进、台账行与提交一一对应；验证：arch:guard + structure:guard 双绿 + `openspec validate legacy-consolidation` 通过
+- [x] 5.2 A 波总对账：豁免清单 ≤60 条且每条有接管计划或永久豁免登记、checkpoint 推进、台账行与提交一一对应；验证：arch:guard + structure:guard 双绿 + `openspec validate legacy-consolidation` 通过
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 1.1/1.2 承接完成（88 条两分对账 + checkpoint 推进），对账结论落 `10-legacy-removal-ledger.md`；本变更终止跟进
 
 ## 6. B 波一：巨型文件拆分（行为零变化，拆分边界按 `specs/code-structure-standards` 表执行）
 
-- [ ] 6.1 `movement/index.ts`（3343 行）按表拆为路径缓存 / 代价矩阵 / 路由 / 意图仲裁 / 交通执行 / 编队移动六模块 + 薄装配层；`preTickBetterMove → commit → endTickResolve` 时序与 `Creep.prototype.moveTo` 猴补丁挂载点原样保持（P4 豁免身份不变）；PR 内零逻辑改动（diff 仅 import 重排/代码搬移/类型标注）；验证：全场景门逐位 + `run-residue`/`stronghold-door` 单独绿（时序旁证）+ 拆分前后导出面 diff 为空
+- [x] 6.1 `movement/index.ts`（3343 行）按表拆为路径缓存 / 代价矩阵 / 路由 / 意图仲裁 / 交通执行 / 编队移动六模块 + 薄装配层；`preTickBetterMove → commit → endTickResolve` 时序与 `Creep.prototype.moveTo` 猴补丁挂载点原样保持（P4 豁免身份不变）；PR 内零逻辑改动（diff 仅 import 重排/代码搬移/类型标注）；验证：全场景门逐位 + `run-residue`/`stronghold-door` 单独绿（时序旁证）+ 拆分前后导出面 diff 为空
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 3.1 承接完成；拆分引入的 typing 语义偏移已在该变更 4.2 回正（详见其 tasks.md 注记与 baseline/2026-10-31-three-green.md）
-- [ ] 6.2 `agentSystem.ts`（1727 行）按表拆：`runCreep`（484 行）按 task kind 拆为 handler 单元（scout/harvest/carry+fill_spawn/upgrade/build/repair/claim/reserve/defend/retreat），公共取料/送货辅助独立 `logistics` 模块，远程采集族（remoteHarvest/remoteCarry/relay 接力）独立 `remote` 模块；`runAgents` 签名与所有权登记主循环不变；为拆出的 handler 补分派单测；验证：全场景门逐位 + 新单测绿 + 导出面 diff 为空
+- [x] 6.2 `agentSystem.ts`（1727 行）按表拆：`runCreep`（484 行）按 task kind 拆为 handler 单元（scout/harvest/carry+fill_spawn/upgrade/build/repair/claim/reserve/defend/retreat），公共取料/送货辅助独立 `logistics` 模块，远程采集族（remoteHarvest/remoteCarry/relay 接力）独立 `remote` 模块；`runAgents` 签名与所有权登记主循环不变；为拆出的 handler 补分派单测；验证：全场景门逐位 + 新单测绿 + 导出面 diff 为空
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 3.2 承接完成
-- [ ] 6.3 `TeamAction.ts`（1806 行）按表拆为队形集结 / 移动执行 / 代价矩阵 / 路径缓存四域内部模块，对外仍以 `TeamAction` 命名空间整体导出（调用方零改动）；验证：全场景门逐位（含 arena/stronghold-door）+ 导出面 diff 为空
+- [x] 6.3 `TeamAction.ts`（1806 行）按表拆为队形集结 / 移动执行 / 代价矩阵 / 路径缓存四域内部模块，对外仍以 `TeamAction` 命名空间整体导出（调用方零改动）；验证：全场景门逐位（含 arena/stronghold-door）+ 导出面 diff 为空
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 3.3 承接完成
-- [ ] 6.4 `63Planner.ts`（1183 行）按表拆分，`ensurePlannerState`/`autoPlanner63` 导出面不变；其余 >600 行非白名单文件（`moveMatch`/`rosManor`/`TeamSpawner`/`statistics` 等）按同一内聚判据逐个拆分；验证：structure-guard 规模扫描白名单外清零
+- [x] 6.4 `63Planner.ts`（1183 行）按表拆分，`ensurePlannerState`/`autoPlanner63` 导出面不变；其余 >600 行非白名单文件（`moveMatch`/`rosManor`/`TeamSpawner`/`statistics` 等）按同一内聚判据逐个拆分；验证：structure-guard 规模扫描白名单外清零
   > 处置注记（2026-10-31）：`63Planner` 系已随 `legacy-consolidation-b` 3.5 前置的布局单轨清理删除（台账 2026-10-29 行）；其余 >600 行文件拆分由 `legacy-consolidation-b` 3.5/3.6 承接完成（baseFunction 五 mixin / rosManor 三分 / spawnDirector 三分），规模扫描白名单外清零
 
 ## 7. B 波二：类型门禁清零（清理顺序按 `specs/code-structure-standards` 钉死域序/文件序）
 
-- [ ] 7.1 `@ts-nocheck` 35 文件清零，文件序固定：planner（13）→ visuals（3）→ teams（4）→ movement（2）→ proto（8，A 波收缩后余量）→ 其余（5）；逐文件小步（移除标记 → 类型收窄与显式判空，禁 `!` 断言与 `as any` 逃逸 → typecheck 绿 → 全场景门逐位 → 下一文件）；验证：全仓 `@ts-nocheck` 计数 0 + typecheck 绿
+- [x] 7.1 `@ts-nocheck` 35 文件清零，文件序固定：planner（13）→ visuals（3）→ teams（4）→ movement（2）→ proto（8，A 波收缩后余量）→ 其余（5）；逐文件小步（移除标记 → 类型收窄与显式判空，禁 `!` 断言与 `as any` 逃逸 → typecheck 绿 → 全场景门逐位 → 下一文件）；验证：全仓 `@ts-nocheck` 计数 0 + typecheck 绿
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 4.1 承接完成（ts-nocheck 31→0）
-- [ ] 7.2 显式 `any` 466 处按钉死域序收敛：planner → movement → teams → visuals → proto → console → core → utils；改精确类型或 `unknown`+收窄；`config/code-quality.json` 检查点每切片推进（单调不增）；验证：structure-guard 绿 + 检查点 ≤150 或实际收敛值
+- [x] 7.2 显式 `any` 466 处按钉死域序收敛：planner → movement → teams → visuals → proto → console → core → utils；改精确类型或 `unknown`+收窄；`config/code-quality.json` 检查点每切片推进（单调不增）；验证：structure-guard 绿 + 检查点 ≤150 或实际收敛值
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 4.2 承接完成（any 684→287, as any 200, ≤300 达标；typing 引入的语义偏移已回正, 见其 4.2 漂移修复注记）
-- [ ] 7.3 B 波收口闸门（C 波前置）：structure-guard 全绿（600 行白名单外 0、ts-nocheck 0、any 检查点达标、依赖方向零新增违规、词表三方一致绿）；验证：`npm run structure:guard` + `npm run typecheck` + 全场景门三绿
+- [x] 7.3 B 波收口闸门（C 波前置）：structure-guard 全绿（600 行白名单外 0、ts-nocheck 0、any 检查点达标、依赖方向零新增违规、词表三方一致绿）；验证：`npm run structure:guard` + `npm run typecheck` + 全场景门三绿
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 4.3 承接完成（三绿读数档其 baseline/2026-10-31-three-green.md）
 
 ## 8. C 波：休眠与不可达退役（对象清单与程序按 `specs/dormant-code-retirement` 执行，清单外对象只留档不动）
 
-- [ ] 8.1 清单第 1 项 `modules/external/mine/*`（~2650 行）：三口径凭据核对（0.3 摸底档）→ 删 `mine/` 目录、`outMine.ts`/`externalMine.ts`/`externalScheduler.ts`、`room.interface.d.ts` 的 outMine 系声明、console `mine.ts` 人操入口同步处置、`Memory.OutMineData`（v14 迁移或并入 v13，迁移幂等 + run-residue 验证）；台账行（实服待补）；验证：全符号全仓扫描零（含 docs 死链修复）+ run-residue 绿
+- [x] 8.1 清单第 1 项 `modules/external/mine/*`（~2650 行）：三口径凭据核对（0.3 摸底档）→ 删 `mine/` 目录、`outMine.ts`/`externalMine.ts`/`externalScheduler.ts`、`room.interface.d.ts` 的 outMine 系声明、console `mine.ts` 人操入口同步处置、`Memory.OutMineData`（v14 迁移或并入 v13，迁移幂等 + run-residue 验证）；台账行（实服待补）；验证：全符号全仓扫描零（含 docs 死链修复）+ run-residue 绿
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 2.2 承接完成（OutMineData 定性保留, 见其 2.3/2.4 定性行）
-- [ ] 8.2 清单第 2–5 项：`proto/PowerCreep/mode/*` 休眠模式（A 波域 4 归位后确认仅存零触发路径）、`visuals/highwayMine.ts`、`core/qos.ts` 兼容读口、`accessor.ts` legacy getter（`getOutMineData` 等）——逐项按零引用扫描程序（4 步：全仓文本匹配 → 逐条归类真引用/注释文档/再导出穿透 → 真引用为零才删 → 结论附提交）；台账行；验证：structure-guard + arch:guard 绿 + 各符号扫描归档
+- [x] 8.2 清单第 2–5 项：`proto/PowerCreep/mode/*` 休眠模式（A 波域 4 归位后确认仅存零触发路径）、`visuals/highwayMine.ts`、`core/qos.ts` 兼容读口、`accessor.ts` legacy getter（`getOutMineData` 等）——逐项按零引用扫描程序（4 步：全仓文本匹配 → 逐条归类真引用/注释文档/再导出穿透 → 真引用为零才删 → 结论附提交）；台账行；验证：structure-guard + arch:guard 绿 + 各符号扫描归档
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 2.3/2.4 承接完成（定性登记：PC mode/HighwayMineVisual/accessor 全活, 显式保留, 见台账定性行）
-- [ ] 8.3 清单第 6–7 项与死导出收敛：词表死角色已在域 6 裁撤的复核、`core/ai` 零引用导出、statistics/console 对已删域的读口清理、docs 死链同步修复；验证：全仓引用扫描零 + `npm run lint` 绿
+- [x] 8.3 清单第 6–7 项与死导出收敛：词表死角色已在域 6 裁撤的复核、`core/ai` 零引用导出、statistics/console 对已删域的读口清理、docs 死链同步修复；验证：全仓引用扫描零 + `npm run lint` 绿
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 2.5 承接完成（C 波切片二：死导出与孤儿读口退役）
 
 ## 9. 总验收与对账
 
-- [ ] 9.1 全场景门总验：8 场景全绿逐位一致 + cpu p95 对 0.2 基线不劣化（>2ms 拒绝）+ `run-residue`/`stronghold-door` 绿；产出读数存档到本变更 `baseline/` 目录
+- [x] 9.1 全场景门总验：8 场景全绿逐位一致 + cpu p95 对 0.2 基线不劣化（>2ms 拒绝）+ `run-residue`/`stronghold-door` 绿；产出读数存档到本变更 `baseline/` 目录
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 5.1 承接完成（读数档其 baseline/2026-10-31-final-acceptance.md）
-- [ ] 9.2 指标对账：净删除行数、豁免清单终值（≤60 条且每条归口三类之一）、ts-nocheck 0、any 检查点终值、600 行白名单外 0、词表三方一致断言绿、依赖方向零新增违规；台账逐行核对（每行实服列如实标「待补」，无虚报，行与提交一一对应）
+- [x] 9.2 指标对账：净删除行数、豁免清单终值（≤60 条且每条归口三类之一）、ts-nocheck 0、any 检查点终值、600 行白名单外 0、词表三方一致断言绿、依赖方向零新增违规；台账逐行核对（每行实服列如实标「待补」，无虚报，行与提交一一对应）
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 5.2 承接完成（对账档其 baseline/2026-10-31-metrics-audit.md）
-- [ ] 9.3 文档同步：`docs/nexus-design/02-architecture-charter.md` §21 结构注记更新（mission pool/exec 双轨退场）、`10-legacy-removal-ledger.md` 台账行齐、AGENTS.md 准则核对（无参考来源注释、属主 nightx:night、未擅自提交）；`openspec validate legacy-consolidation --strict` 通过
+- [x] 9.3 文档同步：`docs/nexus-design/02-architecture-charter.md` §21 结构注记更新（mission pool/exec 双轨退场）、`10-legacy-removal-ledger.md` 台账行齐、AGENTS.md 准则核对（无参考来源注释、属主 nightx:night、未擅自提交）；`openspec validate legacy-consolidation --strict` 通过
   > 处置注记（2026-10-31）：由 `legacy-consolidation-b` 5.3 承接完成
