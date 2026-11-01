@@ -32,9 +32,9 @@
 | 期 | 内容 | 旧链来源 | 去向 | 变更 |
 |---|---|---|---|---|
 | **一期** | 殖民地名册（缺陷修复）、多房 Intel、侦察、能源外矿闭环（采集入容器 / 搬运 / 预定）、外矿暂停与撤回、手动指定外矿的控制台迁移 | `externalMine.ts` 能源部分、`mine.*` | `modules/economy/remote/`、`world/perception`、`console` | `phase4-remote-intel` ✅ 已落地 |
-| **二期** | 外矿路网：规划、放工地、维修，路面配比搬运体 | `externalRoad.ts`（PathPlanner、RoadData） | `modules/planner/`（路网规划）+ remote 的 repair 任务 | 另立 `remote-roads` |
-| **三期** | 外矿防御：invader / invader core 清理、玩家骚扰应对 | `externalMine.ts:2014-2069`（out-defend / out-invader / 双人组） | 防御域作为需求方 → `cluster-squads`（C5，`SquadKind = "remote"`） | 另立 `remote-defense` |
-| **四期** | 中央九房 / SK 房、外矿元素矿 | `externalMine.ts:2483-2555`（runCenter、out-attack、out-mineral） | remote 扩展 keeper 房类型 + 编队护航 | 另立 `remote-keeper` |
+| **二期** | 外矿路网：规划、放工地、维修，路面配比搬运体 | `externalRoad.ts`（PathPlanner、RoadData） | `modules/planner/`（路网规划）+ remote 的 repair 任务 | `remote-roads`（已立变更） |
+| **三期** | 外矿防御：invader / invader core 清理、玩家骚扰应对 | `externalMine.ts:2014-2069`（out-defend / out-invader / 双人组） | 防御域作为需求方 → `cluster-squads`（C5，`SquadKind = "remote"`） | `remote-defense`（已立变更） |
+| **四期** | 中央九房 / SK 房、外矿元素矿 | `externalMine.ts:2483-2555`（runCenter、out-attack、out-mineral） | remote 扩展 keeper 房类型 + 编队护航 | `remote-keeper`（已立变更） |
 | **收尾** | 删除旧外矿链文件、旧外矿角色定义、旧控制台命令、`OutMineData.energy/centerRoom/RoadData` | 见 §24.11 | — | 随四期或单独变更 |
 
 每期都是独立 openspec 变更，按项目惯例带验证。本文写满一期，二到四期写到接口与去向，具体设计在各自变更里展开。
