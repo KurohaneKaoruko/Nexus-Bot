@@ -43,10 +43,14 @@
   > 实现注记（2026-11-01）：dev 上 192 提交按主题分批在案（错峰/填充/定编/序列/外矿各成一批）。合入为 merge --no-ff --allow-unrelated-histories（main v1.0.0 是重写前孤立根，dev 自工程基座重开历史）——v1.0.0 旧树残留 184 文件（prototype 旧路径/已归档 openspec/旧编号设计文档）随合入清退，合入后 main 树与 dev 逐位一致（55b4719f）。门禁：arch-guard 91 条豁免（历史最小）+ structure-guard 全绿 + pre-commit 双钩子过。实绩更新：sim run127 L4@5790/L5@11788/L6@32172（优于批次 AF 与首门），守榜采样继续（daemon 不中断）
 - [x] 7.2 实服落地：`node submit.js 47.100.24.220@Nexus --branch race` 上传，落地 W5N8 从零开局；验证：私服 console 无异常刷屏，bot 自举正常（L2 时间线与 sim 口径同数量级）
   - 实绩 (批次 AF run): L2@~1670 L4@7230 (✓<10k) L5 达成后 upRate 稳定推 L6; 服务器 ~4wt 自动重开需重落地 (`npm run race -- land` 一键)
-- [ ] 7.3 4wt 周期观察：观察一个完整 4wt 重置周期内 RCL 时间线（对照 10kt/20kt/40kt 三档），实服特有缺陷按 03 §41 流程登记 docs/bugs；验证：实服 RCL4 达成时间记录在案，与 sim 差异有归因（或缺陷登记回流）
+- [x] 7.3 4wt 周期观察：观察一个完整 4wt 重置周期内 RCL 时间线（对照 10kt/20kt/40kt 三档），实服特有缺陷按 03 §41 流程登记 docs/bugs；验证：实服 RCL4 达成时间记录在案，与 sim 差异有归因（或缺陷登记回流）
   - 已收官 (批次 AF run): **L4@7230 ✓ L5@14528 ✓ L6@33751 ✓** 三档全过;
     排行榜 40k/20k 双榜 #0 (Nexus); sim 差异属 run 间波动量级 (冲级服无
     沼泽, 勘误见 docs/bugs 批次 AF); `npm run race -- watch` 48h 守榜攒多周期样本
     (race-runs.jsonl) 中
-  - 守榜进展 (2026-11-01): run127 sim **L4@5790 / L5@11788 / L6@32172** 三档
-    全达成, 优于批次 AF 与首门; 多周期样本采集中
+  - 守榜收口 (2026-11-02): **83 个完整 run** 样本落盘 race-runs.jsonl——
+    L4 best 5538 / median 5791, L5 best 11787 / median 12983,
+    L6 best 32078 / median 33269 (最好 run78); 三档 median 全低于门
+    (10k/20k/40k) 且 P50 余量 42%/35%/17%, 多 run 采样确认达标是
+    稳态非运气; daemon 自然停止 (run127 L4@5790/L5@11788/L6@32172 后
+    无续跑), 观察窗口关闭
