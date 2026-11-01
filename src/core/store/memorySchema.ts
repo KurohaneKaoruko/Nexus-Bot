@@ -1,11 +1,14 @@
 /**
- * Memory.Nexus schema v13 (账本五态分账: 预留 createdAt/饥饿生命体征/
- * 消耗速率与累计/超龄回收计数, specs/resource-ledger)。
+ * Memory.Nexus schema v17 (多房 Intel 与外矿子系统, docs/nexus-design/13 §24.6-24.7):
+ * RoomIntelRecord v11 字段 (kind/sources/controllerPos/owner/reservation/
+ * invaderCore/hostileStructures)、remotes 子树、UnitRecord.remote、
+ * RoomThreatRecord.scope。
  * 规则: 只持久化 JSON 兼容数据 (ID + 元数据), 不保存游戏 API 对象引用;
  *       所有持久化结构携带 schemaVersion, 由 migrations 逐版本升级;
  *       新增子系统全部有界: 预留过期清理 / 热点条目上限 / 样本窗口固定。
  */
 import { STRATEGY_CONFIG } from "@/config/strategy";
+import { INTEL_CONFIG } from "@/config/remote";
 import type { RoomModeName } from "@/config/roomMode";
 import type { NexusTask, TaskKind } from "./taskSchema";
 
@@ -30,7 +33,7 @@ export interface BoostLedgerEntry {
 	owners: Record<string, { amount: number; time: number }>;
 }
 
-export const CURRENT_SCHEMA_VERSION = 16;
+export const CURRENT_SCHEMA_VERSION = 17;
 
 export type Posture = "survive" | "develop" | "expand" | "war";
 
@@ -65,6 +68,8 @@ export interface RoomThreatRecord {
 	hostileCount: number;
 	/** 引用量化输入的原因摘要 (可归因) */
 	reason: string;
+	/** 威胁作用域 (v17, docs/nexus-design/13 §24.9): home = 只影响母房家内, remote = 外矿域, 缺省按家内处理 */
+	scope?: "home" | "remote";
 }
 
 /**
@@ -108,6 +113,19 @@ export interface RoomIntelRecord {
 	 * 的取证入口。定长 (≤8 项), 随等级增长。
 	 */
 	rclTimeline?: Record<number, number>;
+	/** ── v11 新增 (docs/nexus-design/13 §24.6.1, 多房 Intel; 全部可选, 缺省 = 未知) ── */
+	/** 房类 (由房名推导, 无需视野; 迁移补齐) */
+	kind?: RoomKind;
+	/** 源坐标 (sourceIds 的同序补充): 无视野时算工位/路程 */
+	sources?: { id: string; x: number; y: number }[];
+	controllerPos?: { x: number; y: number };
+	/** 观测时的 owner (null = 已知无主) */
+	owner?: string | null;
+	/** 观测时的预定 (null = 已知无预定); untilTick = 观测 tick + ticksToEnd */
+	reservation?: { username: string; untilTick: number } | null;
+	invaderCore?: boolean;
+	/** 观测到他人敌对结构 */
+	hostileStructures?: boolean;
 	/** rush 供需 EMA (specs/workforce-staffing): 升级火力乘数浮动状态 [-1,1] */
 	spawnBalanceEma?: number;
 	/** 冲级分段判废快照 (specs 冲级判废): 仅最新一条, 覆盖写入 */
@@ -128,6 +146,8 @@ export interface UnitRecord {
 	taskId?: string;
 	/** 首次到岗 tick (bornAt→firstArrivedAt 为实测路程样本) */
 	firstArrivedAt?: number;
+	/** 外派驻地房 (v17, docs/nexus-design/13 §24.8.3): 外矿单位隔离口径, 家内定编不计数 */
+	remote?: string;
 }
 
 /** 资源预留承诺 (docs/nexus-design/06 §6.6): 对未来计划的会计记录, 非库存本体 */
@@ -470,6 +490,50 @@ export interface LayoutMemory {
 	rooms: Record<string, LayoutRoomRecord>;
 }
 
+/** 外矿状态机 (docs/nexus-design/13 §24.7.1); 转移写 reason, 最小驻留 minDwellTicks */
+export type RemoteState = "candidate" | "scouting" | "evaluated" | "active" | "paused" | "rejected";
+
+/** 外矿源记录: 路程与容器绑定 (容器建成后回填 id) */
+export interface RemoteSourceRecord {
+	/** 母房交付点 → 源工位路径长 (格), 首评 PathFinder, 之后按实测修正 */
+	pathLength: number;
+	containerId?: string;
+}
+
+/** 净收益估算快照 (docs/nexus-design/13 §24.7.2 推导口径) */
+export interface RemoteEstimate {
+	/** 净收入 (能量/tick) */
+	net: number;
+	/** spawn 占用 (部件数 × CREEP_SPAWN_TIME / 寿命, 折算/tick) */
+	s: number;
+	/** 估算 tick */
+	at: number;
+}
+
+/** 外矿房记录: 状态机 + 源表 + 实测折叠 (docs/nexus-design/13 §24.7.1) */
+export interface RemoteRoomRecord {
+	state: RemoteState;
+	/** 当前状态起始 tick (最小驻留判据) */
+	since: number;
+	/** 最近一次转移原因 (引用量化输入) */
+	reason: string;
+	/** 手动设置: pin = 跳过净收益门槛 (安全规则仍生效); ban = 永不准入 */
+	manual?: "pin" | "ban";
+	sources: Record<string, RemoteSourceRecord>;
+	estimate?: RemoteEstimate;
+	/** 实测净收入 EMA (账本交付速率折叠) */
+	measured?: { netEma: number; lastFoldTick: number };
+	/** 暂停到期 tick (paused 态) */
+	pausedUntil?: number;
+	/** 本期: energy; 四期: keeper */
+	profile: "energy";
+}
+
+/** 外矿子系统: 母房 → 该殖民地的外矿房表 (Memory.Nexus.remotes) */
+export interface RemoteColonyRecord {
+	rooms: Record<string, RemoteRoomRecord>;
+}
+
 export interface NexusMemory {
 	schemaVersion: number;
 	global: NexusGlobalMemory;
@@ -485,6 +549,25 @@ export interface NexusMemory {
 	layout: LayoutMemory;
 	metrics: NexusMetricsMemory;
 	ownership: OwnershipMemory;
+	/** 外矿子系统 (v17, docs/nexus-design/13 §24.7): 母房名 → 殖民地外矿记录 */
+	remotes?: Record<string, RemoteColonyRecord>;
+}
+
+/** RoomKind 从房名工具导入会成环 (utils → config → schema), 此处独立声明同构类型 */
+export type RoomKind = "normal" | "highway" | "keeper" | "center";
+
+/** 房类推导 (docs/nexus-design/13 §24.6.1): 由房名坐标推导, 无需视野 */
+export function roomKindOf(roomName: string): RoomKind {
+	const override = INTEL_CONFIG.kindOverride[roomName];
+	if (override) return override;
+	const match = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+	if (!match) return "normal";
+	const x = parseInt(match[2] ?? "0", 10) % 10;
+	const y = parseInt(match[4] ?? "0", 10) % 10;
+	if (x === 0 || y === 0) return "highway";
+	if (x < 4 || x > 6 || y < 4 || y > 6) return "normal";
+	if (x === 5 && y === 5) return "center";
+	return "keeper";
 }
 
 /** 各子系统损坏时的安全空状态 (bootstrap 隔离重置用); 全部为纯 JSON */
@@ -502,6 +585,8 @@ export const SUBSYSTEM_DEFAULTS: {
 	layout: LayoutMemory;
 	metrics: NexusMetricsMemory;
 	ownership: OwnershipMemory;
+	/** 外矿子系统 (v17) */
+	remotes: Record<string, RemoteColonyRecord>;
 } = {
 	global: {
 		posture: "develop",
@@ -558,6 +643,7 @@ export const SUBSYSTEM_DEFAULTS: {
 	layout: { rooms: {} },
 	metrics: { migrationCount: 0 },
 	ownership: { indexVersion: 1, actors: {} },
+	remotes: {},
 };
 
 export const SUBSYSTEM_KEYS = [
@@ -574,6 +660,7 @@ export const SUBSYSTEM_KEYS = [
 	"layout",
 	"metrics",
 	"ownership",
+	"remotes",
 ] as const;
 
 export type SubsystemKey = (typeof SUBSYSTEM_KEYS)[number];

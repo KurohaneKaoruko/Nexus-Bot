@@ -4,6 +4,7 @@
  * 版本号管理 (写 schemaVersion) 统一由 bootstrap 负责, 迁移函数不碰版本字段。
  */
 import { SUBSYSTEM_DEFAULTS } from "./memorySchema";
+import { roomKindOf } from "./memorySchema";
 
 /** 迁移在纯 JSON 视图上工作, 不触碰游戏 API */
 export type RawNexus = Record<string, unknown>;
@@ -487,6 +488,67 @@ export const migrateV15ToV16: MigrationFn = (memory) => {
 	return {};
 };
 
+/**
+ * v16 → v17 (多房 Intel 与外矿子系统, docs/nexus-design/13 §24.6.1):
+ * ① rooms[*] 补 kind (房名推导, 无需视野); 形状坏 (lastSeen 非数) 的条目删除。
+ * ② Memory 顶层 BotMemory.OutMineData[home].energy 中的房迁为
+ *    Nexus.remotes[home].rooms[room].manual = "pin" (钉选保留语义);
+ *    centerRoom / highway / RoadData 不动, OutMineData 本体收尾期再删。
+ * 幂等: kind 只在缺省时补; remotes 只在无 manual 时写; 坏条目二次跑已不存在。
+ */
+export const migrateV16ToV17: MigrationFn = (memory) => {
+	const resetSubsystems: string[] = [];
+
+	const rooms = memory["rooms"];
+	if (isPlainObject(rooms)) {
+		for (const key of Object.keys(rooms)) {
+			const entry = rooms[key];
+			if (!isPlainObject(entry) || typeof entry["lastSeen"] !== "number") {
+				delete rooms[key];
+				continue;
+			}
+			if (entry["kind"] === undefined) {
+				entry["kind"] = roomKindOf(key);
+			}
+		}
+	}
+
+	const outMine = (globalThis as { Memory?: { OutMineData?: Record<string, unknown> } }).Memory
+		?.OutMineData;
+	if (isPlainObject(outMine)) {
+		let remotes: Record<string, unknown> = isPlainObject(memory["remotes"])
+			? memory["remotes"]
+			: {};
+		memory["remotes"] = remotes;
+		for (const home of Object.keys(outMine)) {
+			const homeEntry = outMine[home];
+			if (!isPlainObject(homeEntry)) continue;
+			const energy = homeEntry["energy"];
+			if (!Array.isArray(energy)) continue;
+			let colony: Record<string, unknown> = isPlainObject(remotes[home])
+				? remotes[home]
+				: { rooms: {} };
+			remotes[home] = colony;
+			const colonyRooms: Record<string, unknown> = isPlainObject(colony["rooms"])
+				? colony["rooms"]
+				: {};
+			colony["rooms"] = colonyRooms;
+			for (const room of energy) {
+				if (typeof room !== "string") continue;
+				const record: Record<string, unknown> = isPlainObject(colonyRooms[room])
+					? colonyRooms[room]
+					: {};
+				colonyRooms[room] = record;
+				if (record["manual"] === undefined) {
+					record["manual"] = "pin";
+				}
+			}
+		}
+	}
+
+	return resetSubsystems.length ? { resetSubsystems } : {};
+};
+
 /** 当前注册表: 索引 v-1 把 schemaVersion v 升到 v+1 */
 export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV1ToV2,
@@ -504,4 +566,5 @@ export const MIGRATIONS: readonly MigrationFn[] = [
 	migrateV13ToV14,
 	migrateV14ToV15,
 	migrateV15ToV16,
+	migrateV16ToV17,
 ];
