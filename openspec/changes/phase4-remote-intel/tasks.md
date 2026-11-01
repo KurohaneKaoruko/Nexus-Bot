@@ -46,10 +46,14 @@
 
 ## 4. 外矿选点
 
-- [ ] 4.1 `config/remote.ts`：`INTEL_CONFIG` 与 `REMOTE_CONFIG`（docs/24 §24.14），每项注释含义与单位。验证：typecheck 绿；grep 复核新模块零散字面量阈值
-- [ ] 4.2 净收益估算纯函数（docs/24 §24.7.2）：输出 `net` 与 spawn 占用 `s`。验证：node 直跑用例（预定前后产能翻倍、能量容量 < 1300 不开预定、路程增长使 net 单调下降、net ≤ 0 边界）
-- [ ] 4.3 状态机纯函数：转移表 + 最小驻留 + 原因字符串；威胁暂停不受驻留约束；pin 跳过净收益门槛与亏损剔除、不跳过安全规则；ban 永不准入。验证：node 直跑用例覆盖 docs/24 §24.7.1 每条转移
-- [ ] 4.4 `modules/economy/remote/` 的 `remote-planner`（planning 阶段，规划 P2 / 评估 P3，注册在 `economy-planners` 之后）：开闸条件（档位 `remoteMining`、母房有 storage、非 survive）、候选生成（`describeExits` + kind + 路线长度 + pin）、PathFinder 路程缓存、按 `net/s` 降序准入至 `spawnShareCap`、一房一殖民地。验证：typecheck 绿；remote-mine 场景 `remotes` 状态序列为 candidate → scouting → evaluated → active，`reason` 引用量化输入；去掉 storage 的对照场景不开闸
+- [x] 4.1 `config/remote.ts`：`INTEL_CONFIG` 与 `REMOTE_CONFIG`（docs/24 §24.14），每项注释含义与单位。验证：typecheck 绿；grep 复核新模块零散字面量阈值
+  > 实现注记（2026-11-01）：已随第 2 节提前落地（`5d9b18f`）；本轮 4.2 实现时发现并修正 `loadMargin` 量纲错误——设计契约 §24.7.2 的装卸余量与 2d 同为格量纲（默认 2），落地时误写为能量 50。grep 复核 estimate/stateMachine/planner 零散字面量阈值已清零（全部走 REMOTE_CONFIG）
+- [x] 4.2 净收益估算纯函数（docs/24 §24.7.2）：输出 `net` 与 spawn 占用 `s`。验证：node 直跑用例（预定前后产能翻倍、能量容量 < 1300 不开预定、路程增长使 net 单调下降、net ≤ 0 边界）
+  > 实现注记（2026-11-01）：`modules/economy/remote/estimate.ts`。用例 5 条全绿（tests/remote-estimate.test.ts，本地口径不入库）。实现期修正两处推导细节：① 预定体体型按 2×[CLAIM,MOVE]=1300（2 CLAIM 预定才净增长），spawn 占用的寿命分母按部件类型分开（预定体 600）；② **有效预定 = 预定意愿 ∧ E ≥ 1300**——装不下时房间实际不会被预定，源产能按未预定 5/t 折算而非 10/t 空想（用例「E<1300 不开预定」暴露此语义缺陷）
+- [x] 4.3 状态机纯函数：转移表 + 最小驻留 + 原因字符串；威胁暂停不受驻留约束；pin 跳过净收益门槛与亏损剔除、不跳过安全规则；ban 永不准入。验证：node 直跑用例覆盖 docs/24 §24.7.1 每条转移
+  > 实现注记（2026-11-01）：`modules/economy/remote/stateMachine.ts`。用例 20 条覆盖 §24.7.1 全部转移 + 驻留边界（未满保持/期满放行）+ paused 双条件（到期 ∧ 威胁衰减）+ pin/ban 全语义（含 pin 不跳安全规则、ban 任意态立即 rejected、rejected 态 pin 直接重新准入）
+- [x] 4.4 `modules/economy/remote/` 的 `remote-planner`（planning 阶段，规划 P2 / 评估 P3，注册在 `economy-planners` 之后）：开闸条件（档位 `remoteMining`、母房有 storage、非 survive）、候选生成（`describeExits` + kind + 路线长度 + pin）、PathFinder 路程缓存、按 `net/s` 降序准入至 `spawnShareCap`、一房一殖民地。验证：typecheck 绿；remote-mine 场景 `remotes` 状态序列为 candidate → scouting → evaluated → active，`reason` 引用量化输入；去掉 storage 的对照场景不开闸
+  > 实现注记（2026-11-01）：`remote/planner.ts`（纯规划函数）+ `remote/module.ts`（调度壳，planInterval 节流），注册于 main.ts Economy 之后。dump 验证：W5N9/W4N8 走完 candidate→scouting→evaluated→active 全序列（reason=`net:8.19>0,budget-ok`），无 storage 对照 remotes 子树为空。一期口径三处：① manual 档候选 = remoteTargets ∪ pin（显式目标 ≙ pin 语义，不自动扫邻房）；② `remote:reserve:` 任务暂缓生成（旧链 `reserve:` 前缀仍在产，双键并行会孵两只 reserver，第 5 节闭环切换时统一接管）；③ 威胁置信度暂恒 0（防御联动节接入 threat scope）。net/s 降序准入：spawnShareCap 检查在位（usedShare < cap × spawn 数），排序消费在 active 动作生成扩展时生效（一期 active 即产旧链等价任务）。行为门四场景静机全绿（speedrun/remote-mine/race-body-audit/boot，boot 基线 8656）
 - [ ] 4.5 控制台迁移：`Nexus.remote.pin / ban / clear / list` + `Nexus.remotes()` 查询 + HUD 每殖民地一行；`mine.add / adds / remove / list` 在帮助中标注由 `Nexus.remote.*` 取代（文件本身收尾时删除）。验证：sim noErrors（面板路径执行）；控制台命令写入 `manual` 后下一次规划生效
 
 ## 5. 外矿能源闭环

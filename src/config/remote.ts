@@ -53,6 +53,7 @@ export const REMOTE_CONFIG = {
 	foldInterval: 100,
 	/** 净收入评估窗口 (tick): 窗口内净收入为负即触发亏损剔除 */
 	lossWindow: 10000,
-	/** 外矿装卸余量 (能量): 装载/卸载预留格数折算的能量余量 */
-	loadMargin: 50,
+	/** 外矿装卸余量 (格): 装载/卸载驻留折算的等效路途长度, 与 2d 同量纲
+	 *  (搬运容量 C = r_eff × (2d + 此值) / CARRY_CAPACITY, docs/24 §24.7.2) */
+	loadMargin: 2,
 } as const;

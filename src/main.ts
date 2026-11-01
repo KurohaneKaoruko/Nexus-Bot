@@ -7,6 +7,7 @@ import { Perception } from "@/modules/world";
 import { Defense } from "@/modules/defense";
 import { StrategyCore } from "@/modules/strategy";
 import { Economy } from "@/modules/economy";
+import { RemoteMining } from "@/modules/economy/remote/module";
 import { Cluster } from "@/modules/cluster";
 import { Tasks } from "@/modules/tasks";
 import { Spawning } from "@/modules/spawning";
@@ -38,6 +39,7 @@ nexus.use(
 	Defense,
 	StrategyCore,
 	Economy,
+	RemoteMining,
 
 	Cluster,
 	Tasks,
