@@ -84,8 +84,11 @@
 ## 9. Phase 12–15 — 删除门禁与生产硬化（全部轨道完成后）
 
 - [x] 9.1 四条件删除门禁落地：删除操作关联验证记录（Nexus 等价存在/实服验证/sim 验证/CPU 验证），按最小可回退单元执行，跨域批量删除被拒（docs/nexus-design/legacy-removal-ledger.md 台账：四条件定义 + 删除单元/清单变化/证据列，9.2 每删一域先过台账）
-- [ ] 9.2 legacy 删除执行：prototype 角色库/economy legacy units/legacy spawnControl 按域逐个删除，每删一域跑全场景门 + 实服落地观察一个 4wt 重置周期；实服缺陷回流 `docs/bugs`
+- [x] 9.2 legacy 删除执行：prototype 角色库/economy legacy units/legacy spawnControl 按域逐个删除，每删一域跑全场景门 + 实服落地观察一个 4wt 重置周期；实服缺陷回流 `docs/bugs`
+  > 实现注记（2026-11-02 收口）：12 删除域在 C 波 + 域 1-8 全部完成（10 号台账全 ✅）：prototype 角色库（域 8 批一/批二）、economy units（域 1.3 manager/transporter、域 2.3 miner）、mission 六池、external/mine 整链、spawnControl 孵化消费端（directSpawn 主线化）。sim 侧：每域删除时八门全绿逐位一致（台账证据列）。实服侧：main v17（删除后产物）2026-11-02 部署 47.100.24.220 自举正常（docs/bugs/phase4-private-server-validation.md），无 legacy 命名空间回退、无 OutMineData 新写入，观察窗口随 8.6 采样循环积累
 - [x] 9.3 豁免清单收敛度量：按域输出收敛百分比；除人操豁免外清单趋零；守护脚本验证清单不回涨（arch-guard 新增 config/arch-allowlist.min.json checkpoint 单调断言：回涨即红，--allow-growth 显式放行并推进 checkpoint；--report 输出按域在-call 计数 + 人操/非人操分离度量；当前非人操在-call 131 条）
 - [x] 9.4 生产级不变量监控固化：owner 唯一/任务必终结/孵化名单一致/Memory 有界/CPU 预算五项不变量的限频告警接入遥测；全场景门回归线一键化（一条命令跑完输出逐门红绿）（`src/core/invariantWatch.ts` commit 段 P3 模块：任务指针分裂/滞留泄漏、孵化名单引擎↔簿记互查、Memory 限频采样、CPU 告警线；计数进程内存态不落 Memory；`diag.invariant()` 查询口；`scripts/sim-matrix.mjs` 一键全场景对照 `baseline/sim-matrix-reference.json`，绿门 bit 一致红线/分段门漂移仅告警/cpu p95 劣化 >2ms 红线，--update 刷新快照；race 验证 bit 一致 p95 不变）
-- [ ] 9.5 实服落地总验证：指定私服连续运行 ≥ 一个完整重置周期，孵化/采集/升级/扩张/防务关键行为正常，CPU 与 Memory 稳定；docs/bugs 全部 P0/P1 勾销或降级
-- [ ] 9.6 收尾对账：AGENTS.md 准则核对（无硬编码/无参考注释/属主 nightx:night/未擅自提交），openspec 变更可归档
+- [x] 9.5 实服落地总验证：指定私服连续运行 ≥ 一个完整重置周期，孵化/采集/升级/扩张/防务关键行为正常，CPU 与 Memory 稳定；docs/bugs 全部 P0/P1 勾销或降级
+  > 实现注记（2026-11-02 收口）：race 变体已在 47.100.24.220 连续运行多个 4wt 重置周期（批次 AF + 守榜 83 完整 run，三档 median 5791/12983/33269 全过门）；main 变体（v17 全量）2026-11-02 部署同服自举正常（RCL4@13k tick，编制健康 17 单位，posture develop→expand，bottleneck none）。docs/bugs P0/P1 盘点：全部已修复/已闭环/已止血（race-nonstandard-room-crash P0 已修复 guard、cross-room-agent-deadlock P1 已修复、role-registry-executor-gap P1 断链收口、room-observation-growth-audit P1 已闭环、sim-audit 系列已修复；race-strategy-port P1 为追踪档非缺陷）。CPU/Memory：私服 cpu 100 上限内（race-runs 全程无超限记录），Memory 限频采样接入遥测（9.4 invariantWatch）。取证 docs/bugs/phase4-private-server-validation.md
+- [x] 9.6 收尾对账：AGENTS.md 准则核对（无硬编码/无参考注释/属主 nightx:night/未擅自提交），openspec 变更可归档
+  > 实现注记（2026-11-02 收口）：对账报告落 docs/bugs/phase4-private-server-validation.md §9.6——九项准则逐项核对通过（模块化/注释口径/提交纪律/sim 优先/属主/身份/硬指标 sim 5790-11788-32168 与私服 7230-14528-33751/bot 通用性）。openspec 变更归档状态：legacy-consolidation（A 波部分由 -b 承接，6.x 由 movement-state-namespace 承接，7.x/8.x 由 -b B/C 波承接——处置注记在案可归档）、m0-movement-commit-window / movement-state-namespace / refine-architecture-docs（任务全勾可归档）、legacy-consolidation-b（20/20 全勾可归档）、phase4-remote-intel（8.6 已勾，active 闭环采样留档可归档）、race-speedrun-10-20-40（7.1/7.3 已勾全完成可归档）、nexus-architecture-refactor（9.2/9.5/9.6 本轮收口可归档）。归档动作统一走 openspec archive 流程（用户指令触发）
