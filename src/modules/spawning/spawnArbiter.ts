@@ -14,6 +14,8 @@ import { bodyCost, buildBody, type SpawnUnit } from "@/modules/spawning/bodyFact
 import { RUSH_WORKER_MIN_BUDGET } from "@/utils/rush";
 import { harvestIncomeOf, isProductionSecured, harvesterTargetTotal } from "@/modules/economy";
 import { isSlowTerrain, terrainProfileFor } from "@/modules/spawning/terrainProfile";
+import { roadCoverageOf } from "@/modules/planner/roadPlanner";
+import { REMOTE_CONFIG } from "@/config/remote";
 import type { SpawnRequest } from "@/modules/spawning/demandSources";
 
 /** 体型定档语境 (per-spawn 快照推导, BodyFactory 纯函数的输入) */
@@ -24,6 +26,8 @@ export interface BodyHints {
 	noCarrierOnSite: boolean;
 	/** 外矿采集件 (自回运): 必带 CARRY, 满载跨房回本矿卸货 */
 	remoteHarvester: boolean;
+	/** 外矿回运件且目标干线铺满 (docs/24 §24.2 二期): 路面配比 */
+	pavedRemoteCarry: boolean;
 }
 
 /** 请求池里是否存在指定用途前缀的请求 (外矿采集件体型判据) */
@@ -151,6 +155,14 @@ export function arbitrateForSpawn(
 	// 纯泵纪元终结, 250 直供泵断供——同因引发的本地塌方)。
 	const hints: BodyHints = {
 		slowTerrain: isSlowTerrain(terrainProfileFor(spawn.room.name, ctx.tick)),
+		// 外矿路面配比 (docs/24 §24.2 二期): remote:carry 请求的目标房干线
+		// 铺满 (coverage ≥ pavedThreshold) → 路面组, 未铺满仍按本房地形档
+		pavedRemoteCarry: pool.some(
+			(r) =>
+				r.purpose.startsWith("remote:carry:") &&
+				r.remote !== undefined &&
+				roadCoverageOf(r.remote) >= REMOTE_CONFIG.roads.pavedThreshold,
+		),
 		// 接力期档 (specs/接力搬运): RCL < 等级门用微型接力件, 达门大件直运
 		relayCarrier: (spawn.room.controller?.level ?? 0) < RELAY_CONFIG.maxRcl &&
 			// 外矿回运定向件豁免接力微型档 (批次 Y-v2): 200 容量/趟的路上时间税

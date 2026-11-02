@@ -61,4 +61,21 @@ export const REMOTE_CONFIG = {
 	/** 外矿装卸余量 (格): 装载/卸载驻留折算的等效路途长度, 与 2d 同量纲
 	 *  (搬运容量 C = r_eff × (2d + 此值) / CARRY_CAPACITY, docs/24 §24.7.2) */
 	loadMargin: 2,
+	/** 外矿路网 (docs/nexus-design/13 §24.2 二期) */
+	roads: {
+		/** 干线规划间隔 (tick): active 房无记录/超期时的重规划节拍 */
+		planInterval: 2500,
+		/** PathFinder 代价: 平地 (道路规划视角, 非行走视角) */
+		plainCost: 2,
+		/** PathFinder 代价: 沼泽 */
+		swampCost: 10,
+		/** PathFinder maxOps 上限 (单条干线 CPU 保护) */
+		maxOps: 4000,
+		/** 路段维修阈值 (0..1): hits/maxHits 低于此比例出 repair 任务 */
+		repairBelow: 0.5,
+		/** 配比满档阈值 (0..1): coverage ≥ 此值切换轻载搬运体 */
+		pavedThreshold: 0.8,
+		/** 干线放量优先级 (construction pipeline 内, 与布局 road 同档) */
+		sitePriority: 30,
+	},
 } as const;

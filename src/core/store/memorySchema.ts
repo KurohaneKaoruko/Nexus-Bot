@@ -490,6 +490,33 @@ export interface LayoutRoomRecord {
 /** 布局子系统: 房间布局的唯一真相源, 生成重 CPU 受桶门控 */
 export interface LayoutMemory {
 	rooms: Record<string, LayoutRoomRecord>;
+	/** 外矿路网干线 (docs/nexus-design/13 §24.2 二期): 外矿房名 → 干线记录 */
+	roads?: Record<string, RoadRecord>;
+}
+
+/** 外矿路网干线记录 (roadPlanner 产出) */
+export interface RoadSegment {
+	/** 路段所在房 */
+	room: string;
+	/** 打包坐标序列 (x*50+y), 保持路径顺序 */
+	xy: number[];
+}
+
+export interface RoadRecord {
+	/** 母房 */
+	home: string;
+	/** 跨房切段 (有序) */
+	segments: RoadSegment[];
+	/** 总路段数 */
+	total: number;
+	/** 已建成路段数 (structure 落成回填) */
+	built: number;
+	/** 覆盖率 (0..1, built/total) */
+	coverage: number;
+	/** 规划 tick (超期重规划) */
+	plannedAt: number;
+	/** 维修任务累计登记数 (观测取证用, 不参与逻辑) */
+	repairEmitted?: number;
 }
 
 /** 外矿状态机 (docs/nexus-design/13 §24.7.1); 转移写 reason, 最小驻留 minDwellTicks */

@@ -21,6 +21,8 @@ import { submitIntent } from "@/runtime/intentQueue";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { estimateRemoteNet } from "@/modules/economy/remote/estimate";
 import { remoteTransitionOf } from "@/modules/economy/remote/stateMachine";
+import { runRemoteRoads } from "@/modules/economy/remote/roads";
+import { roadRecordOf } from "@/modules/planner/roadPlanner";
 
 /** 容器工地重试间隔 (对齐 WORKSITE_CONFIG.siteRetryInterval 语义) */
 const SITE_RETRY = 50;
@@ -299,6 +301,10 @@ export function planRemoteColony(
 		}
 		if (rec.state === "active") {
 			emitActiveColonyTasks(ctx, board, room, name, rec, intel);
+			// 路网节拍 (docs/24 §24.2 二期): active 房干线规划/放量/维修
+			if (ctx.tick % REMOTE_CONFIG.roads.planInterval === 0 || !roadRecordOf(name)) {
+				runRemoteRoads(ctx, board, room.roomName, name, intel);
+			}
 		}
 	}
 }

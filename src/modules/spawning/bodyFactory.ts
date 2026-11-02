@@ -45,6 +45,8 @@ export interface BodyHints {
 	noCarrierOnSite?: boolean;
 	/** 外矿采集件 (自回运): 必带 CARRY, 满载跨房回本矿卸货 */
 	remoteHarvester?: boolean;
+	/** 外矿回运件: 目标干线铺满时由调用方置 false 走路面配比 */
+	pavedRemoteCarry?: boolean;
 }
 
 interface SegmentDef {
@@ -178,14 +180,16 @@ export function buildBody(
 				return null;
 			}
 			if (hints?.directCarrier) {
-				// 直运期 (达等级门): 大件摊薄往返, 段数上限放大
+				// 直运期 (达等级门): 大件摊薄往返, 段数上限放大。
+				// 外矿回运件且干线铺满 (docs/24 §24.2 二期): 忽略本房地形档,
+				// 恒走 [C,C,M] 路面组——路面 1t/格, 慢地形组的冗余 MOVE 是税
 				return buildSegmented(
 					{ ...ROAD_SEGMENTS.carrier, max: RELAY_CONFIG.directMaxSegments },
 					budget,
 				);
 			}
 			return buildSegmented(
-				hints?.slowTerrain ? TERRAIN_CARRIER_SEGMENT : ROAD_SEGMENTS.carrier,
+				hints?.pavedRemoteCarry === true ? ROAD_SEGMENTS.carrier : hints?.slowTerrain ? TERRAIN_CARRIER_SEGMENT : ROAD_SEGMENTS.carrier,
 				budget,
 			);
 		case "rush-courier":
