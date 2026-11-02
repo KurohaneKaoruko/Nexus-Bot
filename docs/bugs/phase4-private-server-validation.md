@@ -26,6 +26,18 @@
 
 观察数据落盘: /tmp/opencode/srv-remote-watch.jsonl (4 分钟采样循环)。
 
+## 私服周期经济观察 (2026-11-02 深夜回填)
+
+22h 采样 + srv-reland 循环实证: 该服务器**每 ~44 分钟重开一次世界**
+(30 次 world=empty → place-spawn ok), 一周期实际可跑 ~8.2k tick。
+race 落地链 L4 需 ~8-10k tick, 外矿状态机开闸 (RCL4+storage) 在周期
+尾沿或根本不可达 → `remotes.*.state` 永远停在 candidate/console-manual,
+remoteUnits 恒 0。**结论: 外矿 active 闭环 (8.6 后四项 ⏳) 在此服务器的
+周期经济下不可达, 属环境约束非 bot 缺陷**; 证据链由 sim 承担
+(remote-mine/clear/keeper/threat 四场景全绿 + memoryPath 断言),
+私服采样循环可停。硬指标行 (9.6 表) 的私服 AF 数据 7230/14528/33751
+来自更长周期的一次性取证, 与本观察不矛盾 (那是一次未被打断的周期)。
+
 ## 9.2 legacy 删除执行 (台账核对)
 
 10 号台账 12 删除域全 ✅: prototype 角色库 (域 8 批一/批二), economy units
