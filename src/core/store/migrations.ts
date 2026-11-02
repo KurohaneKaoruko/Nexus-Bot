@@ -491,9 +491,10 @@ export const migrateV15ToV16: MigrationFn = (memory) => {
 /**
  * v16 → v17 (多房 Intel 与外矿子系统, docs/nexus-design/13 §24.6.1):
  * ① rooms[*] 补 kind (房名推导, 无需视野); 形状坏 (lastSeen 非数) 的条目删除。
- * ② Memory 顶层 BotMemory.OutMineData[home].energy 中的房迁为
- *    Nexus.remotes[home].rooms[room].manual = "pin" (钉选保留语义);
- *    centerRoom / highway / RoadData 不动, OutMineData 本体收尾期再删。
+ * ② Memory 顶层 BotMemory.OutMineData[home].energy / centerRoom 中的房迁为
+ *    Nexus.remotes[home].rooms[room].manual = "pin" (钉选保留语义; centerRoom
+ *    即旧中央九房 = SK 房 pin-only 准入, 四期 remote-keeper 落地后并入);
+ *    highway / RoadData 不动, OutMineData 本体收尾期再删。
  * 幂等: kind 只在缺省时补; remotes 只在无 manual 时写; 坏条目二次跑已不存在。
  */
 export const migrateV16ToV17: MigrationFn = (memory) => {
@@ -523,6 +524,30 @@ export const migrateV16ToV17: MigrationFn = (memory) => {
 		for (const home of Object.keys(outMine)) {
 			const homeEntry = outMine[home];
 			if (!isPlainObject(homeEntry)) continue;
+			// centerRoom → pin 迁移 (docs/24 §24.11 四期): SK 房采集链落地后
+			// 旧中央九房登记语义并入 pin-only 准入 (keeperMinRcl 门槛在
+			// candidateRooms 侧生效, 此处只补 manual 标记)
+			const centerRooms = homeEntry["centerRoom"];
+			if (Array.isArray(centerRooms)) {
+				let centerColony: Record<string, unknown> = isPlainObject(remotes[home])
+					? remotes[home]
+					: { rooms: {} };
+				remotes[home] = centerColony;
+				const centerColonyRooms: Record<string, unknown> = isPlainObject(centerColony["rooms"])
+					? centerColony["rooms"]
+					: {};
+				centerColony["rooms"] = centerColonyRooms;
+				for (const room of centerRooms) {
+					if (typeof room !== "string") continue;
+					const record: Record<string, unknown> = isPlainObject(centerColonyRooms[room])
+						? centerColonyRooms[room]
+						: {};
+					centerColonyRooms[room] = record;
+					if (record["manual"] === undefined) {
+						record["manual"] = "pin";
+					}
+				}
+			}
 			const energy = homeEntry["energy"];
 			if (!Array.isArray(energy)) continue;
 			let colony: Record<string, unknown> = isPlainObject(remotes[home])

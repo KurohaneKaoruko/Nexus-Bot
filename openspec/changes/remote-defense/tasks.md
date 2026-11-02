@@ -47,8 +47,12 @@
 
 ## 3. 观测面
 
-- [ ] 3.1 console：`Nexus.remote.threats()` 列各外矿房 threat 摘要
+- [x] 3.1 console：`Nexus.remote.threats()` 列各外矿房 threat 摘要
   （nature/score/confidence/paused）。验证：console 单测 + sim 调用回显
+  > 实装 (2026-11-02, 并入四期收尾): remote/console.ts threats() 入口,
+  > sim dump 实证回显 `W5N9: evaluated threat=npc score=4 peak=4 conf=1.00
+  > hostiles=1 ← remote-hostiles:1 cores:0 score:4 (lastSeen 950)`,
+  > SK 房显示 threat=none (keeper 环境豁免口径)
 
 ## 4. sim 验证与门禁
 

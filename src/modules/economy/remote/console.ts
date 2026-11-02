@@ -86,6 +86,30 @@ export const remoteConsole = {
 			log("", rows.length ? rows.join("\n") : `母房 ${h} 无外矿记录`);
 			return OK;
 		},
+		/** 外矿威胁摘要 (docs/24 §24.9): 各房 threat 分类/分值/置信度 + 暂停态 */
+		threats(home?: string) {
+			const mem = Memory.Nexus as {
+				remotes?: Record<string, { rooms: Record<string, { state: string; pausedUntil?: number }> }>;
+				rooms?: Record<string, { threat?: { category: string; score: number; peakScore: number; confidence: number; hostileCount: number; reason: string; lastSeenAt: number } }>;
+			};
+			const homes = home ? [home] : Object.keys(mem.remotes ?? {});
+			const rows: string[] = [];
+			for (const h of homes) {
+				for (const name of Object.keys(mem.remotes?.[h]?.rooms ?? {})) {
+					const rec = mem.remotes![h]!.rooms[name]!;
+					const t = mem.rooms?.[name]?.threat;
+					if (!t) {
+						rows.push(`${name}: ${rec.state} threat=none`);
+						continue;
+					}
+					rows.push(
+						`${name}: ${rec.state} threat=${t.category} score=${Math.round(t.score)} peak=${Math.round(t.peakScore)} conf=${t.confidence.toFixed(2)} hostiles=${t.hostileCount} ← ${t.reason} (lastSeen ${t.lastSeenAt})`,
+					);
+				}
+			}
+			log("", rows.length ? rows.join("\n") : "无外矿房在册");
+			return OK;
+		},
 	},
 	/** 殖民地概览查询 (HUD 同源数据) */
 	remotes() {
