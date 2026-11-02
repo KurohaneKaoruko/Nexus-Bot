@@ -356,6 +356,12 @@ rejected ──(rejectedRetryTicks 后，ban 除外)──► candidate
 
 **删除**（收尾）：`externalMine.ts`、`externalRoad.ts`、`externalScheduler.ts`、`outMine.ts`；`CreepConstant.ts` 中旧外矿角色定义（out-*、旧 scout / reserver 执行器条目）；`console/function/mine.ts`、`road.ts`；`OutMineData.energy / centerRoom / RoadData`。一期只删 `economy/remoteMining.ts`（被 `remote-planner` 取代）。
 
+**收尾核对**（2026-11-02, 四期落地时）：
+- 已删：`externalMine.ts` / `externalScheduler.ts` / `outMine.ts`（legacy-consolidation-b C 波）；
+- 已迁：`OutMineData.energy`（一期）与 `.centerRoom`（四期 → `manual: "pin"`, SK 房 pin-only 准入）；
+- 待收尾变更处理：`CreepConstant.ts` 旧外矿角色定义（out-build / out-defend / out-2attack 等条目仍在册, 无执行器消费, 纯死数据）；`console/function/mine.ts` 人操面（引用活链 externalRoad 的 RoadBuilder / PathPlanner）；`externalRoad.ts` 本体是活链（`bodyFunction.ts` 路面配比消费 `getBuiltRoadCoverage`, roadVisual 消费 RoadData）——删除前须先给路面配比换数据源；
+- 不动：`.highway`（power / deposit 链路读取）。
+
 ## 24.12 附带发现（不在本期范围）
 
 - `agents/agentSystem.ts:1172` 用 `in` 判断 `Set` 成员（`creep.unitCode in NEXUS_TASK_DRIVEN_CODES`），结果恒为 false，所有无任务指针的单位都会落入原型 `exec()`。主线 harvester / carrier 孵化时写了 `memory.role`（`spawnDirector.ts:476`），空闲时会跑旧角色执行器。修正会改变空闲单位行为、影响已校准的家内经济，需单独用 sim 对照。（2026-10-29 更新：B4 已由前序执行链收口解决——旧 `exec()` 双轨与 `NEXUS_TASK_DRIVEN_CODES` 已删除，无任务单位只记空转诊断并跳过；本条保留为历史取证。）

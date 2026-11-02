@@ -21,17 +21,19 @@ roomKind 已有 keeper/center 推导（`utils/roomName`，坐标 %10 ∈ 4..6）
 ### D2: 覆盖编队——复用三期请求协议
 
 defense/planners 对 active keeper/center 房发常驻 requestSquad(kind="remote",
-taskKind="keeperHold", slots=keeper 配槽表)。与三期清理编队的差别：
+taskKind="defend", slots=keeper 配槽表——复用 defend 槽位任务链, 不新增
+TaskKind)。与三期清理编队的差别：
 - 常驻（threats 无关，TTL 续期由请求方每节拍刷新）；
 - 槽位表按房内 lair 数（Intel 记录）配：lair ≤3 两攻击件+一治疗；>3 三攻+二治。
 采集前置 = 编队 slots 全在位（cluster benefit/成员回填可查），否则撤单。
 
 ### D3: 撤离节律——Intel lair 观察驱动
 
-perception 观察外矿房时记 lair：`rooms[x].lairs = { [id]: { pos, lastSpawn } }`
-（有界：只 keeper/center 房记录）。planner 侧不做 tick 级指挥（那是指挥域）——
-本域只把「危险窗口」写进任务 note/权重，agent 执行层读同一 Intel 回避。
-危险窗口 = now - lastSpawn ∈ [period - avoidWindow, period + grace]。
+perception 观察外矿房时记 lair：`rooms[x].lairs = [{ id, x, y, nextSpawnAt }]`
+（有界数组；实现口径 nextSpawnAt = tick + ticksToSpawn, 引擎 lair 暴露
+StructureKeeperLair.ticksToSpawn）。
+危险窗口 = nextSpawnAt - now ≤ avoidWindow（刷新前撤离）；
+执行层 submitSkLairAvoid 读同一 Intel 回避（avoidRadius 半径内高优 move）。
 
 ### D4: 元素矿——过道矿合约口径
 
