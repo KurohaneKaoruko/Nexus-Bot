@@ -89,5 +89,15 @@ export default defineSim({
 	asserts: [
 		{ kind: 'noErrors' },
 		{ kind: 'cpuP95Below', value: 20 },
+		// 四链 memoryPath 断言 (三期 4.1, 引擎 ttl 修复后敌人寿命不再被抹):
+		// 分类 = W5N9 威胁在册 (raider, scope=remote) / 编队 = 清理编队请求
+		// / 止损 = W4N8 安全否决 (invader core 是结构, 走 rejected 不走 threat)
+		// / 恢复 = W5N7 干净对照 active。W5N7 无威胁是对照断言。
+		{ kind: 'memoryPath', path: ['Nexus', 'rooms', 'W5N9', 'threat', 'scope'], exists: true },
+		{ kind: 'memoryPath', path: ['Nexus', 'squads', 'squad:remote:W5N9'], exists: true },
+		{ kind: 'memoryPath', path: ['Nexus', 'rooms', 'W4N8', 'invaderCore'], exists: true },
+		{ kind: 'memoryPath', path: ['Nexus', 'rooms', 'W5N7', 'threat'], exists: false },
+		{ kind: 'memoryPath', path: ['Nexus', 'remotes', 'W5N8', 'rooms', 'W5N7', 'state'], exists: true },
+		{ kind: 'memoryPath', path: ['Nexus', 'remotes', 'W5N8', 'rooms', 'W4N8', 'state'], exists: true },
 	],
 })

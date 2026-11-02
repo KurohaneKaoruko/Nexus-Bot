@@ -56,12 +56,14 @@
 
 ## 4. sim 验证与门禁
 
-- [ ] 4.1 remote-threat 场景扩展断言（分类/编队/恢复/止损四链）跑绿；
+- [x] 4.1 remote-threat 场景扩展断言（分类/编队/恢复/止损四链）跑绿；
   全场景门其余场景逐位一致。验证：sim-matrix 基线说明更新
-  > 进度注记 (2026-11-02): 全场景门 12/12 绿 (7 基线逐位一致 + threat/clear/
-  > residue/door/roster); 场景级四链断言未单列 (引擎场景注入限制: 敌人无法
-  > 定时入场, prime_world 覆盖 ttl 的保真度缺陷已修源码待重编), 用 dump
-  > 取证脚本 (clear-verify3) 承担断言职责
+  > 实现注记 (2026-11-02): 引擎补 memoryPath 断言类型 + prime_world ttl
+  > 修复 (age_time 已定的场景单位不再被抹平寿命, 敌人注入保真) 后, 场景
+  > 直接断言 Memory 簿记: 分类 = rooms.W5N9.threat.scope / 编队 =
+  > squads.squad:remote:W5N9 / 止损 = rooms.W4N8.invaderCore + remotes
+  > rejected / 恢复 = remotes.W5N7.state=active; 全场景门 12/12 绿,
+  > speedrun 逐位一致 (L2@866 L3@3364 L4@6004 L5@12489 L6@32545)
 - [x] 4.2 speedrun 场景抽查无防御行为变化（无外矿域不触发）。验证：逐位一致
   > 实现注记 (2026-11-02): sim-matrix 7 基线逐位一致 (含 speedrun L6@32545)
 
