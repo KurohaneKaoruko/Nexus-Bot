@@ -27,6 +27,33 @@ export function dist(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
+/**
+ * 外矿交付点选择 (docs/24 §24.8.5): cc 缓冲 → 供能结构 → storage 兜底。
+ * 自回运 (runRemoteHarvest) 与专职回运 (runRemoteCarry) 共用同一卸货口径。
+ */
+export function remoteDropoffFor(
+	ctx: TickContext,
+	roomName: string,
+): { id: string } | undefined {
+	const room = ctx.world.current?.rooms[roomName];
+	if (!room) return undefined;
+	// 外矿交付主干: storage 兜底——外矿能量不因 spawn/ext 全满而原地持能;
+	// cc 缓冲与供能结构仍是顺路优选
+	const buffer = room.controllerBuffer;
+	const bufferStore = buffer
+		? room.stores.find(
+				(s) => s.id === buffer.id && s.structureType === "container" && s.energy < s.energyCapacity,
+			)
+		: undefined;
+	if (bufferStore) return bufferStore;
+	const spawnish = room.energyStructures.find((s) => s.energy < s.energyCapacity);
+	if (spawnish) return spawnish;
+	const storage = room.stores.find(
+		(s) => s.structureType === STRUCTURE_STORAGE && s.energy < s.energyCapacity,
+	);
+	return storage;
+}
+
 export function submitAction(
 	ctx: TickContext,
 	broker: ActionBroker,

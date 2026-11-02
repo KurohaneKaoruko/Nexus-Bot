@@ -7,7 +7,9 @@ import type { ActionBroker } from "@/modules/agents/actionBroker";
 import type { NexusTask } from "@/core/store/taskSchema";
 import { relayHandoffAllowed, type RelayCreepView } from "@/utils/carryRelay";
 import { RELAY_CONFIG, REMOTE_CARRY_CONFIG } from "@/config/economy";
-import { dist } from "@/modules/agents/agentLogistics";
+import { REMOTE_CONFIG } from "@/config/remote";
+import { dist, remoteDropoffFor } from "@/modules/agents/agentLogistics";
+import { submitSkLairAvoid } from "@/modules/agents/remoteSkAvoid";
 import type { TaskBoard } from "@/modules/tasks";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { UNIT_CODES } from "@/constant/UnitConstant";
@@ -20,6 +22,20 @@ export function runRemoteHarvest(
 ): void {
 	const targetRoom = task.targetPos?.roomName;
 	if (!targetRoom) return;
+
+	// SK lair 撤离节律 (docs/24 §24.2 四期): 危险窗口内优先撤离本 tick
+	if (
+		submitSkLairAvoid(
+			ctx,
+			broker,
+			creep,
+			task,
+			REMOTE_CONFIG.keeper.avoidWindow,
+			REMOTE_CONFIG.keeper.avoidRadius,
+		)
+	) {
+		return;
+	}
 
 	// 驻点矿工档 (批次 AD, 上游 remoteMiner 口径): auto 档 (rush) 的远程矿工
 	// 恒驻源边 drop 采矿, 回运全交专职 hauler; manual 档 (main 系) 维持自回运。
@@ -391,16 +407,6 @@ function runStationaryRemoteMiner(
 	});
 }
 
-function room_energyStructures_findSpawn(ctx: TickContext) {
-	const world = ctx.world.current;
-	if (!world) return undefined;
-	for (const room of Object.values(world.rooms)) {
-		const spawn = room.energyStructures.find((s) => s.structureType === "spawn" && s.energy < s.energyCapacity);
-		if (spawn) return spawn;
-	}
-	return undefined;
-}
-
 /** 远程容器选址: 源旁一格非墙空地 (无结构/工地), 确定性序 (dx/dy 升序) */
 function pickRemoteContainerSpot(
 	room: Room,
@@ -522,26 +528,6 @@ export function runRemoteCarry(
 		return;
 	}
 	// 容器空/消失: 任务由 planner 存量门自然回收, 空载待命避免空跑
-}
-
-function remoteDropoffFor(ctx: TickContext, roomName: string): { id: string } | undefined {
-	const room = ctx.world.current?.rooms[roomName];
-	if (!room) return undefined;
-	// 外矿交付主干 (docs/24 §24.8.5): storage 兜底——外矿能量不因 spawn/ext
-	// 全满而原地持能; cc 缓冲与供能结构仍是顺路优选
-	const buffer = room.controllerBuffer;
-	const bufferStore = buffer
-		? room.stores.find(
-				(s) => s.id === buffer.id && s.structureType === "container" && s.energy < s.energyCapacity,
-			)
-		: undefined;
-	if (bufferStore) return bufferStore;
-	const spawnish = room.energyStructures.find((s) => s.energy < s.energyCapacity);
-	if (spawnish) return spawnish;
-	const storage = room.stores.find(
-		(s) => s.structureType === STRUCTURE_STORAGE && s.energy < s.energyCapacity,
-	);
-	return storage;
 }
 
 /**

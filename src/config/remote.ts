@@ -85,4 +85,18 @@ export const REMOTE_CONFIG = {
 		/** 清理失败冷却基数 (tick): 失败次数累进 (n×此值), 防无收益循环孵化 */
 		retryCooldown: 5000,
 	},
+	/** SK 房采集 (docs/nexus-design/13 §24.2 四期): keeper/center 房 pin-only 准入 */
+	keeper: {
+		/** 最低母房 RCL: SK 房编队与采集链的成本门槛 */
+		keeperMinRcl: 6,
+		/** 覆盖编队配槽: 每 lair 一组 [RA,M] 对 (与 keeper 单体对射口径) */
+		slotsPerLair: 1,
+		/** 覆盖编队请求续期周期 (tick, 与 cluster TTL 对齐) */
+		holdRenewTicks: 1500,
+		/** lair 刷新危险窗口 (tick): 预计刷新前撤离 lair 半径, 刷新后回避 */
+		avoidWindow: 50,
+		avoidRadius: 5,
+		/** 元素矿开采阈值 (RCL, terminal 远销链前提) */
+		mineralMinRcl: 6,
+	},
 } as const;

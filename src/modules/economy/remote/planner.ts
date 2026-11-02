@@ -20,6 +20,7 @@ import { worksiteForUnseen } from "@/modules/world/worksite";
 import { submitIntent } from "@/runtime/intentQueue";
 import { roomModeProfileFor } from "@/modules/strategy";
 import { estimateRemoteNet } from "@/modules/economy/remote/estimate";
+import { squadIdOf } from "@/modules/cluster/model";
 import { remoteTransitionOf } from "@/modules/economy/remote/stateMachine";
 import { runRemoteRoads } from "@/modules/economy/remote/roads";
 import { roadRecordOf } from "@/modules/planner/roadPlanner";
@@ -52,14 +53,33 @@ function candidateRooms(homeName: string, ctx: TickContext, autoScan: boolean): 
 			out.push(name);
 		}
 	}
-	// 显式目标 (manual 档 remoteTargets / pin 标记) 恒入候选
+	// 显式目标 (manual 档 remoteTargets / pin 标记) 恒入候选;
+	// keeper/center 房 (docs/24 §24.2 四期) pin-only + 母房 RCL 门槛
+	// (rclTimeline 键 = 等级, 值 = 达成 tick; 门槛取历史最高等级)
+	const homeRcl = Math.max(
+		0,
+		...Object.keys(ctx.memory.rooms[homeName]?.rclTimeline ?? {}).map(Number),
+	);
 	const explicit = ctx.memory.economy.remoteTargets ?? [];
 	for (const name of explicit) {
+		const kind = roomKind(name);
+		if ((kind === "keeper" || kind === "center") && homeRcl < REMOTE_CONFIG.keeper.keeperMinRcl) {
+			continue;
+		}
 		if (!out.includes(name)) out.push(name);
 	}
 	const colony = ctx.memory.remotes?.[homeName];
 	for (const [name, rec] of Object.entries(colony?.rooms ?? {})) {
-		if (rec.manual === "pin" && !out.includes(name)) out.push(name);
+		if (rec.manual === "pin" && !out.includes(name)) {
+			const kind = roomKind(name);
+			if (
+				(kind === "keeper" || kind === "center") &&
+				homeRcl < REMOTE_CONFIG.keeper.keeperMinRcl
+			) {
+				continue;
+			}
+			out.push(name);
+		}
 	}
 	return out;
 }
@@ -97,6 +117,7 @@ function evaluatePaths(
 	rec: RemoteRoomRecord,
 	intel: { sources?: { id: string; x: number; y: number }[] },
 	budget: number,
+	roomName?: string,
 ): boolean {
 	const origin = deliveryPos(homeName);
 	if (!origin) return false;
@@ -105,7 +126,8 @@ function evaluatePaths(
 	for (const src of srcs) {
 		if (rec.sources[src.id]?.pathLength) continue;
 		if (done >= budget) break;
-		const target = { pos: src, range: 1 };
+		// Intel 源条目不带 roomName (v11 口径), PathFinder 目标需补全房名
+		const target = { pos: { ...src, roomName: roomName ?? homeName }, range: 1 };
 		const result = PathFinder.search(origin, target as never, { maxOps: 20000 });
 		rec.sources[src.id] = { pathLength: result.path.length };
 		done += 1;
@@ -135,6 +157,15 @@ function transitionInputOf(
 	if (rec.measured?.netEma !== undefined) input.measuredNetEma = rec.measured.netEma;
 	if (rec.lossSince !== undefined) input.lossDuration = ctx.tick - rec.lossSince;
 	if (rec.manual !== undefined) input.manual = rec.manual;
+	// SK 房无覆盖期豁免亏损剔除 (docs/24 §24.2 四期): 覆盖编队成军前
+	// 无采集交付, 恒负 measured 会打灭 active 窗口 → 编队请求撤回 → 死锁
+	const kind = roomKind(roomName);
+	if (
+		(kind === "keeper" || kind === "center") &&
+		ctx.memory.squads[squadIdOf("remote", roomName)] === undefined
+	) {
+		input.lossExempt = true;
+	}
 	return input;
 }
 
@@ -189,7 +220,7 @@ export function planRemoteColony(
 		) {
 			const target = Game.rooms[name] ?? undefined;
 			const visIntel = target ? { sources: intel.sources } : intel;
-			if (evaluatePaths(ctx, room.roomName, rec, visIntel as never, REMOTE_CONFIG.evalPerRun)) {
+			if (evaluatePaths(ctx, room.roomName, rec, visIntel as never, REMOTE_CONFIG.evalPerRun, name)) {
 				const d = Math.max(
 					...Object.values(rec.sources).map((s) => s.pathLength),
 					1,
@@ -199,6 +230,7 @@ export function planRemoteColony(
 					energyCapacity: room.energyCapacity,
 					reserved: true,
 					sourceCount: intelSourceCount(intel),
+					keeper: roomKind(name) === "keeper" || roomKind(name) === "center",
 				});
 				rec.estimate = { ...estimate, at: ctx.tick };
 			}
@@ -208,7 +240,12 @@ export function planRemoteColony(
 		const input = transitionInputOf(ctx, rec, name, budgetAvailable);
 		// 实测净收入折叠 (docs/24 §24.10): 每 foldInterval tick 折一次
 		// measured.netEma = 交付 EMA − 存量单位孵化成本摊销 (成本/寿命折算/tick)
-		if (rec.state === "active") {
+		// SK 房采集门 (docs/24 §24.2 四期): 覆盖编队成军前无采集交付, 折算
+		// 必然负值 → 立即亏损剔除 = 冷启动死锁; 无覆盖期冻结折算
+		const isKeeperTarget = roomKind(name) === "keeper" || roomKind(name) === "center";
+		const covered =
+			!isKeeperTarget || ctx.memory.squads[squadIdOf("remote", name)] !== undefined;
+		if (rec.state === "active" && covered) {
 			const last = rec.measured?.lastFoldTick ?? 0;
 			if (ctx.tick - last >= REMOTE_CONFIG.foldInterval) {
 				const deliveredEma = ctx.memory.ledger.rates[`remote:${room.roomName}:${name}`]?.delivered.ema ?? 0;
@@ -320,6 +357,22 @@ function emitActiveColonyTasks(
 ): void {
 	if (!intel?.sources) return;
 	const live = Game.rooms[roomName];
+	const isKeeperRoom = roomKind(roomName) === "keeper" || roomKind(roomName) === "center";
+	// 采集前置门 (docs/24 §24.2 四期): SK 房无覆盖编队不派采集——
+	// 覆盖编队 (keeperHold) 常驻请求在 Defense 域续期, 解散即撤采集任务
+	if (isKeeperRoom && ctx.memory.squads[squadIdOf("remote", roomName)] === undefined) {
+		for (const task of board.list({ roomName: room.roomName, kinds: ["harvest", "carry"] })) {
+			if (
+				(task.dedupeKey ?? "").startsWith("remote:") &&
+				task.targetPos?.roomName === roomName &&
+				task.status !== "completed" &&
+				task.status !== "cancelled"
+			) {
+				board.cancel(task.id, ctx.tick, "keeper-uncovered");
+			}
+		}
+		return;
+	}
 
 	for (const src of intel.sources) {
 		// 采集任务: 驻点矿工 (remoteHarvester hint 由孵化侧定体型)
@@ -420,6 +473,50 @@ function emitActiveColonyTasks(
 			.find((t) => t.dedupeKey === reserveKey);
 		if (stale && stale.status !== "completed" && stale.status !== "cancelled") {
 			board.cancel(stale.id, ctx.tick, "reserve-unaffordable");
+		}
+	}
+
+	// SK 房元素矿 (docs/24 §24.2 四期): active 且有视野才登记; 采空即撤单。
+	// resourceType 口径复用过道矿合约 (孵化/执行链属矿物分支, 本期只登记)
+	const mineralKey = `remote:mineral:${room.roomName}:${roomName}`;
+	if (isKeeperRoom && live && room.rcl >= REMOTE_CONFIG.keeper.mineralMinRcl) {
+		const mineral = live.find(FIND_MINERALS)[0];
+		if (mineral && mineral.mineralAmount > 0) {
+			board.upsert({
+				dedupeKey: mineralKey,
+				kind: "harvest",
+				roomName: room.roomName,
+				targetId: mineral.id,
+				targetPos: { x: mineral.pos.x, y: mineral.pos.y, roomName },
+				resourceType: mineral.mineralType,
+				priority: priorityFor("harvest"),
+				requiredCapabilities: ["work", "move"],
+			}, ctx.tick);
+			// extractor 放量 (sitePlacement 意图): 无成品/无工地时建
+			const hasExtractor = live.find(FIND_STRUCTURES, {
+				filter: (s) => s.structureType === STRUCTURE_EXTRACTOR && s.pos.isEqualTo(mineral.pos),
+			}).length > 0;
+			const hasExtractorSite = live.find(FIND_CONSTRUCTION_SITES, {
+				filter: (s) => s.structureType === STRUCTURE_EXTRACTOR && s.pos.isEqualTo(mineral.pos),
+			}).length > 0;
+			if (!hasExtractor && !hasExtractorSite) {
+				submitIntent(ctx.tick, {
+					actorName: room.roomName,
+					kind: "createSite",
+					pipeline: "construction",
+					priority: 30,
+					targetPos: { x: mineral.pos.x, y: mineral.pos.y, roomName },
+					payload: { structureType: STRUCTURE_EXTRACTOR },
+					dedupeKey: `remote-extractor:${room.roomName}:${roomName}`,
+				});
+			}
+		} else {
+			const staleMineral = board
+				.list({ kinds: ["harvest"], roomName: room.roomName })
+				.find((t) => t.dedupeKey === mineralKey);
+			if (staleMineral && staleMineral.status !== "completed" && staleMineral.status !== "cancelled") {
+				board.cancel(staleMineral.id, ctx.tick, "mineral-exhausted");
+			}
 		}
 	}
 }

@@ -211,6 +211,8 @@ export interface VisibleRoomObservation {
 		reservation?: { username: string; ticksToEnd: number };
 	};
 	invaderCore: boolean;
+	/** SK lair 位置与刷新窗口 (docs/24 §24.2 四期); 无 lair 房为空数组 */
+	lairs: { id: string; x: number; y: number; nextSpawnAt?: number }[];
 	/** 本方单位 (与 units 同一批对象, 驱动与外矿房内计数用) */
 	creeps: CreepSummary[];
 }

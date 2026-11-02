@@ -10,7 +10,11 @@ import type { TickContext } from "@/core";
 import type { HostileCreepSummary, RoomObservation } from "@/core/world";
 import type { NexusMemory, ThreatCategory } from "@/core/store/memorySchema";
 import { markUrgentReeval } from "@/core/store/runtime";
+import { roomKind } from "@/utils/roomName";
 import type { ActionResult } from "@/modules/agents";
+
+/** SK 房的 source keeper username (官方); sim 引擎 keeper 代理为 Invader */
+const KEEPER_USERNAMES = new Set(["Source Keeper", "Invader"]);
 
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
 	return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
@@ -145,7 +149,15 @@ export function updateRemoteThreat(ctx: TickContext, roomName: string): void {
 			// 最小观测评分 (部件和 × 类别倍率), 无资产接近度加权 (外矿房无己方资产)
 			let score = 0;
 			let hasPlayer = false;
+			// SK 房 source keeper 是环境常量 (docs/24 §24.2 四期): 由 keeperHold
+			// 常驻编队压制, 不驱动威胁暂停——否则 SK 房 active 即 paused 死锁。
+			// SK 房不可预定/占有, 侵袭者不会进驻, Invader 口径即 keeper 代理
+			const isKeeperRoom =
+				roomKind(roomName) === "keeper" || roomKind(roomName) === "center";
 			for (const hostile of hostiles) {
+				if (isKeeperRoom && invaderCores.length === 0 && KEEPER_USERNAMES.has(hostile.owner.username)) {
+					continue;
+				}
 				const parts =
 					hostile.getActiveBodyparts(ATTACK) +
 					hostile.getActiveBodyparts(RANGED_ATTACK) +
@@ -155,6 +167,13 @@ export function updateRemoteThreat(ctx: TickContext, roomName: string): void {
 				const isNpc = hostile.owner.username === "Invader";
 				if (!isNpc) hasPlayer = true;
 				score += parts * THREAT_CONFIG.categoryMultiplier[isNpc ? "npc" : "player"];
+			}
+			if (score <= 0 && invaderCores.length === 0) {
+				// 纯 keeper 环境 (无威胁本体): 走衰减清账, 保持采集链
+				if (intel.threat?.scope === "remote") {
+					delete intel.threat;
+				}
+				return;
 			}
 			// core 评分: 每级 50 分基准 (低层约等于一只中型 NPC, 高层叠倍)
 			let coreLevel = 0;

@@ -128,6 +128,8 @@ export interface RoomIntelRecord {
 	invaderCore?: boolean;
 	/** 观测到他人敌对结构 (仅结构口径; 敌 creep 走威胁置信度暂停, docs/24 §24.9) */
 	hostileStructures?: boolean;
+	/** SK lair 观测 (docs/24 §24.2 四期): 定长 (每房 ≤3 lair), 有界记录 */
+	lairs?: { id: string; x: number; y: number; nextSpawnAt?: number }[];
 	/** rush 供需 EMA (specs/workforce-staffing): 升级火力乘数浮动状态 [-1,1] */
 	spawnBalanceEma?: number;
 	/** 冲级分段判废快照 (specs 冲级判废): 仅最新一条, 覆盖写入 */

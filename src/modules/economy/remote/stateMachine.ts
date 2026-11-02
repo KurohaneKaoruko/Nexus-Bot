@@ -27,6 +27,8 @@ export interface RemoteTransitionInput {
 	measuredNetEma?: number;
 	/** 实测净收入连续为负的持续时长 (tick; 超过 lossWindow 才剔除) */
 	lossDuration?: number;
+	/** 亏损剔除豁免 (true = 亏损判据被外部条件冻结, 如 SK 房无覆盖期) */
+	lossExempt?: boolean;
 	/** spawn 预算是否有余 (evaluated → active 准入) */
 	spawnBudgetAvailable: boolean;
 }
@@ -114,6 +116,7 @@ export function remoteTransitionOf(
 			// 亏损剔除 (pin 除外): 持续 lossWindow 才剔 (docs/24 §24.10)
 			if (
 				!pin &&
+				!input.lossExempt &&
 				input.measuredNetEma !== undefined &&
 				input.measuredNetEma < 0 &&
 				(input.lossDuration ?? 0) >= REMOTE_CONFIG.lossWindow &&

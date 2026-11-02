@@ -8,7 +8,7 @@
 import { REMOTE_CONFIG } from "@/config/remote";
 
 /** 部件成本表 (引擎常量兜底, 官方值) */
-const PART_COST = { work: 100, carry: 50, move: 50, claim: 600 } as const;
+const PART_COST = { work: 100, carry: 50, move: 50, claim: 600, rangedAttack: 150 } as const;
 /** 引擎常量兜底 (桩环境可能缺全局声明) */
 const HARVEST_POWER_V = typeof HARVEST_POWER === "number" ? HARVEST_POWER : 2;
 const CARRY_CAPACITY_V = typeof CARRY_CAPACITY === "number" ? CARRY_CAPACITY : 50;
@@ -34,6 +34,8 @@ export interface RemoteEstimateInput {
 	reserved: boolean;
 	/** 源数 (默认 1; 净收益按源数线性放大) */
 	sourceCount?: number;
+	/** SK 房口径 (docs/24 §24.2 四期): 3 源窗模型 + 覆盖编队摊销 */
+	keeper?: boolean;
 }
 
 /** 净收益估算输出 */
@@ -102,13 +104,29 @@ export function estimateRemoteNet(input: RemoteEstimateInput): RemoteEstimateOut
 	// 容器维护
 	const containerUpkeep = CONTAINER_UPKEEP_PER_TICK;
 
-	const perSourceNet = rEff - unitCostPerTick - containerUpkeep - transitLoss;
-	const net = perSourceNet * sources;
 	// spawn 占用: Σ 部件数 × 孵化时长 / 寿命 (预定体走 600 寿命)
 	const harvesterParts = harvesterWork * 2 + 1;
 	const s =
 		((harvesterParts + haulerPartsEach * haulerCount) * CREEP_SPAWN_TIME_V) / CREEP_LIFE_TIME_V +
 		(reserverCount * RESERVER_PARTS * CREEP_SPAWN_TIME_V) / CREEP_CLAIM_LIFE_TIME_V;
 
-	return { net, s };
+	const net = rEff - unitCostPerTick - containerUpkeep - transitLoss;
+	// SK 房 (docs/24 §24.2 四期): SK 源按 3 源窗口折算 (刷新期 300t 内有效采集
+	// ~2/3 时间) + 覆盖编队摊销 (每 lair 一组 [RA,M], 寿命摊销)
+	if (input.keeper) {
+		const lairCount = Math.max(1, sources);
+		const dutyWindow = 2 / 3;
+		const squadCostPerTick =
+			(lairCount * (PART_COST.rangedAttack + PART_COST.move)) / CREEP_LIFE_TIME_V;
+		const keeperNet =
+			rEff * sources * dutyWindow -
+			unitCostPerTick * sources -
+			containerUpkeep * sources -
+			transitLoss -
+			squadCostPerTick;
+		const keeperS = s + (lairCount * 2 * CREEP_SPAWN_TIME_V) / CREEP_LIFE_TIME_V;
+		return { net: keeperNet, s: keeperS };
+	}
+
+	return { net: net * sources, s };
 }

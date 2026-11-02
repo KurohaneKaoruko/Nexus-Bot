@@ -58,7 +58,7 @@ function summarizeHostile(creep: Creep & { owner: { username: string } }, _roomN
 }
 
 /** 非己方可见房轻量快照: 外矿/驻留驱动所需面 (docs/24 §24.5.1), creeps 由调用方填充 */
-function summarizeVisibleRoom(room: Room): VisibleRoomObservation {
+function summarizeVisibleRoom(room: Room, tick: number): VisibleRoomObservation {
 	const controller = room.controller;
 	return {
 		roomName: room.name,
@@ -122,6 +122,23 @@ function summarizeVisibleRoom(room: Room): VisibleRoomObservation {
 		(room.find(FIND_STRUCTURES, {
 					filter: (s) => s.structureType === STRUCTURE_INVADER_CORE,
 				}).length) > 0,
+		// SK lair (docs/24 §24.2 四期): 位置 + 下次刷新估计 (无视野窗口的回避依据)
+		lairs: room
+			.find(FIND_STRUCTURES, {
+				filter: (s) => s.structureType === STRUCTURE_KEEPER_LAIR,
+			})
+			.map((lair) => {
+				const keeper = lair as StructureKeeperLair;
+				const out: { id: string; x: number; y: number; nextSpawnAt?: number } = {
+					id: keeper.id,
+					x: keeper.pos.x,
+					y: keeper.pos.y,
+				};
+				if (keeper.ticksToSpawn !== undefined) {
+					out.nextSpawnAt = tick + keeper.ticksToSpawn;
+				}
+				return out;
+			}),
 		creeps: [],
 	};
 }
@@ -425,7 +442,7 @@ export const Perception: TickModule = {
 				remoteUnits.push(summary);
 				let vis = visible[roomName];
 				if (!vis) {
-					vis = summarizeVisibleRoom(room);
+					vis = summarizeVisibleRoom(room, ctx.tick);
 					visible[roomName] = vis;
 				}
 				vis.creeps.push(summary);
@@ -490,6 +507,10 @@ export const Perception: TickModule = {
 			const hostileStructures = room.find(FIND_HOSTILE_STRUCTURES).length > 0;
 			if (intel.hostileStructures !== hostileStructures) {
 				intel.hostileStructures = hostileStructures;
+			}
+			// SK lair 增量写 (docs/24 §24.2 四期): 位置/刷新窗口随观测更新
+			if (vis.lairs !== undefined && vis.lairs.length > 0) {
+				intel.lairs = vis.lairs;
 			}
 		}
 
