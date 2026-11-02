@@ -49,3 +49,17 @@ export function activeScoutCount(ctx: TickContext, board: TaskBoard): number {
 	}
 	return Math.min(board.list({ kinds: ["scout"] }).length, SCOUT_CONFIG.parallelCap);
 }
+
+/** 外矿清理编队槽位数 (docs/nexus-design/13 §24.2 三期): squad:remote: 槽位
+ *  的 defend 任务在家内和平期无威胁编制可抵扣 (和平 0), 按活跃槽位任务数
+ *  给出 defender 孵化目标; 编队解散任务取消即自动收编 */
+export function remoteClearSlotCount(board: TaskBoard): number {
+	let n = 0;
+	for (const task of board.list({ kinds: ["defend"] })) {
+		if (!task.dedupeKey.startsWith("squad:remote:")) continue;
+		if (task.status === "available" || task.status === "in_progress" || task.status === "leased") {
+			n++;
+		}
+	}
+	return n;
+}

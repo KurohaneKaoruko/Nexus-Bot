@@ -314,6 +314,24 @@ export function runCreep(
 			// 目标每 Tick 从快照重选 (威胁动态变化, 任务 targetId 仅为创建期快照)
 			const target = rankHostiles(room)[0];
 			if (!target) {
+				// 外矿清理编队 (docs/24 §24.2 三期): 槽位任务房 = 外矿房,
+				// 未到达前本房 (母房) 快照无敌人 → 向任务房进军; 家内任务
+				// 无敌可见即挂起 (由规划器威胁衰减终结)
+				if (task.dedupeKey.startsWith("squad:remote:")) {
+					const dest = { x: 25, y: 25, roomName: task.roomName };
+					broker.submit({
+						id: `${creep.name}-go-${ctx.tick}`,
+						tick: ctx.tick,
+						taskId: task.id,
+						actorName: creep.name,
+						kind: "move" as const,
+						targetPos: dest,
+						priority: task.priority,
+						pipeline: "move",
+						reason: "remote-clear-march",
+						dedupeKey: `${creep.name}:move:${task.id}`,
+					});
+				}
 				return;
 			}
 			// 治疗切换: 持治疗部件且友方 (含自己) 损血超阈且相邻 (docs/nexus-design/09 §9.3)

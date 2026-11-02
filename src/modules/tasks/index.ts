@@ -42,6 +42,9 @@ export const Tasks: TickModule = {
 					task.kind === "reserve") &&
 				targetRoomName !== undefined &&
 				targetRoomName !== task.roomName;
+			// 外矿清理编队槽位 (docs/24 §24.2 三期): 任务房 = 外矿房 (从未属我),
+			// 存活由编队需求续期/解散管 (cluster 模块), 不走挂靠房归属清扫
+			const remoteClearSlot = (task.dedupeKey ?? "").startsWith("squad:remote:");
 			// 直挂形态: scout/reserve 锚点即目标外房 (从未属我), room-lost 清扫
 			// 不适用——存活由 lease/deadline 兜底, 不靠挂靠房归属
 			const selfAnchoredRemote =
@@ -53,7 +56,8 @@ export const Tasks: TickModule = {
 				task.kind !== "claim" &&
 				!myRoomNames.has(task.roomName) &&
 				!remoteEconomic &&
-				!selfAnchoredRemote
+				!selfAnchoredRemote &&
+				!remoteClearSlot
 			) {
 				board.cancel(task.id, ctx.tick, "room-lost");
 			} else if (remoteEconomic && !targetVisible) {

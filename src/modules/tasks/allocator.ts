@@ -123,7 +123,10 @@ export function canExecute(
 			task.kind !== "claim" &&
 			task.kind !== "reserve" &&
 			task.kind !== "harvest" &&
-			task.kind !== "carry"
+			task.kind !== "carry" &&
+			// 外矿清理编队槽位 (三期, docs/24 §24.2): 任务房 = 外矿房,
+			// defender 从母房出发跨房接战
+			task.dedupeKey.startsWith("squad:remote:")
 		) {
 			return false;
 		}

@@ -10,7 +10,7 @@ import { STAFFING_CONFIG } from "@/config/defense";
 import { UNIT_CODES, unitCode } from "@/constant/UnitConstant";
 import type { TaskBoard } from "@/modules/tasks";
 import { createTaskBoard } from "@/modules/tasks";
-import { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeScoutCount } from "@/modules/economy/remote/counts";
+import { activeRemoteHarvestCount, activeRemoteCarryBacklog, activeScoutCount, remoteClearSlotCount } from "@/modules/economy/remote/counts";
 import {
 	isSpawnUnit,
 	typicalSpawnTime,
@@ -253,9 +253,15 @@ export function unitTargets(ctx: TickContext, board: TaskBoard): Record<SpawnUni
 				r.stores.some((s) => s.structureType === "storage"),
 		) ? 1 : 0,
 		miner: rooms.some((r) => r.rcl >= 6 && r.stores.some((s) => s.structureType === "container")) ? 1 : 0,
-		defender: STAFFING_CONFIG.tierDefenders[
-			threatTierOf(maxThreatScore(ctx.memory)) as "peace" | "low" | "high"
-		],
+		defender:
+			Math.max(
+				STAFFING_CONFIG.tierDefenders[
+					threatTierOf(maxThreatScore(ctx.memory)) as "peace" | "low" | "high"
+				],
+				// 外矿清理编队 (docs/24 §24.2 三期): squad:remote: 槽位的 defend
+				// 任务无家内威胁不孵化 (编制恒 0), 按在编槽位任务数计目标
+				remoteClearSlotCount(board),
+			),
 		// 扩张占领件: 活跃 claim 任务时 1 只 (任务消失编制即收)
 		claimer: board.list({ kinds: ["claim"] }).some((t) => t.status !== "completed") ? 1 : 0,
 	};

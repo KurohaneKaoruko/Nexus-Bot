@@ -12,6 +12,7 @@ import type { TickContext, TickModule } from "@/core";
 import { createTaskBoard } from "@/modules/tasks";
 import { ensureBroker } from "@/modules/agents";
 import { planDefenseRoom } from "@/modules/defense/planners";
+import { planRemoteClearSquads } from "@/modules/defense/remoteClear";
 import { assignTowers } from "@/modules/defense/towerControl";
 import { foldTowerSpend, updateRemoteThreat, updateRoomThreat } from "@/modules/defense/threatModel";
 
@@ -65,6 +66,9 @@ export const Defense: TickModule = {
 				}
 			}
 		}
+		// 外矿清理编队 (三期, docs/24 §24.2): npc/core 威胁暂停的房提
+		// kind="remote" 编队需求 (玩家骚扰不开编队, 止损超时+冷却)
+		planRemoteClearSquads(ctx);
 		submitTowerActions(ctx, broker);
 		foldTowerSpend(ctx);
 	},

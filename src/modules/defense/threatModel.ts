@@ -136,7 +136,12 @@ export function updateRemoteThreat(ctx: TickContext, roomName: string): void {
 	const live = Game.rooms[roomName];
 	if (live) {
 		const hostiles = live.find(FIND_HOSTILE_CREEPS);
-		if (hostiles.length > 0) {
+		// invader core 结构观测 (外矿三期, docs/24 §24.2): core 即威胁本体,
+		// 分级记 coreLevel (清理编队配槽依据)
+		const invaderCores = live.find(FIND_HOSTILE_STRUCTURES, {
+			filter: (s) => s.structureType === STRUCTURE_INVADER_CORE,
+		}) as StructureInvaderCore[];
+		if (hostiles.length > 0 || invaderCores.length > 0) {
 			// 最小观测评分 (部件和 × 类别倍率), 无资产接近度加权 (外矿房无己方资产)
 			let score = 0;
 			let hasPlayer = false;
@@ -151,18 +156,26 @@ export function updateRemoteThreat(ctx: TickContext, roomName: string): void {
 				if (!isNpc) hasPlayer = true;
 				score += parts * THREAT_CONFIG.categoryMultiplier[isNpc ? "npc" : "player"];
 			}
+			// core 评分: 每级 50 分基准 (低层约等于一只中型 NPC, 高层叠倍)
+			let coreLevel = 0;
+			for (const core of invaderCores) {
+				const level = (core as { levels?: number }).levels ?? 1;
+				coreLevel = Math.max(coreLevel, level);
+				score += 50 * level * THREAT_CONFIG.categoryMultiplier.npc;
+			}
 			const previous = intel.threat;
 			const continuing = previous !== undefined && previous.score >= THREAT_CONFIG.harmlessScore;
 			intel.threat = {
 				score,
 				peakScore: Math.max(score, previous?.peakScore ?? 0),
-				category: hasPlayer ? "player" : "npc",
+				category: hasPlayer ? "player" : invaderCores.length > 0 ? "core" : "npc",
 				firstSeenAt: continuing ? previous.firstSeenAt : ctx.tick,
 				lastSeenAt: ctx.tick,
 				confidence: 1,
-				hostileCount: hostiles.length,
-				reason: `remote-hostiles:${hostiles.length} score:${Math.round(score)}`,
+				hostileCount: hostiles.length + invaderCores.length,
+				reason: `remote-hostiles:${hostiles.length} cores:${invaderCores.length} score:${Math.round(score)}`,
 				scope: "remote",
+				...(invaderCores.length > 0 ? { coreLevel } : {}),
 			};
 			return;
 		}

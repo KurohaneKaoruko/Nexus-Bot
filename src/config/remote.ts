@@ -78,4 +78,11 @@ export const REMOTE_CONFIG = {
 		/** 干线放量优先级 (construction pipeline 内, 与布局 road 同档) */
 		sitePriority: 30,
 	},
+	/** 外矿防御 (docs/nexus-design/13 §24.2 三期) */
+	defense: {
+		/** 交战超时 (tick): 清理编队在此时间内未清掉威胁即撤回止损 */
+		engagementTimeout: 3000,
+		/** 清理失败冷却基数 (tick): 失败次数累进 (n×此值), 防无收益循环孵化 */
+		retryCooldown: 5000,
+	},
 } as const;

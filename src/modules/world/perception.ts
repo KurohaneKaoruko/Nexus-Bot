@@ -484,7 +484,10 @@ export const Perception: TickModule = {
 			if (intel.invaderCore !== vis.invaderCore) {
 				intel.invaderCore = vis.invaderCore;
 			}
-			const hostileStructures = vis.hostiles.length > 0 || room.find(FIND_HOSTILE_STRUCTURES).length > 0;
+			// 敌对结构口径仅结构 (docs/24 §24.9): 敌 creep 在场不算 unsafe——
+			// active 期 invader 进驻走威胁暂停 (paused) 而非安全否决 (rejected),
+			// 清理后可恢复; 敌 creep 的暂停信号走 threat.confidence
+			const hostileStructures = room.find(FIND_HOSTILE_STRUCTURES).length > 0;
 			if (intel.hostileStructures !== hostileStructures) {
 				intel.hostileStructures = hostileStructures;
 			}

@@ -217,8 +217,10 @@ export const SPAWN_CONFIG = {
 	 *  carrier 入列——搬运任务随货源波动, 任务驱动的间歇请求会让编制在关键窗口空转。
 	 *  reserver 不入列 (批次 AD 四轮): standing 按任务数定编 = 每房 1 只,
 	 *  绕过 raceRemote 的上游 claims=2 全局上限, 双轨并发孵 5 只挤占 RM
-	 *  攒能窗口 (24k 实证 reserver 5 / RM 0); 孵化全归 spawnDirector raceRemote 段 */
-	standingUnits: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout", "reserver"] as readonly string[],
+	 *  攒能窗口 (24k 实证 reserver 5 / RM 0); 孵化全归 spawnDirector raceRemote 段。
+	 *  defender 入列 (外矿三期): 外矿清理编队槽位任务在家内和平期无威胁编制,
+	 *  standing 按 remoteClearSlotCount 定编是清理件唯一孵化来源 */
+	standingUnits: ["harvester", "upgrader", "carrier", "worker", "manager", "transporter", "miner", "scout", "reserver", "defender"] as readonly string[],
 	/** 常驻编制缺口的请求排队等级 (race L9; 低于任务驱动, 只兜底) */
 	standingPriority: 9,
 	/** 按类型的常驻排队等级覆盖 (小者优先, race 语义 + 本矿供能约束):

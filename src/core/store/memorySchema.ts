@@ -51,7 +51,7 @@ export interface WorksiteRecord {
 }
 
 /** 威胁类别 (docs/nexus-design/09 §9.2: NPC 与玩家敌人不可合并) */
-export type ThreatCategory = "npc" | "player";
+export type ThreatCategory = "npc" | "player" | "core";
 
 /** 房间威胁摘要 (docs/nexus-design/19 §19.4): 单条有界记录, 失视按 lastSeen 衰减, 过期清除 */
 export interface RoomThreatRecord {
@@ -70,6 +70,8 @@ export interface RoomThreatRecord {
 	reason: string;
 	/** 威胁作用域 (v17, docs/nexus-design/13 §24.9): home = 只影响母房家内, remote = 外矿域, 缺省按家内处理 */
 	scope?: "home" | "remote";
+	/** invader core 强度层级 (nature=core 时有值, 外矿三期清理配槽依据) */
+	coreLevel?: number;
 }
 
 /**
@@ -124,7 +126,7 @@ export interface RoomIntelRecord {
 	/** 观测时的预定 (null = 已知无预定); untilTick = 观测 tick + ticksToEnd */
 	reservation?: { username: string; untilTick: number } | null;
 	invaderCore?: boolean;
-	/** 观测到他人敌对结构 */
+	/** 观测到他人敌对结构 (仅结构口径; 敌 creep 走威胁置信度暂停, docs/24 §24.9) */
 	hostileStructures?: boolean;
 	/** rush 供需 EMA (specs/workforce-staffing): 升级火力乘数浮动状态 [-1,1] */
 	spawnBalanceEma?: number;
@@ -416,6 +418,10 @@ export interface DefenseStats {
 export interface DefenseMemory {
 	safeMode: SafeModeBookkeeping;
 	stats: DefenseStats;
+	/** 外矿清理交战跟踪 (三期, docs/24 §24.2): 外矿房名 → 交战记录 (有界, 随房状态清) */
+	remoteEngagements?: Record<string, { since: number; failures: number }>;
+	/** 外矿清理冷却表 (三期): 外矿房名 → 冷却截止 tick (失败次数累进) */
+	remoteCooldown?: Record<string, number>;
 }
 
 /** 编队类型 (docs/nexus-design/19 §19.4 集群): 防御编队为当前唯一消费方, 后续可扩 remote/industry */
