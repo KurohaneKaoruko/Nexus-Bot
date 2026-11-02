@@ -73,15 +73,6 @@ export const UNIT_BODY_NAMES: Record<UnitId, string> = {
 	/* 外矿 */
 	reserver: "预定体",
 	remoteMiner: "外矿矿工",
-	"out-build": "外矿建造体",
-	"out-defend": "外矿防御体",
-	"out-2attack": "外矿双人突击体",
-	"out-2heal": "外矿双人治疗体",
-	"out-invader": "外矿入侵体",
-	"out-attack": "外矿突击体",
-	"out-ranged": "外矿远程体",
-	"out-mineral": "外矿矿工",
-	"out-repair": "外矿维修体",
 
 	/* 沉积物 */
 	"deposit-harvest": "沉积物采集体",

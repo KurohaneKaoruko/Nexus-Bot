@@ -326,3 +326,17 @@ Industry run 链加 `createTaskBoard(ctx.memory.tasks)` 透传（economy 先例�
 p95 全场景 +3~6ms 首轮读数系**并行负载噪声**（跑门期间并行执行了 typecheck/grep/构建；同 bundle 静机复跑 p95 回 7-8ms）。
 
 **处置**（用户裁定）：按 0.2 注记先例路径——HEAD 干净树重冻基线（6 场景静机读数存档 legacy-consolidation-b/baseline/），C 波删除对照新基线验证逐位一致后放行切片。world 世界重摆类的 race 探测提交还会带来 run 间方差（40a2397 记档 +29.4%），分段门场景按趋势观察项口径读。
+
+**U.13 external-legacy-retire 收尾批次补档（2026-11-02）**：
+
+- 清单内三项（out-* 词表 / console mine.ts 旧面 / externalRoad 链）全仓零真引用后删除；
+  `road` 链的消费方扫描结论：`bodyFunction.ts` carrier 死分支（活链配比已由 spawnArbiter
+  消费 `roadCoverageOf`）+ `console/function/mine.ts` 人操面，无其他调用点。
+- 清单外新发现（按「只留档不退役」处置，待 spec 修订入清单）：
+  `utils/remoteBody.ts` 的 `buildCarrierBodyConfig` / `RELAY_CARRIER_CARRY_SIZE` /
+  `DIRECT_CARRIER_CARRY_SIZE` 随 carrier 死分支删除后零引用；`buildOutBuildBody`
+  本就零调用（外矿建造由 worker 任务链承担）。两者保留为体型公式资产，注释已改写
+  为「接入前不得依赖词表解析」。
+- 连带处置：`OutMineData.energy/centerRoom` 的两个读取方（`statistics.ts` HUD 统计、
+  `roomVisuals.ts` 远矿积压）改读 `Nexus.remotes` active 房集合；`highway`/`powerMine`/
+  `depositMine` 活链未动。

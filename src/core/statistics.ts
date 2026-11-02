@@ -7,7 +7,6 @@ import { UNITS } from '@/constant/CreepConstant';
 import { UnitData } from '@/constant/CreepConstant';
 import { getCreepRoleCountsAll } from '@/utils/creepTickIndex';
 import { getAllOrdersCached, hasMarketCredits, hasMarketOrderApi } from '@/utils/marketUtils';
-import { getOutMineData } from '@/core/store/accessor';
 import { getRoomTickCacheValue } from '@/utils/roomTickCache';
 
 // --- Configuration Constants ---
@@ -311,9 +310,13 @@ function gatherRoomLive(room: Room) {
         ? `${spawn0.spawning.name.replace(/^.*?@(.*?)@.*$/, '$1')} ${spawn0.spawning.remainingTime}/${spawn0.spawning.needTime}`
         : null;
 
-    // 外矿：列表源数 + 在岗采集/搬运（按 targetRoom 归属外矿列表，且只统计本源房派出的）
-    const outData = getOutMineData(room.name) as any;
-    const outList: string[] = outData?.energy || [];
+    // 外矿：active 房数 + 在岗采集/搬运（按 targetRoom 归属外矿房，且只统计本源房派出的）
+    const remotes = (Memory.Nexus as {
+        remotes?: Record<string, { rooms?: Record<string, { state: string }> }>;
+    } | undefined)?.remotes?.[room.name]?.rooms;
+    const outList: string[] = Object.entries(remotes ?? {})
+        .filter(([, rec]) => rec?.state === 'active')
+        .map(([name]) => name);
     let outHarvest = 0;
     let outCarry = 0;
     if (outList.length > 0) {

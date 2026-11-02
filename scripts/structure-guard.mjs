@@ -82,7 +82,7 @@ const UNIT_DRIVE_ATTRIBUTION = {
 	courier: [],
 	team: ['team-attack', 'team-dismantle', 'team-heal', 'team-ranged'],
 	powercreep: ['pc-heal'],
-	'dormant-spawn': ['out-build', 'out-defend', 'out-2attack', 'out-2heal', 'out-invader', 'out-attack', 'out-ranged', 'out-mineral', 'out-repair', 'deposit-harvest', 'deposit-transfer', 'deposit-attack', 'deposit-heal', 'deposit-ranged', 'power-attack', 'power-heal', 'power-carry', 'power-ranged'],
+	'dormant-spawn': ['deposit-harvest', 'deposit-transfer', 'deposit-attack', 'deposit-heal', 'deposit-ranged', 'power-attack', 'power-heal', 'power-carry', 'power-ranged'],
 	manual: ['aio', 'cleaner', 'attack-claimer', 'dismantle', 'logistic'],
 	algorithm: ['defend-2heal'],
 };

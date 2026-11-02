@@ -132,46 +132,6 @@ export const UnitData = {
         level: 11,
         code: 'RM',
     },
-    'out-build': {
-        bodypart: [],
-        level: 12,
-        code: 'OB',
-    },
-    'out-defend': {
-        bodypart: [],
-        level: 8,
-        code: 'OD',
-    },
-    'out-2attack': {
-        bodypart: [],
-        level: 8,
-        code: 'O2A',
-    },
-    'out-2heal': {
-        bodypart: [],
-        level: 8,
-        code: 'O2H',
-    },
-    'out-invader': {
-        bodypart: [],
-        level: 10,
-        code: 'OI',
-    },
-    'out-attack': {
-        bodypart: [[ATTACK, 19], [MOVE, 25], [HEAL, 6]],
-        level: 9,
-        code: 'OA',
-    },
-    'out-ranged': {
-        bodypart: [[RANGED_ATTACK, 15], [MOVE, 25], [HEAL, 10]],
-        level: 9,
-        code: 'OR',
-    },
-    'out-mineral': {
-        bodypart: [[WORK, 30], [CARRY, 5], [MOVE, 15]],
-        level: 12,
-        code: 'OMR',
-    },
 
     /* 沉积物 */
     'deposit-harvest': {
@@ -229,7 +189,6 @@ export const UnitData = {
 
     /* 跨分支共用类型：bodypart 与孵化由分支侧自行生成，此处仅提供命名 code */
     'defender': { bodypart: [], level: 12, code: 'DF' }, // 房间防御
-    'out-repair': { bodypart: [], level: 12, code: 'ORE' }, // 外矿基建维修
 } satisfies Record<string, UnitDefinition>;
 
 export type UnitId = keyof typeof UnitData;
@@ -361,46 +320,6 @@ export const UnitLevelData = {
         6: { bodypart: [[MOVE, 2], [CLAIM, 2]], num: 0 },
         7: { bodypart: [[MOVE, 3], [CLAIM, 3]], num: 0 },
         8: { bodypart: [[MOVE, 5], [CLAIM, 5]], num: 0 },
-    },
-    "out-defend": {
-        1: { bodypart: [[MOVE, 1], [RANGED_ATTACK, 1]], num: 0 },
-        2: { bodypart: [[MOVE, 2], [RANGED_ATTACK, 1], [HEAL, 1]], num: 0 },
-        3: { bodypart: [[MOVE, 2], [RANGED_ATTACK, 1], [HEAL, 1]], num: 0 },
-        4: { bodypart: [[MOVE, 4], [RANGED_ATTACK, 2], [HEAL, 2]], num: 0 },
-        5: { bodypart: [[MOVE, 6], [RANGED_ATTACK, 3], [HEAL, 3]], num: 0 },
-        6: { bodypart: [[MOVE, 8], [RANGED_ATTACK, 4], [HEAL, 4]], num: 0 },
-        7: { bodypart: [[MOVE, 16], [RANGED_ATTACK, 8], [HEAL, 8]], num: 0 },
-        8: { bodypart: [[MOVE, 25], [ATTACK, 5], [RANGED_ATTACK, 10], [HEAL, 10]], num: 0 },
-    },
-    "out-invader": {
-        1: { bodypart: [[MOVE, 1], [ATTACK, 1]], num: 0 },
-        2: { bodypart: [[MOVE, 2], [ATTACK, 2]], num: 0 },
-        3: { bodypart: [[MOVE, 3], [ATTACK, 3]], num: 0 },
-        4: { bodypart: [[MOVE, 4], [ATTACK, 4]], num: 0 },
-        5: { bodypart: [[MOVE, 6], [ATTACK, 6]], num: 0 },
-        6: { bodypart: [[MOVE, 8], [ATTACK, 8]], num: 0 },
-        7: { bodypart: [[MOVE, 15], [ATTACK, 15]], num: 0 },
-        8: { bodypart: [[MOVE, 15], [ATTACK, 15]], num: 0 },
-    },
-    'out-2attack': {
-        1: { bodypart: [[ATTACK, 2], [MOVE, 2]], num: 0 },
-        2: { bodypart: [[ATTACK, 4], [MOVE, 4]], num: 0 },
-        3: { bodypart: [[ATTACK, 6], [MOVE, 6]], num: 0 },
-        4: { bodypart: [[ATTACK, 10], [MOVE, 10]], num: 0 },
-        5: { bodypart: [[ATTACK, 12], [MOVE, 12]], num: 0 },
-        6: { bodypart: [[ATTACK, 15], [MOVE, 15]], num: 0 },
-        7: { bodypart: [[ATTACK, 20], [MOVE, 20]], num: 0 },
-        8: { bodypart: [[ATTACK, 25] , [MOVE, 25]], num: 0},
-    },
-    "out-2heal": {
-        1: { bodypart: [[MOVE, 1], [HEAL, 1]], num: 0 },
-        2: { bodypart: [[MOVE, 1], [HEAL, 1]], num: 0 },
-        3: { bodypart: [[MOVE, 2], [HEAL, 2]], num: 0 },
-        4: { bodypart: [[MOVE, 3], [HEAL, 3]], num: 0 },
-        5: { bodypart: [[MOVE, 6], [HEAL, 6]], num: 0 },
-        6: { bodypart: [[MOVE, 7], [HEAL, 7]], num: 0 },
-        7: { bodypart: [[MOVE, 18], [HEAL, 18]], num: 0 },
-        8: { bodypart: [[MOVE, 25], [HEAL, 25]], num: 0 },
     },
     "defend-2heal": {
         7: { bodypart: [[TOUGH, 5], [HEAL, 20], [MOVE, 10]], num: 0 },

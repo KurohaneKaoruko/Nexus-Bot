@@ -1,27 +1,14 @@
 import { UNITS, UnitData, UnitLevelData } from '@/constant/CreepConstant';
-import { buildCarrierBodyConfig, RELAY_CARRIER_CARRY_SIZE, DIRECT_CARRIER_CARRY_SIZE } from '@/utils/remoteBody';
-import { getBuiltRoadCoverage } from '@/modules/external';
 
 /**
- * 体型生成域：按等级、能量预算与外矿道路覆盖率生成/计价 body。
+ * 体型生成域：按等级、能量预算生成/计价 body。
+ * 外矿搬运路面配比由 spawnArbiter 按 remote 路网覆盖率直接决定，不经本域。
  */
 export default class BodyFunction extends Room {
     override GetUnitBodys(unit: string, upbody?:boolean, energyBudget?: number, miniBody?: boolean) {
         let lv = this.level;
         let body: any[] = [];
         const budget = energyBudget ?? this.energyCapacityAvailable;
-
-        // carrier 走搬运工动态体型：接力期 maxCarry 4 小体型快周转，
-        // lv7+ 直运期放开到 32；enoughRoad（外矿路程道路覆盖率 ≥ 1/3）才切 2:1 路面迭代，
-        // 否则 1:1 越野——判据为外矿路程的非本房道路数量
-        if (unit === UNITS.carrier) {
-            const relay = this.level < 7;
-            const forRoad = getBuiltRoadCoverage(this.name) >= 1 / 3;
-            return buildCarrierBodyConfig(budget, {
-                forRoad,
-                maxCarry: relay ? RELAY_CARRIER_CARRY_SIZE : DIRECT_CARRIER_CARRY_SIZE,
-            });
-        }
 
         const unitData = UnitData as Record<string, { bodypart?: any[] } | undefined>;
         if (unit === UNITS.manager && energyBudget !== undefined) {
@@ -102,29 +89,6 @@ export default class BodyFunction extends Room {
                 if (move) body_list = AddList(body_list, 1, MOVE)
                 carry--; move--;
             }
-            break;
-        case UNITS['out-defend']:
-            if (tough) body_list = AddList(body_list, tough, TOUGH)
-            if (move) body_list = AddList(body_list, move - 2, MOVE)
-            if (attack) body_list = AddList(body_list, attack, ATTACK)
-            if (range_attack) body_list = AddList(body_list, range_attack, RANGED_ATTACK)
-            if (heal) body_list = AddList(body_list, heal - 1, HEAL)
-            if (move) body_list = AddList(body_list, 2, MOVE)
-            if (heal) body_list = AddList(body_list, 1, HEAL)
-            break;
-        case UNITS['out-attack']:
-            if (tough) body_list = AddList(body_list, tough, TOUGH)
-            if (move) body_list = AddList(body_list, move-2, MOVE)
-            if (attack) body_list = AddList(body_list, attack, ATTACK)
-            if (heal) body_list = AddList(body_list, heal, HEAL)
-            if (move) body_list = AddList(body_list, 2, MOVE)
-            break;
-        case UNITS['out-ranged']:
-            if (tough) body_list = AddList(body_list, tough, TOUGH)
-            if (move) body_list = AddList(body_list, move - 2, MOVE)
-            if (range_attack) body_list = AddList(body_list, range_attack, RANGED_ATTACK)
-            if (heal) body_list = AddList(body_list, heal, HEAL)
-            if (move) body_list = AddList(body_list, 2, MOVE)
             break;
         default:
             for (let body of bodypart) {

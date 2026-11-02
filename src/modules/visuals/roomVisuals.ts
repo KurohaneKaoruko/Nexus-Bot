@@ -16,7 +16,6 @@ import { decompressBatch } from "@/utils/compress";
 import { LayoutVisual } from "@/modules/planner";
 import { UNITS, UnitData } from "@/constant/CreepConstant";
 import { takeRaceEnergyMined } from "@/utils/rush";
-import { getOutMineData } from "@/core/store/accessor";
 
 type UnitId = keyof typeof UNIT_CODES;
 const isUnitId = (unit?: string): unit is UnitId => !!unit && unit in UNIT_CODES;
@@ -372,7 +371,12 @@ export function raceHudLines(room: Room): HudLine[] {
 
 	// 远矿积压（有视野的托管房容器存量）
 	let backlog = 0;
-	const targets = getOutMineData()[room.name]?.energy || [];
+	const remoteRooms = (Memory.Nexus as {
+		remotes?: Record<string, { rooms?: Record<string, { state: string }> }>;
+	} | undefined)?.remotes?.[room.name]?.rooms;
+	const targets = Object.entries(remoteRooms ?? {})
+		.filter(([, rec]) => rec?.state === 'active')
+		.map(([name]) => name);
 	for (const roomName of targets) {
 		const targetRoom = Game.rooms[roomName];
 		if (!targetRoom) continue;

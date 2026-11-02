@@ -94,9 +94,9 @@ export function buildCarrierBodyConfig(
  *
  * - WORK 占半：建造/维修的主力；CARRY 自取能量（容器/掉落/工地旁）；M 半数保证
  *   无路平原的远程机动；
- * - UnitData[UNITS['out-build']].bodypart 是空数组且 UnitLevelData 无分级表——不传显式
- *   体型时 GetUnitBodys 解析出空 body，孵化端按「无法孵化」永久跳过
- *   （race 实测：外矿路网工地铺满却没有一只建造工）。
+ * - 当前无调用方（外矿建造由通用 worker 任务链承担）；保留为既有体型公式资产，
+ *   接入前不得删除——接入方必须显式传本函数产出，不得依赖 GetUnitBodys 的词表解析
+ *   （词表已无对应角色条目，解析结果为空 body）。
  */
 export function buildOutBuildBody(energyCapacity: number): BodyConfig {
     const groupCost = WORK_COST * 2 + CARRY_COST + MOVE_COST;

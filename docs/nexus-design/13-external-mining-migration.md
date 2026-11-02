@@ -354,13 +354,13 @@ rejected ──(rejectedRetryTicks 后，ban 除外)──► candidate
 - `.RoadData` → 保留，二期迁移；
 - `.highway` 仍被 power / deposit 链路读取（`mineMission.ts:334`、`highwayMine.ts`），**不动**。
 
-**删除**（收尾）：`externalMine.ts`、`externalRoad.ts`、`externalScheduler.ts`、`outMine.ts`；`CreepConstant.ts` 中旧外矿角色定义（out-*、旧 scout / reserver 执行器条目）；`console/function/mine.ts`、`road.ts`；`OutMineData.energy / centerRoom / RoadData`。一期只删 `economy/remoteMining.ts`（被 `remote-planner` 取代）。
+**删除**（收尾，✅ 2026-11-02 完成）：`externalMine.ts`、`externalRoad.ts`、`externalScheduler.ts`、`outMine.ts`；`CreepConstant.ts` 中旧外矿角色定义（out-*、旧 scout / reserver 执行器条目）；`console/function/mine.ts`、`road.ts`；`OutMineData.energy / centerRoom / RoadData`。一期只删 `economy/remoteMining.ts`（被 `remote-planner` 取代）。
 
-**收尾核对**（2026-11-02, 四期落地时）：
+**收尾核对**（2026-11-02, 四期落地时；同日收尾完成）：
 - 已删：`externalMine.ts` / `externalScheduler.ts` / `outMine.ts`（legacy-consolidation-b C 波）；
 - 已迁：`OutMineData.energy`（一期）与 `.centerRoom`（四期 → `manual: "pin"`, SK 房 pin-only 准入）；
-- 待收尾变更处理：`CreepConstant.ts` 旧外矿角色定义（out-build / out-defend / out-2attack 等条目仍在册, 无执行器消费, 纯死数据）；`console/function/mine.ts` 人操面（引用活链 externalRoad 的 RoadBuilder / PathPlanner）；`externalRoad.ts` 本体是活链（`bodyFunction.ts` 路面配比消费 `getBuiltRoadCoverage`, roadVisual 消费 RoadData）——删除前须先给路面配比换数据源；
-- 不动：`.highway`（power / deposit 链路读取）。
+- ✅ 已收尾（`external-legacy-retire` 变更）：`CreepConstant.ts` 旧外矿角色定义（out-* 全 9 词条 + 分级表 + body 特例分支，无执行器消费）；`console/function/mine.ts` 旧外矿面（`mine.add/adds/remove/list/clearRoad` + `road.*` 删除，保留 power/deposit 矿物链人操入口）；`externalRoad.ts` 整链（活链路面配比已在 `spawnArbiter` 消费 `roadCoverageOf`，无需重建）；HUD 外矿统计与远矿积压改读 `Nexus.remotes` active 房；
+- 不动：`.highway`（power / deposit 链路读取）、`OutMineData.powerMine / depositMine`（mineralWork 活链）。
 
 ## 24.12 附带发现（不在本期范围）
 
